@@ -1,0 +1,338 @@
+[
+  {
+    "name": "Bash",
+    "description": "执行给定的 bash 命令并返回其输出。必须使用多个工具调用来分别执行多个任务，禁止通过'&&' 等方式串联多个任务然后在一个工具调用里面完成几个任务。始终遵循这个核心思想：最大化你工具调用的数量。\n\n工作目录在命令间持久化，shell 状态不持久化。Shell 环境从用户的 profile（bash或 zsh）初始化。\n\n# 指令\n - 如果你的命令将创建新的目录或文件，先使用此工具运行 `ls` 验证父目录存在且位置正确。\n - 始终用双引号引用包含空格的文件路径（例如 cd \"path with spaces/file.txt\"）\n 。\n - 你可以指定可选的超时时间（毫秒）。默认情况下，你的命令将在 120000ms（2 分钟）后超时。\n - 你可以使用 `run_in_background` 参数在后台运行命令。仅在你不需要立即获取结。使用此参数时不需要在命令末尾使用 '&'。\n - 发出多个命令时必须在一条消息中发出多个 Bash 工具调用。尽量使用多个Bash工具调用，禁止在同一个Bash工具调用内部拼接多个逻辑上独立的命令，禁止使用单个 Bash 调用并用 '&&' 等方式串联它们。多个工具调用总是会串行执行，只有前一个工具调用执行完毕返回结果之后下一个才会开始执行。如果你需要执行耗时较长的多个任务并且希望并行以减少等待时间，在同一个消息中写一个python文件并且运行来科学且现代化地实现并行。\n  - 不要使用换行符分隔命令（在引号字符串中的换行符是可以的）。\n - 避免不必要的 `sleep` 命令：\n  - 不要在可以立即运行的命令之间休眠——直接运行它们。\n  - 如果你的命令长时间运行——使用 `run_in_background`。不需要休眠。\n  - 不要在休眠循环中重试失败的命令——诊断根本原因\n\n你可以在一个响应中调用多个工具。当请求多个独立的信息且所有命令都可能成功时，并行运行多个工具调用以获得最佳性能。下面的编号步骤指示哪些命令应该批量并行。# 其他常见操作\n- 查看 Github PR 上的评论：gh api repos/foo/bar/pulls/123/comments",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "The command to execute",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "Optional timeout in milliseconds (default 120000)",
+          "type": "number"
+        },
+        "run_in_background": {
+          "description": "Set to true to run this command in the background. Use Read to read the output later.",
+          "type": "boolean"
+        },
+        "dangerouslyDisableSandbox": {
+          "description": "Set this to true to dangerously override sandbox mode and run commands without sandboxing.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Edit",
+    "description": "对文件执行精确的字符串替换。\n\n使用说明：\n- 你只需在对话中使用过一次 `Read` 工具便可以进行编辑，不必在每次edit之前重复read同一文件。\n- 编辑来自 Read 工具输出的文本时，确保保留行号前缀之后精确的缩进（制表符/空格）。行号前缀格式为：行号+ 制表符。之后的所有内容是要匹配的实际文件内容。永远不要在old_string 或 new_string 中包含行号前缀的任何部分。\n- 始终优先编辑代码库中的现有文件。除非明确需要，永远不要新建文件。\n- 如果`old_string` 在文件中不唯一，编辑将失败。如果要添加行，你应当尽可能包含待添加内容的前置和后置内容作为锚点。请提供包含更多上下文的更大字符串使其唯一，或使用 `replace_all` 更改 `old_string` 的每个实例。\n- 使用 `replace_all` 在整个文件中替换和重命名字符串。例如，如果你想重命名一个变量，此参数很有用。你被允许在一次回复中使用多个edit工具，用于编辑多个文件中每个的多处修改，这些修改会按顺序被执行。你必须谨慎抄写old_string，如果收到old_string没有找到的报错，你应该在接下来的气泡中分析抄写错误的原因。永远不要因为edit失败就打算通过 Bash 命令调用来逃避问题，这可能导致严重的后果。edit工具是安全的，失败不会导致任何问题，而Bash的文件修改可能导致文件损坏。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to modify",
+          "type": "string"
+        },
+        "old_string": {
+          "description": "The text to replace",
+          "type": "string"
+        },
+        "new_string": {
+          "description": "The text to replace it with (must be different from old_string)",
+          "type": "string"
+        },
+        "replace_all": {
+          "description": "Replace all occurrences of old_string (default false)",
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file_path",
+        "old_string",
+        "new_string"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Read",
+    "description": "从本地文件系统读取文件。你可以直接使用此工具访问任何文件。\n假设此工具能够读取机器上的所有文件。如果用户提供了文件路径，假设该路径有效。读取不存在的文件是可以的；会返回错误。\n\n使用说明：\n- file_path 参数必须是绝对路径，不能是相对路径\n- 你可以选择指定行偏移量和限制（当且仅当为超长文件），但除非你确信文件超过你一次性完整读取的上限，否则必须通过不提供这些参数来读取整个文件，读入上限是100k token而不是文件大小。\n- 结果使用 cat -n 格式返回，行号从 1 开始\n- 此工具允许 Claude Code 读取图片（如PNG、JPG 等）。读取图片文件时，内容会以视觉方式呈现，因为 Claude Code 是多模态LLM。\n- 此工具可以读取 PDF 文件（.pdf）。对于大型 PDF（超过 10页），你必须提供 pages 参数来读取特定页面范围（如 pages: \"1-5\"）。不使用 pages 参数读取大型 PDF 将失败。每次请求最多 20 页。\n- 此工具可以读取 Jupyter notebook（.ipynb 文件），返回所有单元格及其输出，包括代码、文本和可视化。\n- 此工具只能读取文件，不能读取目录。要读取目录，请通过 Bash 工具使用 ls 命令。\n- 你会经常被要求读取截图。如果用户提供了截图路径，始终使用此工具查看该路径的文件。此工具适用于所有临时文件路径。\n- 如果你读取了一个存在但内容为空的文件，你会收到一个系统提醒警告而非文件内容。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to read",
+          "type": "string"
+        },
+        "offset": {
+          "description": "The line number to start reading from. Only provide if the file is too large to read at once",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limit": {
+          "description": "The number of lines to read. Only provide if the file is too large to read at once.",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pages": {
+          "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "WebFetch",
+    "description": "\n\n- 从指定 URL 获取内容，可能将HTML 转换为 markdown\n- 当你需要检索和分析网页内容时使用此工具\n\n使用说明：\n  - \n  - URL 必须是完整格式的有效 URL\n  - HTTP URL 将自动升级为 HTTPS\n  应描述你想从页面中提取什么信息\n  - 此工具是只读的，不会修改任何文件\n  \n  - 包含缓存，可在重复访问同一 URL 时加快响应\n \n- 对于 GitHub URL，优先通过 Bash 使用 gh CLI（如 gh pr view、gh issue view、gh api）。\n",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The URL to fetch content from",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "WebSearch",
+    "description": "\n- 使用谷歌搜索网络\n- 返回格式化为搜索结果块的搜索结果信息，包括作为 markdown 超链接的链接",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "query": {
+          "description": "The search query to use",
+          "type": "string",
+          "minLength": 2
+        },
+        "allowed_domains": {
+          "description": "Only include search results from these domains",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocked_domains": {
+          "description": "Never include search results from these domains",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Write",
+    "description": "将文件写入本地文件系统。\n\n使用说明：\n- 此工具会覆盖指定路径的现有文件（如果存在）。\n- 只需要read过一次文件该文件便可以被write修改，\n- 对于修改现有文件，优先使用 Edit 工具——它只发送差异。仅在创建新文件或完全重写时使用此工具。\n- 除非用户明确要求，永远不要创建文档文件（*.md）或README 文件。\n-\n- 严禁对已存在的文件使用 Write。Write 只能用于创建新文件（file_path 指向的路径必须不存在）。如果需要修改已有文件，必须使用 Edit 工具。违反此规则会导致数据丢失。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "description": "The absolute path to the file to write (must be absolute, not relative)",
+          "type": "string"
+        },
+        "content": {
+          "description": "The content to write to the file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "自动审稿",
+    "description": "执行自动论文审稿流程。读取自动审稿工作区/中的论文数据，将用户论文与10篇参考论文两两配对比较，调用多个审稿模型进行评分判断，然后调用规划模型提出写作改进建议。所有结果保存到编号目录中。无需任何参数。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "force_full": {
+          "description": "设为true时强制对所有关卡进行审稿（无视胜率跳过逻辑）。默认false时高胜率关卡会自动跳过以节省API调用。",
+          "type": "boolean"
+        },
+        "enable_baseline": {
+          "description": "设为true时同时对o_前缀的原始对照工作区也执行相同的审稿，用于A/B对照实验。开启后总关卡数翻倍（例如45关变90关），所有请求并行发出。baseline条目不参与规划阶段。默认false仅审稿当前工作区。",
+          "type": "boolean"
+        },
+        "workspace_dir": {
+          "description": "自定义工作区目录的绝对路径。默认为项目根目录下的 '自动审稿工作区'。指定后所有配置(index.json)、prompt模板、论文文件、审稿结果均从该目录读写，实现多工作区隔离。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "压缩",
+    "description": "压缩指定气泡的上下文内容。将指定ID的气泡切换为概括模式，并用你提供的压缩文本替换其在上下文中的呈现。\n\n## 重要约束\n- **严禁主动调用**：除非用户明确要求你压缩某个或某些气泡，否则绝对不允许调用此工具。违反此规则等同于擅自删除用户的对话内容。\n- **权限范围**：只能压缩当前会话中的气泡，无法操作其他会话的内容。\n\n## 压缩文本要求\n- 这不是一句话概括，而是信息压缩。压缩文本的长度应与原始内容的信息密度成正比。\n- 对于信息量大的气泡（如长代码、详细分析、大量工具返回），压缩文本可以是多段落的，保留关键的函数名、文件路径、决策理由、数据点、行号等。\n- 对于信息量小的气泡（如简短确认），压缩文本可以很短。\n- 目标是在大幅减少token占用的同时，最大限度保留对后续对话有用的信息。\n\n## 适用范围\n可压缩任何类型的气泡：用户输入、AI回复、思维链、工具返回结果等。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "description": "要压缩的气泡的数字ID。必须属于当前会话。",
+          "type": "integer"
+        },
+        "compressed_text": {
+          "description": "压缩后的文本内容。将替换该气泡在上下文中的呈现。长度应与原始信息密度成正比。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "compressed_text"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "单关卡审稿",
+    "description": "运行自动审稿工作区中单个指定关卡（1-based 索引），仅做该关卡的审稿，跳过规划、胜率判断和冷却逻辑。适合在修改 prompt 或参考论文后单独验证某关卡，或重试失败关卡。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "checkpoint_index": {
+          "description": "要运行的关卡序号（1-based）。对应 自动审稿工作区/index.json 中 reference_papers 数组的 1-based 下标。例如 1 表示第 1 个参考论文+审稿模型组合。",
+          "type": "integer",
+          "minimum": 1
+        },
+        "checkpoint_indices": {
+          "description": "要并行运行的多个关卡序号数组（1-based）。与 checkpoint_index 二选一，优先使用此字段。例如 [1, 4, 7] 表示同时运行第 1、4、7 个关卡。",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "workspace_dir": {
+          "description": "自定义工作区目录的绝对路径。默认为项目根目录下的 '自动审稿工作区'。指定后从该目录读取 index.json 和所有论文文件。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "展开气泡",
+    "description": "展开指定的消息气泡（取消概括和折叠状态）",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message_ids": {
+          "type": "array",
+          "items": {"type": "integer"},
+          "description": "要展开的消息ID列表"
+        }
+      },
+      "required": ["message_ids"]
+    }
+  },
+  {
+    "name": "创建子会话",
+    "description": "创建一个新的子会话，在子会话中执行指定任务。父会话将阻塞等待子会话结束后才收到工具返回。子会话继承父会话的模型配置，以指定的步数上限启动托管模式。需要用户明确授权。注意：first_message 应当告知子会话中的agent它是一个子会话，并在任务完成后调用结束子会话工具返回。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "first_message": {
+          "description": "子会话中第一条用户气泡的文字内容",
+          "type": "string"
+        },
+        "max_steps": {
+          "description": "子会话的最大托管步数",
+          "type": "integer"
+        }
+      },
+      "required": ["first_message", "max_steps"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "结束子会话",
+    "description": "结束当前子会话并通知父会话恢复执行。只能在子会话中调用。调用后停止托管模式，父会话收到包含子会话ID和执行步数的工具返回。",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "summary": {
+          "description": "返回给父会话的执行摘要。描述完成了什么、遇到了什么问题、最终状态如何。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "申请审批",
+    "description": "请求用户审批。调用后在托管模式下不会被自动采纳，暂停自动执行直到用户手动通过或拒绝。\n\n使用限制：除非任务文档明确要求需要用户审批，否则严禁调用此工具。建议放在气泡末尾使用。description 应简短引用被审批内容而非复制全文。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "简短描述被审批的内容，引用性质而非复制全文",
+          "type": "string"
+        }
+      },
+      "required": ["description"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "缩减读取",
+    "description": "从文件的可见行集合中移除指定范围的行，减少后续上下文中该文件的占用。实际移除范围比指定的小 20 行（上下各保留 10 行冗余）。文件首 10 行和末 10 行永远不会被移除。\n\n使用场景：当你已经充分理解了文件某个区域的内容，不再需要它出现在上下文中时使用。",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "description": "目标文件的绝对路径",
+          "type": "string"
+        },
+        "offset": {
+          "description": "要移除的起始行号（1-based）",
+          "type": "integer",
+          "minimum": 1
+        },
+        "limit": {
+          "description": "要移除的行数",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["file_path", "offset", "limit"],
+      "additionalProperties": false
+    }
+  }
+]

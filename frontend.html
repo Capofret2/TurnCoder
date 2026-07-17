@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="stylesheet" href="/libs/katex.min.css">
+    <link rel="stylesheet" href="/libs/styles.css?v=3">
+</head>
+<body>
+    <div id="sidebar">
+        <div style="padding: 15px; font-weight: bold; border-bottom: 1px solid #ddd; background: #fff;">对话列表</div>
+        <div id="session-list"></div>
+        <div id="starred-shelf" style="margin: 10px; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 6px; max-height: 160px; overflow-y: auto; font-size: 12px; display: none;">
+            <div style="font-weight: bold; margin-bottom: 6px;">📌 收藏上下文</div>
+            <div id="starred-shelf-list"></div>
+        </div>
+        <button onclick="openSettingsModal()" style="margin: 10px 10px 0; padding: 8px; cursor:pointer; background: #17a2b8; color: white; border: none; border-radius: 5px; width: calc(100% - 20px); box-sizing: border-box; text-align: center;">⚙️ 全局设置</button>
+        <button onclick="openManualModal()" style="margin: 10px 10px 0; padding: 8px; cursor:pointer; background: #6c757d; color: white; border: none; border-radius: 5px; width: calc(100% - 20px); box-sizing: border-box; text-align: center;">📖 使用说明</button>
+        <button onclick="openProviderModal()" style="margin: 10px 10px 0; padding: 8px; cursor:pointer; background: #6f42c1; color: white; border: none; border-radius: 5px; width: calc(100% - 20px); box-sizing: border-box; text-align: center;">🔌 模型管理</button>
+        <div id="dev-buttons-row" style="display: flex; gap: 10px; margin: 10px 10px 0; width: calc(100% - 20px); box-sizing: border-box;">
+            <button onclick="exportSnapshot()" style="flex:1; padding: 8px; cursor:pointer; background: #fd7e14; color: white; border: none; border-radius: 5px; text-align: center; font-size: 12px;" title="打包更新包并上传到服务器">📦 更新</button>
+            <button onclick="fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'export_release'})}).then(r=>r.json()).then(d=>showToast(d.message,d.status==='ok'?'success':'error'))" style="flex:1; padding: 8px; cursor:pointer; background: #17a2b8; color: white; border: none; border-radius: 5px; text-align: center; font-size: 12px;" title="导出给用户的完整安装包">🚀 发布</button>
+            <button onclick="clearLogs()" style="flex:1; padding: 8px; cursor:pointer; background: #6f42c1; color: white; border: none; border-radius: 5px; text-align: center; font-size: 12px;" title="清理 API 历史日志以释放空间">🗑️ 清理</button>
+        </div>
+        <div id="archived-shelf" style="margin: 10px; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 12px; display: none;">
+            <div style="font-weight: bold; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">📦 已归档 <span style="cursor:pointer; font-size:14px;" onclick="document.getElementById('archived-shelf').style.display='none'">&times;</span></div>
+            <div id="archived-list"></div>
+        </div>
+        <div style="display:flex; gap:6px; margin: 10px 10px 0; width: calc(100% - 20px); box-sizing: border-box;">
+            <button onclick="postAction({action: 'create_session'})" onauxclick="event.preventDefault(); fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_session'})}).then(r=>r.json()).then(d=>{if(d.new_sid)window.open('/?sid='+d.new_sid,'_blank')})" style="flex:1; padding: 10px; cursor:pointer; background: #28a745; color: white; border: none; border-radius: 5px; text-align: center;">+ 新建对话</button>
+            <button onclick="createGroup()" style="padding: 10px; cursor:pointer; background: #6f42c1; color: white; border: none; border-radius: 5px; text-align: center; font-size: 12px;" title="创建会话分组">📁+</button>
+            <button onclick="toggleArchivedShelf()" style="padding: 10px; cursor:pointer; background: #6c757d; color: white; border: none; border-radius: 5px; text-align: center; font-size: 12px;" title="查看已归档会话">📦</button>
+        </div>
+    </div>
+
+    <div id="main-area">
+        <button id="toggle-sidebar" class="toggle-sidebar-btn" onclick="toggleSidebar()" title="折叠/展开侧边栏">☰</button>
+        <div id="chat-container">
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#999;">
+                <div class="spinner-ring"></div>
+                <div style="margin-top:12px; font-size:13px;">加载中...</div>
+            </div>
+        </div>
+        <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;overflow:hidden;background:#f0f0f0;z-index:100;"></div>
+        <div id="queue-area"></div>
+        <div id="bubble-context-menu" style="display:none; position:fixed; background:#fff; border:1px solid #ccc; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:3000; padding:4px 0; min-width:160px;"></div>
+        <div id="tab-context-menu" style="display:none; position:fixed; background:#fff; border:1px solid #ccc; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:3000; padding:4px 0; min-width:140px;">
+            <div class="tab-ctx-item" onclick="tabCtxRename()">✏️ 重命名</div>
+            <div class="tab-ctx-item" onclick="tabCtxClone()">📄 克隆会话</div>
+            <div class="tab-ctx-item" onclick="tabCtxArchive()">📦 归档会话</div>
+            <div class="tab-ctx-item" onclick="tabCtxClose()">✖ 关闭标签</div>
+        </div>
+        <div id="input-area">
+            <div id="heavy-panel"></div>
+            <div id="controls">
+                <button style="font-size: 10px; color: #555; min-width: 50px; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 2px 5px; cursor: pointer;" id="token-est" onclick="toggleHeavyPanel()" title="点击查看大于5k Token的大型气泡">0.00k ▾</button>
+                <span id="spending-display" style="font-size: 10px; color: #28a745; font-weight: bold; padding: 2px 4px; cursor: default;" title="累计API调用消费">$0.00</span>
+                <button id="billing-sync-btn" style="display:none; font-size:10px; background:#fd7e14; color:#fff; border:none; border-radius:3px; padding:2px 6px; cursor:pointer;" onclick="manualBillingSync()" title="手动拉取 sisuo.de 日志并匹配计费">同步计费</button>
+                <button style="font-size: 10px; background: #17a2b8; color: #fff; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer;" onclick="openCodeMonitor()" id="code-monitor-btn">📁<span id="code-token-display"></span></button>
+                <textarea id="user-input" placeholder="输入消息..." rows="1"></textarea>
+                <div style="font-size:11px; color:#666;">
+                    <button type="button" onclick="document.getElementById('model-dropdown').style.display = document.getElementById('model-dropdown').style.display === 'block' ? 'none' : 'block'" style="font-size: 10px; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 1px 4px; cursor: pointer;">模型▾</button>
+                    <div id="model-dropdown" style="display:none; position:absolute; bottom:calc(100% + 5px); right:15px; left:auto; background:white; border:1px solid #ccc; border-radius:4px; padding:8px; box-shadow:0 2px 5px rgba(0,0,0,0.2); white-space:nowrap; z-index:100;">
+                    </div>
+                </div>
+                                <div style="font-size:10px; color:#666;" id="steps-container">
+<input type="number" id="max-steps" value="1" min="1" max="10" style="width:28px; font-size:10px;" title="步数">
+                <label id="parallel-label" style="display:none;"><input type="checkbox" id="parallel-mode"> 并</label>
+            </div>
+            <span id="deep-think-label" style="display:none; font-size:10px; color:#dc3545; font-weight:bold; cursor:pointer; margin-right:4px; user-select:none;" onclick="cycleDeepThink()" title="点击切换思考深度：思考一(无)→思考二(中)→思考三(极限)">思考一</span>
+            <div style="font-size:10px; color:#666; display:none;" id="autopilot-container">
+                <input type="number" id="autopilot-turns" value="3" min="1" max="500" style="width:28px; font-size:10px;" title="托管次数">
+                <span id="autopilot-slider-container" style="display:none; margin-left:4px;"><input type="number" id="autopilot-max-k" value="8" min="1" max="100" style="width:28px; font-size:10px;" title="滑动窗口阈值(k)">k</span>
+            </div>
+            <button id="autopilot-btn" style="background:#ffc107; color:#000; border:none; border-radius:15px; padding:6px 10px; cursor:pointer; display:none; font-size:11px;" onclick="toggleAutopilot()" title="启动自动托管模型连续生成">托管</button>
+                <button id="send-button" onclick="send(false)" style="padding:6px 12px; min-width:60px; font-size:12px;">发送</button>
+
+            <button style="background:#007bff; color:#fff; border:none; border-radius:15px; padding:6px 8px; cursor:pointer; margin-left:4px; font-size:13px;" onclick="addOnly()" title="以用户气泡添加（不触发回复）">➕</button>
+            <button style="background:#e9ecef; color:#333; border:1px solid #ccc; border-radius:15px; padding:6px 8px; cursor:pointer; margin-left:2px; font-size:13px;" onclick="addOnlyAssistant()" title="以AI气泡添加（工具调用可正常使用）">➕</button>
+            <input type="file" id="image-upload" accept="image/*" style="display:none;" onchange="handleImageUpload(this)">
+            <button id="image-upload-btn" style="background:#795548; color:#fff; border:none; border-radius:12px; padding:4px 8px; cursor:pointer; font-size:13px;" onclick="document.getElementById('image-upload').click()" title="上传图片">📷</button>
+<button style="font-size:10px; display:none; padding:2px 6px;" id="pause-btn" onclick="postAction({action: 'toggle_pause'})">暂停</button>
+            </div>
+        </div>
+        <div id="bottom-tab-bar" style="display:none;">
+            <div id="bottom-tabs-container"></div>
+        </div>
+    </div>
+    <div id="edit-modal"><div class="modal-content"><textarea id="edit-textarea" style="flex:1; padding: 15px; resize: none; border:none; outline:none; font-family: inherit;"></textarea><div style="padding:15px; text-align:right; border-top: 1px solid #ddd;"><button onclick="saveEdit()" style="padding: 6px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor:pointer; margin-right: 10px;">保存</button><button onclick="closeEditModal()" style="padding: 6px 15px; cursor:pointer;">取消</button></div></div></div>
+
+    <div id="code-monitor-modal">
+        <div class="modal-content" style="width: 70%; height: 80%;">
+            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">代码监听配置</h3>
+                <span style="cursor: pointer; font-size: 20px;" onclick="document.getElementById('code-monitor-modal').style.display='none'">&times;</span>
+            </div>
+            <div style="flex: 1; overflow-y: auto; padding-top: 15px; display: flex; flex-direction: column;">
+                <div class="cm-form-group">
+                    <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">监听路径 (每行一个绝对或相对路径):</label>
+                    <textarea id="cm-paths" rows="3" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"></textarea>
+                </div>
+                <div class="cm-form-group">
+                    <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">包含的后缀:</label>
+                    <div class="cm-checkbox-group" id="cm-extensions">
+                        <label><input type="checkbox" value=".py"> .py</label>
+                        <label><input type="checkbox" value=".html"> .html</label>
+                        <label><input type="checkbox" value=".json"> .json</label>
+                        <label><input type="checkbox" value=".md"> .md</label>
+                        <label><input type="checkbox" value=".ipynb"> .ipynb</label>
+                        <label><input type="checkbox" value=".yaml"> .yaml</label>
+                        <label><input type="checkbox" value=".yml"> .yml</label>
+                        <label><input type="checkbox" value=".tex"> .tex</label>
+                        <label><input type="checkbox" value=".bib"> .bib</label>
+                        <label><input type="checkbox" value=".txt"> .txt</label>
+                    </div>
+                    <input type="text" id="cm-custom-ext" placeholder="自定义逗号分隔, 如 .txt, .yaml" style="margin-top:8px; padding:6px; width:100%; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                </div>
+                <div class="cm-form-group" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button onclick="scanCodeFiles()" style="padding: 8px 15px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:13px;">🔍 扫描文件</button>
+                        <label style="font-size: 13px; font-weight: bold; color: #495057;" title="若完整目录树超过此阈值，则回退为仅显示选中文件的树结构">全量树回退阈值: <input type="number" id="cm-tree-limit" value="10" min="1" max="500" style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;"> k</label>
+                    </div>
+                    <div>
+                        <button onclick="toggleAllFiles(true)" style="padding: 4px 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size:12px; margin-right: 5px;">全选</button>
+                        <button onclick="toggleAllFiles(false)" style="padding: 4px 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size:12px;">取消全选</button>
+                    </div>
+                </div>
+                <div class="cm-form-group" style="flex:1; display: flex; flex-direction: column; min-height: 0;">
+                    <div id="cm-file-list" style="flex: 1; overflow-y: auto; border: 1px solid #ccc; padding: 10px; border-radius:4px; background:#fafafa; font-size:13px;">
+                        请先配置路径和后缀，然后点击“扫描文件”。
+                    </div>
+                </div>
+            </div>
+            <div style="padding:15px; text-align:right; border-top: 1px solid #ddd;">
+                <button onclick="saveCodeMonitor()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor:pointer;">保存并监听</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+        <div class="modal-content" style="width: 800px; height: auto; max-height: 80%;">
+            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">全局设置</h3>
+                <span style="cursor: pointer; font-size: 20px;" onclick="closeSettingsModal()">&times;</span>
+            </div>
+                <div style="padding: 20px; font-size: 14px; line-height: 1.8; overflow-y: auto; flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px;">
+                    <div style="margin-bottom: 15px; border-bottom: 2px solid #ffc107; padding-bottom: 15px; grid-column: 1 / -1;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-developer-mode" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔧 开发者模式</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后显示完整的开发者工具和高级设置选项。关闭时隐藏调试、重启、导出等开发功能。</div>
+                </div>
+    
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-streaming" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🌊 流式传输</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后实时逐字显示 AI 回复，关闭后等待完整回复后一次性显示。</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-pure-mode" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🧹 纯净模式</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后发送给大模型的上下文将采用标准多轮对话格式，无系统提示词、无工具注入。适用于创意写作、翻译等不需要工具的纯对话场景。</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-style-filter" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔍 语言风格过滤</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后自动对 AI 回复执行语言风格后处理，替换中文括号、破折号、感叹号等。</div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-auto-update" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔄 启动时自动更新</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后每次启动服务器时自动检查并应用远程更新。</div>
+                </div>
+
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-billing-sync-button" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">💰 显示手动计费同步按钮</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后在底部输入栏的消费金额旁显示「同步计费」按钮，点击可手动拉取 sisuo.de 日志并匹配到对应气泡。</div>
+                </div>
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-bulk-logging" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📝 启用批量日志记录</span>
+                    </label>
+                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后将记录 API 请求转储(raw_dumps)、响应转储(resp_dumps)和子代理转储(subagent_dumps)。关闭时这些大量文件不会生成，但诊断日志(cc_diag.log)等单文件日志不受影响。</div>
+                </div>
+
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-starred" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">启用全局上下文收藏功能</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">气泡可被收藏，作为固定上下文长期置于请求开头（会话栏底部可管理）。</div>
+                </div>
+
+
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-tool-lower-bound" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔧 启用工具调用数量下限 (>=5)</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，如果模型单个气泡内调用的工具数量少于5个，将自动拒绝并要求重写以最大化API效用。</div>
+                </div>
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-tool-desc-enforcement" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📏 工具调用前置描述强制</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，如果模型的工具调用前面缺少足够长度的描述文本，系统自动注入隐形假用户气泡提醒模型补充描述。阈值：Edit/Write/Read 需 5%，Bash/WebSearch/WebFetch 需 25%。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-cc-simulate" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🖥️ CC模拟（本地执行 Read/Write/Edit/Bash）</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 Read/Write/Edit/Bash 四种工具调用在 ChatApp 内部直接执行，无需链接 Claude Code。使用 cc_tools_simulate.json 作为工具定义。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-partial-read" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📄 部分读入</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，上下文组装时 Read 结果按可见行集合过滤，仅保留 AI 实际读取过的行范围，减少上下文噪声。</div>
+                </div>
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-descriptor-tool-calls" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📝 描述符格式工具调用</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 AI 使用 [ToolName开始]...[ToolName结束] 描述符格式调用工具，替代旧的 JSON 标记包裹格式。Prompt 注入时只教 AI 新格式。关闭时使用旧 JSON 格式。</div>
+                </div>
+
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-routing-token" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🎯 路由令牌注入</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 system prompt 中注入动态路由令牌。关闭后 system 字段保持静态，提升缓存命中率。</div>
+                </div>
+
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-ttfb-retry" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">⏱️ 首字超时重试</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后每次请求20秒内须建立TCP连接，连接后再给20秒等首字。超时自动重试，最多10次。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-cache-control" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">💾 缓存标记</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后在 Anthropic 协议请求中添加 cache_control 断点标记，启用 prompt caching。5 分钟有效期。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-multiturn-format" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📨 多轮格式拆分</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 OpenAI 协议路径将系统内容和对话历史拆为两条独立消息发送，使静态系统部分可被缓存。仅影响非 Anthropic 协议。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-prefix-lock" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔒 前缀锁定</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后阻止对已发送过的前缀气泡的编辑、删除、概括操作，同时关闭 auto-read 功能以保护缓存前缀稳定性。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-enable_thinking_retry" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🧠 思考重试</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后深度思考模式下模型未返回思维链时自动重试最多3次，3次均失败则返回错误。关闭时不做重试直接接受。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-show-all-autoread" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📖 显示全部自动读取气泡</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后渲染所有 autoread 气泡，关闭时每个文件仅显示最新一条已吸附的自动读取结果。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-truncation-detection" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📝 输出截断续接</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后检测 AI 回复是否被截断，如缺少概括区块结束标记，自动注入续接指令让模型继续输出。</div>
+                </div>
+
+
+                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-reverse-context" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🔄 倒序上下文 (Reverse Context)</span>
+                    </label>
+                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后最新的消息放在上下文开头，系统提示词和规则放在末尾。可能改善模型对最近指令的关注度。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-anthropic-protocol" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">📡 Claude 使用 Anthropic Messages 协议</span>
+                    </label>
+                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 Claude 模型请求使用 /v1/messages 端点和原生 Anthropic 格式，而非 /v1/chat/completions。</div>
+                </div>
+                <div style="margin-bottom: 15px;" class="dev-only-setting">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="set-cc-inject" onchange="saveSettings()">
+                        <span style="margin-left: 8px;">🧰 注入CC工具和系统提示词</span>
+                    </label>
+                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后自动加载 cc_tools.json 和 cc_system.json 注入请求上下文。Anthropic 协议走 system 字段，OpenAI 协议走 messages 开头。不依赖任何其他开关。</div>
+                </div>
+                <div id="adv-opt-toggle" style="margin-top: 15px; text-align: center; border-top: 1px dashed #ddd; padding-top: 10px; grid-column: 1 / -1;">
+                    <button onclick="document.querySelectorAll('.adv-opt').forEach(function(el){el.style.display=el.style.display==='none'?'':'none'});this.textContent=this.textContent.indexOf('展开')>=0?'收起更多选项 ▴':'展开更多选项 ▾'" style="padding: 6px 15px; cursor: pointer; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; color: #666;">展开更多选项 ▾</button>
+                </div>
+            </div>
+            <div style="padding: 15px; text-align: right; border-top: 1px solid #ddd;">
+                <button onclick="closeSettingsModal()" style="padding: 6px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="manual-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+        <div class="modal-content" style="width: 70%; height: 80%;">
+            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">用户使用说明书</h3>
+                <span style="cursor: pointer; font-size: 20px;" onclick="closeManualModal()">&times;</span>
+            </div>
+            <div id="manual-content" style="flex: 1; overflow-y: auto; padding: 25px; line-height: 1.8; font-size: 14px;">
+                <div>
+                <h4>一、核心概念</h4>
+                <ul>
+                    <li><strong>会话:</strong> 左侧列表中的每个条目是一个独立的对话。上下文和代码监听配置在会话间完全隔离。支持拖拽排序、复制、归档和分组管理。底部标签栏显示已打开的会话，可快速切换。多窗口通过 WebSocket 实时同步状态。</li>
+                    <li><strong>气泡:</strong> 聊天区域中的每条消息，拥有唯一的全局数字 ID。气泡有三种状态：
+                        <ul>
+                            <li><strong>概括模式:</strong> 气泡内容在发送给 AI 时被替换为一句话概括，用于压缩上下文长度。</li>
+                            <li><strong>折叠:</strong> 仅在界面上折叠显示，不影响发送给 AI 的完整内容。</li>
+                            <li><strong>隐藏:</strong> 气泡从 AI 上下文中完全移除。首次点击🗑️隐藏，再次点击物理删除。</li>
+                        </ul>
+                    </li>
+                    <li><strong>工具调用:</strong> AI 可以在回复中调用工具来执行操作，如读取文件、编辑代码、运行命令、搜索网页等。工具调用显示为紫色交互块，可逐个采纳或拒绝。采纳后由本地执行器直接处理，结果回填到对话中作为后续输入。</li>
+                </ul>
+
+                <h4>二、主要功能</h4>
+                <ol>
+                    <li><strong>会话管理:</strong>
+                        <ul>
+                            <li><strong>新建:</strong> 点击左下角「+ 新建对话」按钮。新会话继承当前会话的代码监听配置。</li>
+                            <li><strong>分组:</strong> 点击「📁+」创建分组，拖拽会话到分组中。分组可折叠、重命名、删除。</li>
+                            <li><strong>标签栏:</strong> 底部标签栏显示已打开的会话，点击快速切换。右键菜单支持克隆、归档、重命名、关闭。</li>
+                            <li><strong>排序:</strong> 按住会话左侧的 ☰ 图标拖拽排序。</li>
+                            <li><strong>归档:</strong> 点击📦按钮归档不常用的会话，可随时恢复。</li>
+                        </ul>
+                    </li>
+                    <li><strong>消息发送:</strong>
+                        <ul>
+                            <li><strong>普通发送:</strong> 输入内容后点击「发送」或按 Enter。Shift+Enter 换行。</li>
+                            <li><strong>多模型:</strong> 在模型下拉菜单中勾选多个模型，系统为每个模型创建独立的回复气泡。</li>
+                            <li><strong>仅添加:</strong> ➕按钮将文本添加为用户或 AI 气泡，不触发回复。</li>
+                            <li><strong>图片上传:</strong> 点击📷按钮或在输入框中 Ctrl+V 粘贴图片上传。</li>
+                            <li><strong>深度思考:</strong> 点击底部「思考一/二/三」标签循环切换思考深度等级。</li>
+                            <li><strong>自动托管:</strong> 设置托管次数后点击「启动托管」，系统自动多轮请求 AI 并自动采纳工具调用，无需人工干预。</li>
+                        </ul>
+                    </li>
+                    <li><strong>模型管理:</strong>
+                        <ul>
+                            <li><strong>选择模型:</strong> 点击底部「模型▾」按钮打开下拉菜单，勾选要使用的模型。</li>
+                            <li><strong>🚀 快速发送:</strong> 点击模型前的🚀图标，仅以该模型发送当前输入。</li>
+                            <li><strong>隐藏/恢复:</strong> 点击模型右侧 ➖ 隐藏不常用模型，底部「展开更多」可恢复。</li>
+                            <li><strong>供应商管理:</strong> 点击侧边栏「🔌 模型管理」按钮，打开供应商管理面板。可添加、编辑、删除 API 供应商及其模型列表，支持连通性测试。保存后即时生效。</li>
+                        </ul>
+                    </li>
+                    <li><strong>气泡操作 (鼠标悬停显示操作栏):</strong>
+                        <ul>
+                            <li><strong>🔄 重试:</strong> 清空该助手气泡内容，以当时的上下文重新发送请求。</li>
+                            <li><strong>👍 / 👎 评分:</strong> 对AI回复进行好评或差评，统计数据累计在对应模型上。再次点击取消评分。</li>
+                            <li><strong>隐藏:</strong> 将气泡从AI上下文中完全移除。隐藏后气泡以蓝色概括框形式显示，点击可取消隐藏。</li>
+                            <li><strong>概括/全文:</strong> 在完整内容和AI生成的概括之间切换，用于压缩上下文长度。可在高负载面板中批量操作。</li>
+                            <li><strong>折叠/展开:</strong> 在UI上折叠或展开气泡，不影响发送给AI的内容。</li>
+                            <li><strong>📋 复制正文:</strong> 复制气泡的原始文本内容。</li>
+                            <li><strong>📦 复制上下文:</strong> 复制生成该气泡时发送给AI的完整请求 Payload（JSON 格式）。</li>
+                            <li><strong>✏️ 编辑:</strong> 打开全屏编辑器修改气泡原始内容。</li>
+                            <li><strong>🖍️ 批注:</strong> 打开全屏编辑器进行批注。保存后系统自动生成词级 Diff 对比，以删除线和绿色加粗标记差异。批注版本将替代原文发送给AI。</li>
+                            <li><strong>🗑️ 删除:</strong> 首次点击将气泡切换为隐藏状态（软删除，可恢复）。对已隐藏的气泡再次点击则物理销毁，不可恢复。</li>
+                        </ul>
+                    </li>
+                    <li><strong>高级面板:</strong>
+                        <ul>
+                            <li><strong>预估 Token:</strong> 左下角实时预估当前对话发送所需的总 Token 数（含代码监听上下文）。点击可打开高负载气泡清单。</li>
+                            <li><strong>高负载气泡清单:</strong> 列出原始尺寸超过 5k Token 的大气泡，支持快速跳转定位、编辑概括、切换概括模式。</li>
+                            <li><strong>一键概括:</strong> 清单底部的按钮可将所有超过 0.1k Token 的气泡批量切换到概括模式。</li>
+                        </ul>
+                    </li>
+                    <li><strong>工具调用系统:</strong>
+                        <ul>
+                            <li>AI 回复中的工具调用显示为紫色交互块，含工具名称和参数。</li>
+                            <li><strong>采纳 ✅:</strong> 执行该工具调用，结果回填到对话中。</li>
+                            <li><strong>拒绝 ❌:</strong> 跳过该工具调用并通知 AI。</li>
+                            <li><strong>一键采纳:</strong> 批量采纳一个气泡中的所有工具调用。</li>
+                            <li><strong>排序约束:</strong> 同一气泡内的工具按顺序执行，前一个完成后才执行下一个。</li>
+                            <li><strong>自动读取:</strong> 文件被编辑后，系统自动读取最新内容并回填到对话中。</li>
+                            <li>支持的工具：读取文件、编辑文件、创建文件、执行命令、搜索网页、抓取网页等。</li>
+                        </ul>
+                    </li>
+                    <li><strong>全局设置:</strong>
+                        <ul>
+                            <li><strong>用户设置:</strong> 流式传输、纯净模式、语言风格过滤 — 始终可见。</li>
+                            <li><strong>开发者模式:</strong> 开启后显示高级选项，包括协议选择、缓存控制、工具调试、截断续接等。</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h4>三、快捷键</h4>
+                <ul>
+                    <li><strong>Enter</strong> — 发送消息</li>
+                    <li><strong>Shift + Enter</strong> — 换行</li>
+                </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="provider-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+        <div class="modal-content" style="width: 700px; height: 80%; display: flex; flex-direction: column;">
+            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">🔌 模型与供应商管理</h3>
+                <span style="cursor: pointer; font-size: 20px;" onclick="closeProviderModal()">&times;</span>
+            </div>
+            <div id="provider-list" style="flex: 1; overflow-y: auto; padding: 15px;"></div>
+            <div style="padding: 15px; border-top: 1px solid #ddd; text-align: right;">
+                <button onclick="saveProviders()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">💾 保存</button>
+                <button onclick="closeProviderModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="range" id="kanban-zoom" min="5" max="3600" value="200" step="5" style="display:none;position:fixed;right:20px;top:50%;transform:translateY(-50%) rotate(-90deg);width:150px;z-index:300;">
+    <script src="/libs/marked.min.js"></script>
+    <script src="/libs/highlight.min.js"></script>
+    <script src="/libs/katex.min.js"></script>
+    <script src="/libs/auto-render.min.js"></script>
+    <script src="/libs/socket.io.min.js"></script>
+    <script src="/libs/utils.js?v=1"></script>
+    <script src="/libs/codeblocks.js?v=1"></script>
+    <script src="/libs/settings.js?v=2"></script>
+    <script src="/libs/providers.js?v=1"></script>
+    <script src="/libs/models.js?v=1"></script>
+    <script src="/libs/codemonitor.js?v=1"></script>
+    <script src="/libs/editops.js?v=1"></script>
+    <script src="/libs/panels.js?v=1"></script>
+    <script src="/libs/actions.js?v=1"></script>
+    <script src="/libs/kanban.js?v=1"></script>
+    <script src="/libs/chat.js?v=3"></script>
+    <script src="/libs/main.js?v=4"></script>
+</body>
+</html>

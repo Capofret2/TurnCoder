@@ -1,0 +1,31 @@
+[
+  {
+    "api_key": "sk-",
+    "api_url": "https://api.ekan8.com/v1/chat/completions",
+    "models": [
+      "K-claude-opus-4-6",
+      "gpt-5.6-sol"
+    ],
+    "name": "Ekan8"
+  },
+  {
+    "api_key": "sk-",
+    "api_url": "https://newapi.sisuo.de/v1/chat/completions",
+    "models": [
+      "按次-kiro-claude-opus-4-6-thinking",
+      "按次-kiro-claude-opus-4-8-thinking",
+      "按次-anti-gemini-3.1-pro-preview",
+      "按次-glm5.2"
+    ],
+    "name": "Sisuo2"
+  },
+  {
+    "api_key": "sk-",
+    "api_url": "https://api.68886868.xyz/v1/chat/completions",
+    "models": [
+      "[Kiro次] claude-opus-4-6-thinking [不补]",
+      "[按量3][次] glm-5.2"
+    ],
+    "name": "小鸡"
+  }
+]
