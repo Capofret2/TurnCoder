@@ -624,12 +624,10 @@ class WorkerEngineMixin:
                 if not is_pure_enabled and _system_portion_end > 0:
                     _sys_text = full_context[:_system_portion_end]
                     _enable_desc_fmt = settings.get('enable_descriptor_tool_calls', True)
-                    _sys_text += "\n\n[注：在用户气泡开头附上了Claude Code 的 Prompt 和可用工具列表。请使用描述符格式如 [Edit开始]...[Edit结束] 调用工具，详见工具列表中的格式说明]"
+                    _sys_text += "\n\n[注：在用户气泡开头附上了工具系统的 Prompt 和可用工具列表。请使用描述符格式如 [Edit开始]...[Edit结束] 调用工具，详见工具列表中的格式说明]"
                     _cost_rules = "\n\n[用户计费规范]\n我是按api调用次数计费的，上下文长度1000k，也就是1m token，但是无论当前上下文多长我都被扣固定的费用，无论你单次输出内容多少，思考时间多长也是收固定费用，所以我希望你把单次api调用的效果最大化。你一个简单的查询和你几千token的代码编辑收费是完全相同的。具体来说，对于工具调用，你应该尽可能多地一次并行调用10个左右的工具，只要没有严格时序依赖你就不应该按先后去调用而是并行调用，而且你做工具调用的时候也要说话，不能输出空文本，要尽量多说话，总是有用的，比如说一下详细说你在干啥，你打算未来几次api调用要干啥，你的想象，你对需求的理解，你的疑问，你的计划，你的分析，你对难度的估计，你的思考过程，你可以发散一点。比如你要用bash你就一次性把要用的命令都用了，同时也可以直接提前开始read。你可以做分支预测，在没有获取完全确定的信息之前你也可以提前使用工具调用。\n比如如果你要编辑多个代码，你被禁止使用多次交互来编辑，你应该一次性编辑多个代码，对每个代码使用多个edit调用。绝大多数情况你不要使用write，因为代码通常都很大，你write虽然不会因为大量的输出token额外计费但是可能抄漏之类的写出bug，导致误差累积。任何含edit的气泡都要在同一次回复里同时执行bash对在这个气泡里被修改的多个文件进行语法检查等工具调用。cc要求文件被修改之前要先被读取，但是你只要你稍微了解一点点情况你仍然可以在一次回复中连续使用读取和多个修改调用，反正如果写错了查找字段就会失败，完全没有任何坏处。你不得返回只有工具调用而不讲话的气泡，你每次调用工具都必须说话，并且要有几百字的长度，包含详细描述，规划，分析，你的思考，疑问等等你觉得可以谈论的内容.\n你对环境信息的了解是有限的，如果你高频率的探索环境，每次都只探索一点点，会造成大量的次数浪费，这是灾难性的。比如你可能连续grep三次都找不到你要的代码段。你不被允许对同一个文件使用多次grep，如果你grep了一次，就要决定是否要读入，不读入就彻底放弃这个文件，再也不要想它，否则你就完整读入。绝大多数情况你不被允许部分读入一个文件，除非这个文件超过1m，否则你即使分多次也要完整读入。绝大多数情况你被推荐直接read你觉得你可能需要的整一个文件。如果提示文件太大不能一次read进来，你也可以考虑使用10次左右并行的read来分批次按顺序一次性读入整个文件。并且如果你ls出来之后有多个文件未来可能需要的，你应该在一次回复中批量读入全部你可能用的上的文件，哪怕只是轻微怀疑可能有用也要尝试去read，如果有多个文件都很大那就一次性对多个分批读入，比如5个文件每个用5次read读入一共25个tooluse。每次你尝试通过分批来完整读入多个文件你都要判断每个文件是否已经都被完整地读入到了最后一行为止，如果完整读入一般来说最后一次读入应该是完整的，如果发现最后一次读入不是结尾而是被截断到某个你设定的limit整数行那说明你没有读全。绝大多数情况你不被允许对一个已经被读入过的文件重复read，即使它已经被你自己修改过了你也应该自己推断它当前的状态而不是重复read它。一千行的python代码可能有100kb大小，大概对应20k token。你有1000k token上下文。所以几个几百kb的python之类的代码完全不算大。工具调用失败和冗余的调用不会有任何后果，只是没有用而已，没有任何损失，你不应该保守调用。\n[用户计费规范结束]"
                     # Build system field with all static content
                     _sys_blocks = []
-                    if settings.get('enable_cache_control', False):
-                        _sys_blocks.append({"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.92.8a3; cc_entrypoint=cli; cch=00000;"})
                     _sys_blocks.append({"type": "text", "text": _sys_text + _cost_rules})
                     _conv_text = full_context[_system_portion_end:]
                     _tool_sys_prefix = ""
@@ -652,7 +650,7 @@ class WorkerEngineMixin:
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{MEMORY_DIR}", os.path.expanduser("~/.claude/memory/"))
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{GIT_STATUS}", "true" if os.path.exists(os.path.join(_cwd, ".git")) else "false")
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{MODEL_IDENTITY}", "")
-                                _tool_sys_prefix = "[以下是 Claude Code 的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[Claude Code Prompt 参考信息结束]\n\n"
+                                _tool_sys_prefix = "[以下是工具系统的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[工具系统 Prompt 参考信息结束]\n\n"
                         except Exception as _se:
                             print(f"加载 tool_system.json 失败: {_se}")
                     # Move cc_system + cc_tools into system field as additional blocks
@@ -723,7 +721,7 @@ class WorkerEngineMixin:
             if _system_portion_end > 0:
                 _sys_text = full_context[:_system_portion_end]
                 _enable_desc_fmt2 = settings.get('enable_descriptor_tool_calls', True)
-                _sys_text += "\n\n[注：在用户气泡开头附上了Claude Code 的 Prompt 和可用工具列表。请使用描述符格式 如[Edit开始]...[Edit结束] 调用工具，详见工具列表中的格式说明]"
+                _sys_text += "\n\n[注：在用户气泡开头附上了工具系统的 Prompt 和可用工具列表。请使用描述符格式如 [Edit开始]...[Edit结束] 调用工具，详见工具列表中的格式说明]"
                 _cost_rules = "\n\n[用户计费规范]\n我是按api调用次数计费的，上下文长度1000k，也就是1m token，但是无论当前上下文多长我都被扣固定的费用，无论你单次输出内容多少，思考时间多长也是收固定费用，所以我希望你把单次api调用的效果最大化。你一个简单的查询和你几千token的代码编辑收费是完全相同的。具体来说，对于工具调用，你应该尽可能多地一次并行调用10个左右的工具，只要没有严格时序依赖你就不应该按先后去调用而是并行调用，而且你做工具调用的时候也要说话，不能输出空文本，要尽量多说话，总是有用的，比如说一下详细说你在干啥，你打算未来几次api调用要干啥，你的想象，你对需求的理解，你的疑问，你的计划，你的分析，你对难度的估计，你的思考过程，你可以发散一点。比如你要用bash你就一次性把要用的命令都用了，同时也可以直接提前开始read。你可以做分支预测，在没有获取完全确定的信息之前你也可以提前使用工具调用。\n比如如果你要编辑多个代码，你被禁止使用多次交互来编辑，你应该一次性编辑多个代码，对每个代码使用多个edit调用。绝大多数情况你不要使用write，因为代码通常都很大，你write虽然不会因为大量的输出token额外计费但是可能抄漏之类的写出bug，导致误差累积。任何含edit的气泡都要在同一次回复里同时执行bash对在这个气泡里被修改的多个文件进行语法检查等工具调用。cc要求文件被修改之前要先被读取，但是你只要你稍微了解一点点情况你仍然可以在一次回复中连续使用读取和多个修改调用，反正如果写错了查找字段就会失败，完全没有任何坏处。你不得返回只有工具调用而不讲话的气泡，你每次调用工具都必须说话，并且要有几百字的长度，包含详细描述，规划，分析，你的思考，疑问等等你觉得可以谈论的内容.\n你对环境信息的了解是有限的，如果你高频率的探索环境，每次都只探索一点点，会造成大量的次数浪费，这是灾难性的。比如你可能连续grep三次都找不到你要的代码段。你不被允许对同一个文件使用多次grep，如果你grep了一次，就要决定是否要读入，不读入就彻底放弃这个文件，再也不要想它，否则你就完整读入。绝大多数情况你不被允许部分读入一个文件，除非这个文件超过1m，否则你即使分多次也要完整读入。绝大多数情况你被推荐直接read你觉得你可能需要的整一个文件。如果提示文件太大不能一次read进来，你也可以考虑使用10次左右并行的read来分批次按顺序一次性读入整个文件。并且如果你ls出来之后有多个文件未来可能需要的，你应该在一次回复中批量读入全部你可能用的上的文件，哪怕只是轻微怀疑可能有用也要尝试去read，如果有多个文件都很大那就一次性对多个分批读入，比如5个文件每个用5次read读入一共25个tooluse。每次你尝试通过分批来完整读入多个文件你都要判断每个文件是否已经都被完整地读入到了最后一行为止，如果完整读入一般来说最后一次读入应该是完整的，如果发现最后一次读入不是结尾而是被截断到某个你设定的limit整数行那说明你没有读全。绝大多数情况你不被允许对一个已经被读入过的文件重复read，即使它已经被你自己修改过了你也应该自己推断它当前的状态而不是重复read它。一千行的python代码可能有100kb大小，大概对应20k token。你有1000k token上下文。所以几个几百kb的python之类的代码完全不算大。工具调用失败和冗余的调用不会有任何后果，只是没有用而已，没有任何损失，你不应该保守调用。\n[用户计费规范结束]"
 
                 _conv_text = full_context[_system_portion_end:]
@@ -747,7 +745,7 @@ class WorkerEngineMixin:
                             _tool_sys_prefix = _tool_sys_prefix.replace("{MEMORY_DIR}", os.path.expanduser("~/.claude/memory/"))
                             _tool_sys_prefix = _tool_sys_prefix.replace("{GIT_STATUS}", "true" if os.path.exists(os.path.join(_cwd, ".git")) else "false")
                             _tool_sys_prefix = _tool_sys_prefix.replace("{MODEL_IDENTITY}", "")
-                            _tool_sys_prefix = "[以下是 Claude Code 的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[Claude Code Prompt 参考信息结束]\n\n"
+                            _tool_sys_prefix = "[以下是工具系统的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[工具系统 Prompt 参考信息结束]\n\n"
                     except Exception as _se:
                         print(f"加载 tool_system.json 失败: {_se}")
 
@@ -855,14 +853,7 @@ class WorkerEngineMixin:
                     _req_headers["x-api-key"] = current_api_key
                     _req_headers["anthropic-version"] = "2023-06-01"
                     if settings.get('enable_cache_control', False):
-                        # Mimic Claude Code headers to enable caching on proxies
-                        _req_headers["anthropic-beta"] = "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,effort-2025-11-24"
-                        _req_headers["User-Agent"] = "claude-cli/2.1.92 (external, cli)"
-                        _req_headers["x-app"] = "cli"
-                        _req_headers["Accept"] = "application/json"
-                        _req_headers["anthropic-dangerous-direct-browser-access"] = "true"
-                        import uuid as _uuid_hdr
-                        _req_headers["X-Claude-Code-Session-Id"] = str(_uuid_hdr.uuid5(_uuid_hdr.NAMESPACE_DNS, sid))
+                        _req_headers["anthropic-beta"] = "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14"
                     else:
                         _req_headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
                 else:

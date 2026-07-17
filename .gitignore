@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment & secrets
+.env
+*.env.*
+
+# User data (sessions, images, logs)
+data/
+raw_dumps/
+
+# Update system
+data/updates/
+data/snapshots/
+data/releases/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
