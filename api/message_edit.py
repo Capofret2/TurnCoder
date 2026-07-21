@@ -194,19 +194,40 @@ class MessageEditMixin:
                 for _dl in _dlines:
                     _dline_starts.append(_dpos)
                     _dpos += len(_dl) + 1
+                _enable_planned = getattr(self, 'global_settings', {}).get('enable_planned_tools', False) and _enable_descriptor
                 _desc_hits = []
                 _di = 0
+                _tool_seq_counter = 0
                 while _di < len(_dlines):
                     _ds = _dlines[_di].strip()
                     _dtool = None
-                    if _ds.startswith('[') and _ds.endswith('开始]') and len(_ds) > 4:
-                        _candidate = _ds[1:-3]
-                        if _candidate in _KNOWN_DESC_TOOLS:
-                            _dtool = _candidate
+                    _d_is_planned = False
+                    _d_mode_suffix = '开始]'
+                    if _ds.startswith('[') and len(_ds) > 4:
+                        if _enable_planned and _ds.endswith('立即开始]'):
+                            _candidate = _ds[1:-5]
+                            _d_mode_suffix = '立即'
+                            if _candidate in _KNOWN_DESC_TOOLS:
+                                _dtool = _candidate
+                        elif _enable_planned and _ds.endswith('计划开始]'):
+                            _candidate = _ds[1:-5]
+                            _d_mode_suffix = '计划'
+                            _d_is_planned = True
+                            if _candidate in _KNOWN_DESC_TOOLS:
+                                _dtool = _candidate
+                        elif _ds.endswith('开始]'):
+                            _candidate = _ds[1:-3]
+                            if _candidate in _KNOWN_DESC_TOOLS:
+                                _dtool = _candidate
                     if not _dtool:
                         _di += 1
                         continue
-                    _dend_marker = f'[{_dtool}结束]'
+                    if _d_mode_suffix == '立即':
+                        _dend_marker = f'[{_dtool}立即结束]'
+                    elif _d_mode_suffix == '计划':
+                        _dend_marker = f'[{_dtool}计划结束]'
+                    else:
+                        _dend_marker = f'[{_dtool}结束]'
                     _ddesc_lines = []
                     _dparams = {}
                     _dcur_param = None
@@ -223,7 +244,7 @@ class MessageEditMixin:
                                 _dparams[_dcur_param] = _dpv
                             _dfound = True
                             break
-                        _dpm = re.match(r'^\[([a-zA-Z_][a-zA-Z0-9_]*)参数\]$', _djs)
+                        _dpm = re.match(r'^\[([a-zA-Z_\u4e00-\u9fff][a-zA-Z0-9_\u4e00-\u9fff]*)参数\]$', _djs)
                         if _dpm:
                             if _dcur_param is not None:
                                 _dpv = '\n'.join(_dcur_lines)
@@ -242,6 +263,18 @@ class MessageEditMixin:
                     if not _dfound:
                         _di += 1
                         continue
+                    # Extract 等待 parameter as execution metadata before type conversions
+                    _d_wait_list = []
+                    _d_wait_raw = _dparams.pop('等待', None)
+                    if _d_is_planned:
+                        if _d_wait_raw and _d_wait_raw.strip():
+                            try:
+                                _d_wait_list = [int(x) for x in _d_wait_raw.strip().split()]
+                            except ValueError:
+                                _dtool = 'parse_error'
+                        else:
+                            _dtool = 'parse_error'
+
                     _dinput = {}
                     for _dk, _dv in _dparams.items():
                         if _dk in _NUM_PARAMS:
@@ -260,10 +293,16 @@ class MessageEditMixin:
                             else: _dinput[_dk] = _dv
                         else:
                             _dinput[_dk] = _dv
+                    _tool_seq_counter += 1
                     _dstart = _dline_starts[_di]
                     _dend = _dline_starts[_dj] + len(_dlines[_dj])
                     _ddesc = '\n'.join(_ddesc_lines).strip()
-                    _desc_hits.append((_dstart, _dend, {'name': _dtool, 'input': _dinput, '_descriptor': True}, _ddesc))
+                    _d_obj = {'name': _dtool, 'input': _dinput, '_descriptor': True}
+                    if _enable_planned:
+                        _d_obj['_is_planned'] = _d_is_planned
+                        _d_obj['_wait_list'] = _d_wait_list
+                        _d_obj['_tool_seq'] = _tool_seq_counter
+                    _desc_hits.append((_dstart, _dend, _d_obj, _ddesc))
                     _di = _dj + 1
                 for _ds, _de, _dobj, _ddesc in reversed(_desc_hits):
                     _ph = f"\x02TC{_tc_ph_counter}\x03"
@@ -312,7 +351,13 @@ class MessageEditMixin:
                             _cc_tc_seq += 1
                             _tc_id = f"toolu_{msg.get('id', 0)}_{_cc_tc_seq}_{time.strftime('%Y%m%d_%H%M%S')}"
                             _tc_block = {"type": "tool_use", "id": _tc_id, "name": _obj.get("name", "unknown"), "input": _obj.get("input", {})}
-                            _expanded.append({"id": str(uuid.uuid4()), "type": "tool_use_part", "content": json.dumps(_tc_block, ensure_ascii=False, indent=2), "tool_name": _obj.get("name", "unknown"), "tool_id": _tc_id, "tool_input": _obj.get("input", {}), "status": "pending"})
+                            _part_entry = {"id": str(uuid.uuid4()), "type": "tool_use_part", "content": json.dumps(_tc_block, ensure_ascii=False, indent=2), "tool_name": _obj.get("name", "unknown"), "tool_id": _tc_id, "tool_input": _obj.get("input", {}), "status": "pending"}
+                            if _obj.get('_is_planned'):
+                                _part_entry['_is_planned'] = True
+                                _part_entry['_wait_list'] = _obj.get('_wait_list', [])
+                            if '_tool_seq' in _obj:
+                                _part_entry['_tool_seq'] = _obj['_tool_seq']
+                            _expanded.append(_part_entry)
                         elif _seg.strip():
                             _expanded.append({"id": str(uuid.uuid4()), "type": "text", "content": _seg.strip()})
                 else:

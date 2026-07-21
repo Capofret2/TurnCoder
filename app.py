@@ -14,6 +14,7 @@ REQUIRED_PACKAGES = {
     "requests": "requests",
     "eventlet": "eventlet",
     "dotenv": "python-dotenv",
+    "simple_websocket": "simple-websocket",
 }
 
 for module_name, pip_name in REQUIRED_PACKAGES.items():
@@ -127,7 +128,7 @@ def cc_count_tokens_get():
 
 @app.route('/v1/messages', methods=['POST'])
 def cc_direct_endpoint():
-    """外部代理直连端点：接收 /v1/messages 格式请求并代理执行工具调用。"""
+    """Claude Code直连端点：ChatApp伪装为Anthropic API，接收CC的/v1/messages请求并代理执行。"""
     from flask import Response
     try:
         from api.cc_diag import cc_diag

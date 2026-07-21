@@ -79,45 +79,64 @@ class ToolAcceptMixin:
         return True  # tool_use_id 未找到（安全放行）
 
     def _advance_approved_queue(self, session, target_sid):
-        """释放已批准队列中第一个满足前序约束的工具，发送到 CC。返回是否成功释放。
+        """释放已批准队列中满足前序约束的工具。返回是否成功释放了至少一个。
 
-        增强：跳过已经 settled 的工具（去重副本或已被手动处理的工具），
-        以及指向已删除消息的幽灵工具，避免队列推进链断裂。
+        Planned mode: 释放所有满足条件的工具（并行释放），不仅仅是第一个。
+        Standard mode: 只释放第一个满足条件的。
         """
+        _planned_mode = getattr(self, 'global_settings', {}).get('enable_planned_tools', False)
         pending = session.get('_approved_tool_queue', [])
-        while pending:
-            first = pending[0]
-            # 跳过已经有 tool_result 的工具（去重副本或被其他路径处理过的工具）
-            if self._is_tool_settled(session, first['tool_use_id']):
-                pending.pop(0)
-                print(f"[ADVANCE QUEUE] 跳过已完成的工具: {first['tool_data'].get('name', '?')} ({first['tool_use_id'][:25]})", flush=True)
+        if not pending:
+            return False
+
+        # Single pass: collect items to release and items to keep
+        _release_items = []
+        _keep_items = []
+        for item in pending:
+            # Skip settled tools
+            if self._is_tool_settled(session, item['tool_use_id']):
                 continue
-            # 跳过指向已删除消息的幽灵工具：检查 tool_use_id 是否仍存在于对话历史中的 content_parts
+            # Skip ghost tools (message deleted)
             _ghost = True
             for _m in session.get('conversation_history', []):
                 if _m.get('content_parts'):
                     for _p in _m['content_parts']:
-                        if _p.get('type') == 'tool_use_part':
-                            _ptid = _p.get('tool_id') or ''
-                            if _ptid == first['tool_use_id']:
-                                _ghost = False
-                                break
+                        if _p.get('type') == 'tool_use_part' and (_p.get('tool_id') or '') == item['tool_use_id']:
+                            _ghost = False
+                            break
                     if not _ghost:
                         break
             if _ghost:
-                pending.pop(0)
-                print(f"[ADVANCE QUEUE] 丢弃幽灵工具（原始消息已删除）: {first['tool_data'].get('name', '?')} ({first['tool_use_id'][:25]})", flush=True)
                 continue
-            can_q = self._can_queue_tool(session, first['tool_use_id'])
-            print(f"[ADVANCE QUEUE] 检查工具 {first['tool_data'].get('name', '?')} ({first['tool_use_id'][:25]}): can_queue={can_q}, queue_len={len(pending)}", flush=True)
-            if not can_q:
-                return False
-            pending.pop(0)
-            # 递归调用 accept_tool，此时前序约束已满足，会直接入队
-            self.accept_tool(first['tool_data'], target_sid=first.get('target_sid', target_sid),
-                               msg_index=first.get('msg_index'), part_id=first.get('part_id'))
-            return True
-        return False
+            # Decide: release or keep
+            if _planned_mode:
+                # Release ALL non-settled non-ghost tools; accept_tool handles dep checks
+                _release_items.append(item)
+            else:
+                if self._can_queue_tool(session, item['tool_use_id']):
+                    _release_items.append(item)
+                    # Standard mode: only release first releasable, keep rest
+                    break
+                else:
+                    _keep_items.append(item)
+                    break
+
+        if not _release_items:
+            return False
+
+        # Update queue: remove released items
+        _released_ids = {it['tool_use_id'] for it in _release_items}
+        session['_approved_tool_queue'] = [
+            it for it in pending
+            if it['tool_use_id'] not in _released_ids
+            and not self._is_tool_settled(session, it['tool_use_id'])
+        ]
+
+        # Execute released tools
+        for item in _release_items:
+            self.accept_tool(item['tool_data'], target_sid=item.get('target_sid', target_sid),
+                             msg_index=item.get('msg_index'), part_id=item.get('part_id'))
+        return True
 
     def _update_part_status(self, session, msg_index, part_id, status):
         """Update the status field of a specific content_part in a message.
@@ -365,21 +384,107 @@ class ToolAcceptMixin:
 
         # === 排序约束：前序工具未确定时暂存到批准队列，确定后自动释放 ===
         # 注意：此检查必须在 UI 状态更新之前，否则被暂存的工具会被前端误判为 adopted
-        if not self._can_queue_tool(session, _tool_use_id):
-            _aq = session.setdefault('_approved_tool_queue', [])
-            # 去重：如果该 tool_use_id 已在队列中，不重复添加（防止用户手动点击 pending 工具导致重复入队）
-            if not any(_item['tool_use_id'] == _tool_use_id for _item in _aq):
-                _aq.append({
-                    'tool_use_id': _tool_use_id,
-                    'tool_data': tool_block,
-                    'target_sid': _active_sid,
-                    'msg_index': msg_index,
-                    'part_id': part_id,
-                })
-                print(f"[CC EXECUTOR] 工具 {tool_block.get('name', '?')} ({_tool_use_id[:25]}) 已批准但暂存：前序工具尚未确定", flush=True)
-            else:
-                print(f"[CC EXECUTOR] 工具 {tool_block.get('name', '?')} ({_tool_use_id[:25]}) 已在批准队列中，跳过重复入队", flush=True)
-            return
+        _planned_mode = getattr(self, 'global_settings', {}).get('enable_planned_tools', False)
+        _this_is_planned = False
+        _this_wait_list = []
+        if _planned_mode and msg_index is not None and part_id is not None:
+            try:
+                _pi = int(msg_index)
+            except (ValueError, TypeError):
+                _pi = -1
+            if 0 <= _pi < len(session.get('conversation_history', [])):
+                for _p in session['conversation_history'][_pi].get('content_parts', []):
+                    if _p.get('id') == part_id:
+                        _this_is_planned = _p.get('_is_planned', False)
+                        _this_wait_list = _p.get('_wait_list', [])
+                        break
+        if _planned_mode and _this_is_planned:
+            # Planned tool: check if all dependencies are settled AND successful
+            _all_deps_ok = True
+            _any_dep_failed = False
+            if _this_wait_list:
+                # Build seq->tool_use_id mapping from the same message
+                _seq_to_tid = {}
+                try:
+                    _pi2 = int(msg_index)
+                except (ValueError, TypeError):
+                    _pi2 = -1
+                if 0 <= _pi2 < len(session.get('conversation_history', [])):
+                    _seq_n = 0
+                    for _p in session['conversation_history'][_pi2].get('content_parts', []):
+                        if _p.get('type') == 'tool_use_part':
+                            _seq_n += 1
+                            _seq_to_tid[_seq_n] = _p.get('tool_id', '')
+                for _dep_seq in _this_wait_list:
+                    _dep_tid = _seq_to_tid.get(_dep_seq, '')
+                    if not _dep_tid:
+                        continue
+                    if not self._is_tool_settled(session, _dep_tid):
+                        _all_deps_ok = False
+                        break
+                    # Check if dependency failed (is_error or rejected)
+                    _dep_failed = False
+                    for _m in session.get('conversation_history', []):
+                        if _m.get('is_tool_result') and _m.get('tool_use_id') == _dep_tid:
+                            if _m.get('is_error') or 'Tool Error' in (_m.get('content') or ''):
+                                _dep_failed = True
+                            break
+                    if not _dep_failed:
+                        for _m in session.get('conversation_history', []):
+                            for _p in (_m.get('content_parts') or []):
+                                if _p.get('type') == 'tool_use_part' and _p.get('tool_id') == _dep_tid:
+                                    if _p.get('status') in ('rejected', 'failed'):
+                                        _dep_failed = True
+                                    break
+                            if _dep_failed:
+                                break
+                    if _dep_failed:
+                        _any_dep_failed = True
+                        break
+            if _any_dep_failed:
+                # Auto-reject: dependency failed, cascade rejection
+                from .tool_executors import ToolResult
+                _rej_result = ToolResult(
+                    'This planned tool was automatically rejected because one of its dependencies failed.',
+                    'Dependency failure cascade',
+                    is_error=True
+                )
+                self._create_tool_result_bubble(session, _tool_use_id, _rej_result, msg_index, part_id)
+                self._continue_autopilot_tool_queue(session, _active_sid)
+                return
+            if not _all_deps_ok:
+                # Not all deps settled yet, queue it
+                _aq = session.setdefault('_approved_tool_queue', [])
+                if not any(_item['tool_use_id'] == _tool_use_id for _item in _aq):
+                    _aq.append({
+                        'tool_use_id': _tool_use_id,
+                        'tool_data': tool_block,
+                        'target_sid': _active_sid,
+                        'msg_index': msg_index,
+                        'part_id': part_id,
+                    })
+                return
+            # All deps settled and successful - fall through to execute
+        elif _planned_mode and not _this_is_planned:
+            # Immediate tool in planned mode: skip ordering constraints entirely
+            pass
+        else:
+            # Standard mode: check all predecessors settled
+            if not self._can_queue_tool(session, _tool_use_id):
+                _aq = session.setdefault('_approved_tool_queue', [])
+                # 去重：如果该 tool_use_id 已在队列中，不重复添加
+                if not any(_item['tool_use_id'] == _tool_use_id for _item in _aq):
+                    _aq.append({
+                        'tool_use_id': _tool_use_id,
+                        'tool_data': tool_block,
+                        'target_sid': _active_sid,
+                        'msg_index': msg_index,
+                        'part_id': part_id,
+                    })
+                    print(f"[CC EXECUTOR] 工具 {tool_block.get('name', '?')} ({_tool_use_id[:25]}) 已批准但暂存：前序工具尚未确定", flush=True)
+                else:
+                    print(f"[CC EXECUTOR] 工具 {tool_block.get('name', '?')} ({_tool_use_id[:25]}) 已在批准队列中，跳过重复入队", flush=True)
+                return
 
         # UI 状态更新为 adopted（仅通过排序检查的工具才会到达这里）
         if msg_index is not None and part_id is not None:
@@ -408,6 +513,47 @@ class ToolAcceptMixin:
                 _use_local = bool(_setting_check(getattr(self, 'global_settings', {})))
             if _use_local:
                 _cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webfetch_cache')
+                # Planned mode: ALL tools run in background thread for true parallelism
+                if _planned_mode:
+                    import threading
+                    def _run_immediate_executor(_exec=_executor, _input=tool_block.get('input', {}), _settings=getattr(self, 'global_settings', {}), _cd=_cache_dir, _sid=_active_sid, _tuid=_tool_use_id, _mi=msg_index, _pi=part_id, _sess=session, _tn=_exec_name):
+                        # Set thread-local active_sid so save_sessions/get_full_state know which session to push
+                        if hasattr(self, '_tls'):
+                            self._tls.active_sid = _sid
+                        try:
+                            _t0 = time.time()
+                            _res = _exec(_input, _settings, _cd, api=self, target_sid=_sid, tool_use_id=_tuid)
+                            if _res is not None:
+                                _res.execution_time_s = time.time() - _t0
+                                self._create_tool_result_bubble(_sess, _tuid, _res, _mi, _pi)
+                                # Edit autoread and cross-session broadcast
+                                if _tn == 'Edit' and not _res.is_error:
+                                    _efp = _input.get('file_path')
+                                    if _efp:
+                                        try:
+                                            _en, _en_tl, _en_tr = _prepare_autoread_content(_efp)
+                                            if _en:
+                                                bt = chr(96) * 3
+                                                _ar_id = f'toolu_autoread_{self._next_id()}_0'
+                                                _ar_bubble = {'id': self._next_id(), 'role': 'user', 'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_en}\n{bt}\n\n<system-reminder>\nThis file was modified by your Edit. The content above is the latest version.\n</system-reminder>', 'summary': f'自动读取 (Edit): {_efp.split("/")[-1]}', 'is_omitted': False, 'is_collapsed': False, 'is_tool_result': True, 'is_auto_read': True, 'auto_read_file': _efp, 'tool_use_id': _ar_id, 'auto_read_trigger_id': _tuid, 'created_at': time.time()}
+                                                _sess['conversation_history'].append(_ar_bubble)
+                                                self.save_sessions(push_update=True)
+                                        except Exception:
+                                            pass
+                                        if hasattr(self, '_register_file_read'):
+                                            self._register_file_read(_efp, _sid)
+                                self._continue_autopilot_tool_queue(_sess, _sid)
+                        except Exception as _ex:
+                            import traceback
+                            traceback.print_exc()
+                            _err_r = ToolResult(f'{_tn} execution failed: {str(_ex)}', f'{_tn} 失败', is_error=True)
+                            self._create_tool_result_bubble(_sess, _tuid, _err_r, _mi, _pi)
+                            self._continue_autopilot_tool_queue(_sess, _sid)
+                    _t = threading.Thread(target=_run_immediate_executor, daemon=True)
+                    _t.start()
+                    self._update_part_status(session, msg_index, part_id, 'executing')
+                    self.save_sessions(push_update=True)
+                    return
                 try:
                     _exec_start = time.time()
                     _local_result = _executor(tool_block.get('input', {}), getattr(self, 'global_settings', {}), _cache_dir,
@@ -471,6 +617,8 @@ class ToolAcceptMixin:
                                 _entry = self.file_read_registry.get(_edit_fp)
                                 if _entry and isinstance(_entry, dict):
                                     _other_sids = _entry.get('sessions', set()) - {_active_sid}
+                                    if not _other_sids:
+                                        print(f'[CROSS-SESSION AR] No other sessions for {_edit_fp.split("/")[-1]} (registered: {len(_entry.get("sessions", set()))} sessions, active: {_active_sid[:8]})', flush=True)
                                     if _other_sids:
                                         try:
                                             _bn, _bn_total_lines, _bn_truncated = _prepare_autoread_content(_edit_fp)
@@ -495,14 +643,30 @@ class ToolAcceptMixin:
                                                     'tool_use_id': _bar_id,
                                                     'created_at': time.time(),
                                                 }
-                                                # 标记旧读取为过时
+                                                # 标记旧读取为过时（autoread 和普通 Read 都标记）
+                                                _bcast_tui = {}
+                                                for _btm in _os.get('conversation_history', []):
+                                                    for _btp in (_btm.get('content_parts') or []):
+                                                        if _btp.get('type') == 'tool_use_part':
+                                                            try:
+                                                                _btd = json.loads(_btp['content'])
+                                                                if _btd.get('id'):
+                                                                    _bcast_tui[_btd['id']] = (_btd.get('name', ''), _btd.get('input', {}).get('file_path', ''))
+                                                            except Exception:
+                                                                pass
                                                 for _bm in _os.get('conversation_history', []):
                                                     if _bm.get('is_tool_result') and not _bm.get('is_outdated_read'):
                                                         if _bm.get('is_auto_read') and _bm.get('auto_read_file') == _edit_fp:
                                                             _bm['is_outdated_read'] = True
                                                             _bm['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                                        elif not _bm.get('is_auto_read'):
+                                                            _bm_info = _bcast_tui.get(_bm.get('tool_use_id', ''))
+                                                            if _bm_info and _bm_info[0] == 'Read' and _bm_info[1] == _edit_fp:
+                                                                _bm['is_outdated_read'] = True
+                                                                _bm['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
                                                 _os['conversation_history'].append(_bar_bubble)
                                             self.save_sessions(push_update=True)
+                                            print(f'[CROSS-SESSION AR] Broadcast OK: {_edit_fp.split("/")[-1]} → {len(_other_sids)} sessions', flush=True)
                                         except Exception as _be:
                                             print(f'[CROSS-SESSION AR] Broadcast failed: {_be}', flush=True)
                         self._continue_autopilot_tool_queue(session, _active_sid)
@@ -556,7 +720,7 @@ class ToolAcceptMixin:
                     break
         if _latest_tool_msg:
             for _p in _latest_tool_msg.get('content_parts', []):
-                if _p.get('type') == 'tool_use_part' and _p.get('status') in ('pending', 'adopted'):
+                if _p.get('type') == 'tool_use_part' and _p.get('status') in ('pending', 'adopted', 'executing'):
                     _tid = _p.get('tool_id') or ''
                     if _tid and not self._is_tool_settled(session, _tid):
                         _tname = _p.get('tool_name') or '?'
@@ -668,11 +832,8 @@ class ToolAcceptMixin:
             entry['mtime'] = current_mtime
             entry['content_hash'] = current_hash
             changed_files.append(file_path)
-        # Inject autoread into current session for each changed file
+        # Inject autoread into ALL registered sessions for each changed file
         if not changed_files:
-            return
-        session = self.sessions.get(sid)
-        if not session:
             return
         bt = chr(96) * 3
         _injected = 0
@@ -681,66 +842,92 @@ class ToolAcceptMixin:
             _numbered, _chk_total_lines, _chk_truncated = _pac(file_path)
             if _numbered is None:
                 continue
-            _ar_id = f'toolu_autoread_{self._next_id()}_0'
-            _ar_bubble = {
-                'id': self._next_id(),
-                'role': 'user',
-                'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_numbered}\n{bt}\n\n<system-reminder>\nThis file was modified. The content above is the latest version. Your previous read of this file is now outdated.\n</system-reminder>',
-                'summary': f'自动读取 (外部修改): {file_path.split("/")[-1]}',
-                'is_omitted': False,
-                'is_collapsed': False,
-                'is_tool_result': True,
-                'is_auto_read': True,
-                'auto_read_file': file_path,
-                'tool_use_id': _ar_id,
-                'created_at': time.time(),
-            }
-            _effective_trigger = trigger_tool_id
-            if not _effective_trigger:
-                for _m in reversed(session.get('conversation_history', [])):
-                    if _m.get('content_parts'):
-                        for _p in reversed(_m.get('content_parts', [])):
-                            if _p.get('type') == 'tool_use_part':
+            # Broadcast to ALL sessions registered for this file
+            _file_entry = self.file_read_registry.get(file_path, {})
+            _all_file_sids = _file_entry.get('sessions', set()) if isinstance(_file_entry, dict) else set()
+            for _target_sid in list(_all_file_sids):
+                _target_session = self.sessions.get(_target_sid)
+                if not _target_session or _target_session.get('soft_deleted'):
+                    continue
+                _ar_id = f'toolu_autoread_{self._next_id()}_0'
+                _ar_bubble = {
+                    'id': self._next_id(),
+                    'role': 'user',
+                    'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_numbered}\n{bt}\n\n<system-reminder>\nThis file was modified. The content above is the latest version. Your previous read of this file is now outdated.\n</system-reminder>',
+                    'summary': f'自动读取 (外部修改): {file_path.split("/")[-1]}',
+                    'is_omitted': False,
+                    'is_collapsed': False,
+                    'is_tool_result': True,
+                    'is_auto_read': True,
+                    'auto_read_file': file_path,
+                    'tool_use_id': _ar_id,
+                    'created_at': time.time(),
+                }
+                # For the triggering session: use trigger_tool_id and insert_before_id
+                if _target_sid == sid:
+                    _effective_trigger = trigger_tool_id
+                    if not _effective_trigger:
+                        for _m in reversed(_target_session.get('conversation_history', [])):
+                            if _m.get('content_parts'):
+                                for _p in reversed(_m.get('content_parts', [])):
+                                    if _p.get('type') == 'tool_use_part':
+                                        try:
+                                            _td = json.loads(_p['content'])
+                                            if _td.get('name') in ('Read', 'Edit') and _td.get('input', {}).get('file_path') == file_path:
+                                                _effective_trigger = _td.get('id')
+                                        except Exception:
+                                            pass
+                                        if _effective_trigger:
+                                            break
+                            if _effective_trigger:
+                                break
+                    if _effective_trigger:
+                        _ar_bubble['auto_read_trigger_id'] = _effective_trigger
+                    if insert_before_id:
+                        _insert_idx = None
+                        for _idx, _m in enumerate(_target_session['conversation_history']):
+                            if _m.get('id') == insert_before_id:
+                                _insert_idx = _idx
+                                break
+                        if _insert_idx is not None:
+                            _target_session['conversation_history'].insert(_insert_idx, _ar_bubble)
+                        else:
+                            _target_session['conversation_history'].append(_ar_bubble)
+                    else:
+                        _target_session['conversation_history'].append(_ar_bubble)
+                else:
+                    # For other sessions: just append at end
+                    _target_session['conversation_history'].append(_ar_bubble)
+                _injected += 1
+                # Mark old reads as outdated, including normal Read tool_results
+                try:
+                    _chk_tui = {}
+                    for _ctm in _target_session.get('conversation_history', []):
+                        for _ctp in (_ctm.get('content_parts') or []):
+                            if _ctp.get('type') == 'tool_use_part':
                                 try:
-                                    _td = json.loads(_p['content'])
-                                    if _td.get('name') in ('Read', 'Edit') and _td.get('input', {}).get('file_path') == file_path:
-                                        _effective_trigger = _td.get('id')
+                                    _ctd = json.loads(_ctp['content'])
+                                    if _ctd.get('id'):
+                                        _chk_tui[_ctd['id']] = (_ctd.get('name', ''), _ctd.get('input', {}).get('file_path', ''))
                                 except Exception:
                                     pass
-                                if _effective_trigger:
-                                    break
-                    if _effective_trigger:
-                        break
-            if _effective_trigger:
-                _ar_bubble['auto_read_trigger_id'] = _effective_trigger
-            # CRITICAL: Insert bubble FIRST, so even if marking logic fails, the autoread is in history
-            if insert_before_id:
-                _insert_idx = None
-                for _idx, _m in enumerate(session['conversation_history']):
-                    if _m.get('id') == insert_before_id:
-                        _insert_idx = _idx
-                        break
-                if _insert_idx is not None:
-                    session['conversation_history'].insert(_insert_idx, _ar_bubble)
-                else:
-                    session['conversation_history'].append(_ar_bubble)
-            else:
-                session['conversation_history'].append(_ar_bubble)
-            _injected += 1
-            # Mark old reads of this file as outdated (best-effort, failure doesn't prevent autoread)
-            try:
-                for _m in session.get('conversation_history', []):
-                    if _m is _ar_bubble:
-                        continue  # Skip the just-appended autoread
-                    if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
-                        if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
-                            _m['is_outdated_read'] = True
-                            _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
-            except Exception:
-                pass
+                    for _m in _target_session.get('conversation_history', []):
+                        if _m is _ar_bubble:
+                            continue
+                        if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
+                            if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
+                                _m['is_outdated_read'] = True
+                                _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                            elif not _m.get('is_auto_read'):
+                                _chk_info = _chk_tui.get(_m.get('tool_use_id', ''))
+                                if _chk_info and _chk_info[0] == 'Read' and _chk_info[1] == file_path:
+                                    _m['is_outdated_read'] = True
+                                    _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                except Exception:
+                    pass
         if _injected > 0:
             self.save_sessions(push_update=True)
-            print(f'[FILE CHANGE] Injected autoread for {_injected} files into session {sid[:8]}', flush=True)
+            print(f'[FILE CHANGE] Injected autoread for {_injected} file-session pairs', flush=True)
 
 
 

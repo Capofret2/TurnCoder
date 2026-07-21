@@ -32,6 +32,7 @@ function openSettingsModal() {
 
     if (document.getElementById('set-billing-sync-button')) document.getElementById('set-billing-sync-button').checked = globalSettings.enable_billing_sync_button;
     if (document.getElementById('set-style-filter')) document.getElementById('set-style-filter').checked = globalSettings.enable_style_filter;
+    if (document.getElementById('set-planned-tools')) document.getElementById('set-planned-tools').checked = !!globalSettings.enable_planned_tools;
     document.getElementById('settings-modal').style.display = 'flex';
 }
 
@@ -74,6 +75,7 @@ function saveSettings() {
 
     if (document.getElementById('set-billing-sync-button')) globalSettings.enable_billing_sync_button = document.getElementById('set-billing-sync-button').checked;
     if (document.getElementById('set-style-filter')) globalSettings.enable_style_filter = document.getElementById('set-style-filter').checked;
+    if (document.getElementById('set-planned-tools')) globalSettings.enable_planned_tools = document.getElementById('set-planned-tools').checked;
     applySettingsUI();
     postAction({action: 'update_global_settings', settings: globalSettings});
 }

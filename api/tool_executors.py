@@ -1,7 +1,7 @@
 """Local tool executors for ChatApp-intercepted tool calls.
 
 Provides a registry of tool executors that run locally in ChatApp
-instead of being delegated to an external CLI tool. Each executor is a pure
+instead of being delegated to Claude Code. Each executor is a pure
 function that takes tool input and returns a ToolResult.
 
 The unified pipeline in cc_accept.py handles all common concerns

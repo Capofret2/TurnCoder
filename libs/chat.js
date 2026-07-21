@@ -260,21 +260,33 @@
                         let _numParams = new Set(['offset', 'limit', 'timeout', 'count', 'interval_minutes', 'checkpoint_index', 'max_steps']);
                         let _boolParams = new Set(['replace_all', 'run_in_background', 'force_full', 'enable_baseline', 'cancel']);
                         let _arrParams = new Set(['allowed_domains', 'blocked_domains', 'message_ids', 'checkpoint_indices']);
+                        let _enablePlanned = !!globalSettings.enable_planned_tools;
                         let _dLines = _tcContent.split('\n');
                         let _dLineStarts = [];
                         let _dPos = 0;
                         for (let _li = 0; _li < _dLines.length; _li++) { _dLineStarts.push(_dPos); _dPos += _dLines[_li].length + 1; }
                         let _dHits = [];
                         let _dI = 0;
+                        let _dSeqCounter = 0;
                         while (_dI < _dLines.length) {
                             let _dS = _dLines[_dI].trim();
                             let _dTool = null;
-                            if (_dS.startsWith('[') && _dS.endsWith('开始]') && _dS.length > 4) {
-                                let _cand = _dS.substring(1, _dS.length - 3);
-                                if (_knownTools.has(_cand)) _dTool = _cand;
+                            let _dIsPlanned = false;
+                            let _dModeSuffix = '';
+                            if (_dS.startsWith('[') && _dS.length > 4) {
+                                if (_enablePlanned && _dS.endsWith('立即开始]')) {
+                                    let _cand = _dS.substring(1, _dS.length - 5);
+                                    if (_knownTools.has(_cand)) { _dTool = _cand; _dModeSuffix = '立即'; }
+                                } else if (_enablePlanned && _dS.endsWith('计划开始]')) {
+                                    let _cand = _dS.substring(1, _dS.length - 5);
+                                    if (_knownTools.has(_cand)) { _dTool = _cand; _dModeSuffix = '计划'; _dIsPlanned = true; }
+                                } else if (_dS.endsWith('开始]')) {
+                                    let _cand = _dS.substring(1, _dS.length - 3);
+                                    if (_knownTools.has(_cand)) _dTool = _cand;
+                                }
                             }
                             if (!_dTool) { _dI++; continue; }
-                            let _dEndMk = '[' + _dTool + '结束]';
+                            let _dEndMk = _dModeSuffix ? '[' + _dTool + _dModeSuffix + '结束]' : '[' + _dTool + '结束]';
                             let _dDescL = [], _dParams = {}, _dCurP = null, _dCurL = [];
                             let _dFound = false, _dJ = _dI + 1;
                             while (_dJ < _dLines.length) {
@@ -283,7 +295,7 @@
                                     if (_dCurP !== null) { let _v = _dCurL.join('\n'); if (_v.startsWith('\n')) _v = _v.substring(1); if (_v.endsWith('\n')) _v = _v.substring(0, _v.length - 1); _dParams[_dCurP] = _v; }
                                     _dFound = true; break;
                                 }
-                                let _dPM = _dJS.match(/^\[([a-zA-Z_][a-zA-Z0-9_]*)参数\]$/);
+                                let _dPM = _dJS.match(/^\[([a-zA-Z_\u4e00-\u9fff][a-zA-Z0-9_\u4e00-\u9fff]*)参数\]$/);
                                 if (_dPM) {
                                     if (_dCurP !== null) { let _v = _dCurL.join('\n'); if (_v.startsWith('\n')) _v = _v.substring(1); if (_v.endsWith('\n')) _v = _v.substring(0, _v.length - 1); _dParams[_dCurP] = _v; }
                                     _dCurP = _dPM[1]; _dCurL = []; _dJ++; continue;
@@ -302,7 +314,23 @@
                             let _dSP = _dLineStarts[_dI];
                             let _dEP = _dLineStarts[_dJ] + _dLines[_dJ].length;
                             let _dDesc = _dDescL.join('\n').trim();
-                            _dHits.push({start: _dSP, end: _dEP, obj: {name: _dTool, input: _dInput, _descriptor: true}, desc: _dDesc});
+                            _dSeqCounter++;
+                            let _dObj = {name: _dTool, input: _dInput, _descriptor: true};
+                            if (_enablePlanned) {
+                                _dObj._is_planned = _dIsPlanned;
+                                _dObj._tool_seq = _dSeqCounter;
+                                // Extract 等待 param as metadata
+                                if (_dIsPlanned && _dInput['等待'] !== undefined) {
+                                    let _wRaw = String(_dInput['等待']).trim();
+                                    if (_wRaw) {
+                                        _dObj._wait_list = _wRaw.split(/\s+/).map(Number);
+                                    }
+                                    delete _dInput['等待'];
+                                } else if (_dIsPlanned) {
+                                    _dObj._wait_list = [];
+                                }
+                            }
+                            _dHits.push({start: _dSP, end: _dEP, obj: _dObj, desc: _dDesc});
                             _dI = _dJ + 1;
                         }
                         for (let _hi = _dHits.length - 1; _hi >= 0; _hi--) {
@@ -332,7 +360,10 @@
                                 if (_obj._descriptor) _wObj._descriptor = true;
                                 let _w = JSON.stringify(_wObj, null, 2);
                                 let _st = (window.currentSessionId === 'starred_session_virtual') ? 'adopted' : 'pending';
-                                parts.push({type: 'tool_use_part', content: _w, status: _st, id: 'tc-' + Math.random().toString(36).substr(2, 9)});
+                                let _partEntry = {type: 'tool_use_part', content: _w, status: _st, id: 'tc-' + Math.random().toString(36).substr(2, 9)};
+                                if (_obj._is_planned) { _partEntry._is_planned = true; _partEntry._wait_list = _obj._wait_list || []; }
+                                if (_obj._tool_seq) _partEntry._tool_seq = _obj._tool_seq;
+                                parts.push(_partEntry);
                             } else if (_seg.trim()) {
                                 parts.push({type: 'text', content: _seg.trim(), id: 'tc-' + Math.random().toString(36).substr(2, 9)});
                             }
@@ -689,6 +720,10 @@
                             let toolId = (toolData.id || '').substring(0, 25);
                             const wrapper = document.createElement('div');
                             wrapper.className = 'code-block-wrapper';
+                            if (part._is_planned) {
+                                wrapper.classList.add('cb-planned');
+                                wrapper.style.borderLeft = '3px solid #e91e63';
+                            }
                             wrapper.style.borderColor = '#ccc';
                             wrapper.dataset.raw = encodeURIComponent(part.content);
                             let opsHtml = '', statusLabel = '';
@@ -729,9 +764,14 @@
                             }
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
-                            header.style.backgroundColor = '#ede7f6';
+                            header.style.backgroundColor = part._is_planned ? '#fce4ec' : '#ede7f6';
                             let ccToggleText = (part.status === 'adopted') ? '▶️ 展开' : '🔽 折叠';
-                                                        header.innerHTML = `<div style="display:flex;align-items:center;"><span class="cb-label">${statusLabel}</span><span style="color:#7e57c2;font-size:11px;margin-left:10px;">(${toolId})</span></div><div class="cb-ops"><button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${ccToggleText}</button>${opsHtml}</div>`;
+                            let _seqBadge = part._tool_seq ? `<span style="background:#7e57c2;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:6px;">#${part._tool_seq}</span>` : '';
+                            let _waitBadge = '';
+                            if (part._is_planned && part._wait_list && part._wait_list.length > 0) {
+                                _waitBadge = `<span style="background:#e91e63;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:4px;">等待 ${part._wait_list.map(n => '#' + n).join(' ')}</span>`;
+                            }
+                                                        header.innerHTML = `<div style="display:flex;align-items:center;"><span class="cb-label">${statusLabel}</span>${_seqBadge}${_waitBadge}<span style="color:#7e57c2;font-size:11px;margin-left:10px;">(${toolId})</span></div><div class="cb-ops"><button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${ccToggleText}</button>${opsHtml}</div>`;
                             header.style.cursor = 'pointer';
                             header.onclick = function(e) { if (!e.target.closest('button')) toggleCodeBlock(this.querySelector('.cb-toggle')); };
                             const contentDiv = document.createElement('div');
@@ -1050,7 +1090,27 @@
                 let footer = `<div class="bubble-footer">${tags} ${timeStr} ~ ${tokenK}k Tokens</div>`;
                 if (msg.role === 'assistant') {
                     const mName = msg.model_name ? formatModelDisplay(msg.model_name) : '';
-                    let timingStr = msg.timing ? (msg.timing.stream === false ? `总用时: ${(msg.timing.ttfb + (msg.timing.download || 0)).toFixed(1)}s` : `首字: ${msg.timing.ttfb.toFixed(1)}s 接收: ${(msg.timing.download || 0).toFixed(1)}s`) : '';
+                    let timingStr = '';
+                    if (msg.timing) {
+                        let _ts = '';
+                        if (typeof msg.timing.context_t === 'number') _ts += `组装: ${msg.timing.context_t.toFixed(1)}s `;
+                        if (msg.timing.payload_bytes) _ts += `↑${(msg.timing.payload_bytes/1024).toFixed(0)}kB `;
+                        if (msg.timing.ttfb_retries && msg.timing.ttfb_retries.length > 0) {
+                            let _retries = msg.timing.ttfb_retries;
+                            let _totalRetryTime = _retries.reduce((sum, r) => sum + (r.elapsed || 0), 0);
+                            _ts += `🔄×${_retries.length}(+${_totalRetryTime.toFixed(0)}s) `;
+                        }
+                        if (typeof msg.timing.upload_t === 'number') {
+                            _ts += `上传: ${msg.timing.upload_t.toFixed(1)}s `;
+                            _ts += `首字: ${msg.timing.ttfb.toFixed(1)}s `;
+                            _ts += `接收: ${(msg.timing.download_t || msg.timing.download || 0).toFixed(1)}s`;
+                        } else if (msg.timing.stream === false) {
+                            _ts += `总用时: ${(msg.timing.ttfb + (msg.timing.download_t || msg.timing.download || 0)).toFixed(1)}s`;
+                        } else {
+                            _ts += `首字: ${msg.timing.ttfb.toFixed(1)}s 接收: ${(msg.timing.download_t || msg.timing.download || 0).toFixed(1)}s`;
+                        }
+                        timingStr = _ts;
+                    }
                     let billingStr = '';
                     if (msg.billing) {
                         let b = msg.billing;
@@ -1076,7 +1136,7 @@
                 }
 
                 if (hasPendingActions && !hasFailedOrRejected) {
-                    footer = `<div style="text-align: right; margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px;"><button class="cb-accept-all" style="background:#dc3545;" onclick="rejectAllInBubble(this, ${index})">❌ 一键拒绝</button><button class="cb-accept-all" onclick="acceptAllInBubble(this, ${index})">✅ 一键采用</button></div>` + footer;
+                    footer = `<div style="text-align: right; margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px;"><button class="cb-reject-all" onclick="rejectAllInBubble(this, ${index})">❌ 一键拒绝</button><button class="cb-accept-all" onclick="acceptAllInBubble(this, ${index})">✅ 一键采用</button></div>` + footer;
                 }
                 
                 let upBtnStyle = msg.rating === 'up' ? 'background: #d4edda; border: 1px solid #28a745;' : 'opacity: 0.6;';

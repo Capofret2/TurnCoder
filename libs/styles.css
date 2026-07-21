@@ -72,6 +72,7 @@
         .cb-reject { background: #dc3545; }
         .cb-reject:hover { background: #c82333; }
         .cb-accept-all { background: #28a745; color: white; border: none; border-radius: 4px; padding: 6px 12px; font-size: 12px; cursor: pointer; margin-top: 10px; }
+        .cb-reject-all { background: #dc3545; color: white; border: none; border-radius: 4px; padding: 6px 12px; font-size: 12px; cursor: pointer; margin-top: 10px; }
         .code-block-content { transition: max-height 0.3s ease-out; }
         .code-block-content.collapsed { display: none; }
         .code-block-content pre { background-color: #e8eef2 !important; padding: 16px; overflow: auto; font-size: 100%; line-height: 1.45; border-radius: 6px; border: 1px solid #d1d5da; white-space: pre-wrap; word-wrap: break-word; }
