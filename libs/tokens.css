@@ -211,55 +211,56 @@
 }
 
 /* ==========================================================================
-   Dark scheme. Values are the M3 baseline dark tones for the same seed, so
-   switching schemes never requires touching a component rule.
+   Dark scheme — Adwaita dark. Accent colours are lightened one step because a
+   mid-tone blue on a #242424 surface fails contrast; the container/on-container
+   pairs swap ends so every component rule keeps working unchanged.
    ========================================================================== */
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --md-sys-color-primary: #d0bcff;
-  --md-sys-color-on-primary: #381e72;
-  --md-sys-color-primary-container: #4f378b;
-  --md-sys-color-on-primary-container: #eaddff;
+  --md-sys-color-primary: #99c1f1;
+  --md-sys-color-on-primary: #0d3159;
+  --md-sys-color-primary-container: #1a5fb4;
+  --md-sys-color-on-primary-container: #d5e5fa;
 
-  --md-sys-color-secondary: #ccc2dc;
-  --md-sys-color-on-secondary: #332d41;
-  --md-sys-color-secondary-container: #4a4458;
-  --md-sys-color-on-secondary-container: #e8def8;
+  --md-sys-color-secondary: #c0bfbc;
+  --md-sys-color-on-secondary: #2a2a2a;
+  --md-sys-color-secondary-container: #26436b;
+  --md-sys-color-on-secondary-container: #d5e5fa;
 
-  --md-sys-color-tertiary: #efb8c8;
-  --md-sys-color-on-tertiary: #492532;
-  --md-sys-color-tertiary-container: #633b48;
-  --md-sys-color-on-tertiary-container: #ffd8e4;
+  --md-sys-color-tertiary: #dc8add;
+  --md-sys-color-on-tertiary: #38133c;
+  --md-sys-color-tertiary-container: #5c2e63;
+  --md-sys-color-on-tertiary-container: #f0dcf4;
 
-  --md-sys-color-error: #f2b8b5;
-  --md-sys-color-on-error: #601410;
-  --md-sys-color-error-container: #8c1d18;
-  --md-sys-color-on-error-container: #f9dedc;
+  --md-sys-color-error: #ff7b63;
+  --md-sys-color-on-error: #4a0e0e;
+  --md-sys-color-error-container: #6b1a1a;
+  --md-sys-color-on-error-container: #ffdad4;
 
-  --md-sys-color-success: #a8d5b5;
-  --md-sys-color-on-success: #003912;
-  --md-sys-color-success-container: #00521d;
-  --md-sys-color-on-success-container: #c4eed0;
+  --md-sys-color-success: #8ff0a4;
+  --md-sys-color-on-success: #003916;
+  --md-sys-color-success-container: #14532c;
+  --md-sys-color-on-success-container: #c8f5d6;
 
-  --md-sys-color-warning: #efc148;
-  --md-sys-color-on-warning: #412d00;
-  --md-sys-color-warning-container: #5e4200;
-  --md-sys-color-on-warning-container: #ffdf9a;
+  --md-sys-color-warning: #f8e45c;
+  --md-sys-color-on-warning: #3a2e00;
+  --md-sys-color-warning-container: #5c4a08;
+  --md-sys-color-on-warning-container: #faeac4;
 
-  --md-sys-color-surface: #141218;
-  --md-sys-color-on-surface: #e6e0e9;
-  --md-sys-color-surface-variant: #49454f;
-  --md-sys-color-on-surface-variant: #cac4d0;
-  --md-sys-color-surface-container-lowest: #0f0d13;
-  --md-sys-color-surface-container-low: #1d1b20;
-  --md-sys-color-surface-container: #211f26;
-  --md-sys-color-surface-container-high: #2b2930;
-  --md-sys-color-surface-container-highest: #36343b;
+  --md-sys-color-surface: #242424;
+  --md-sys-color-on-surface: #ffffff;
+  --md-sys-color-surface-variant: #2e2e2e;
+  --md-sys-color-on-surface-variant: #b5b5b3;
+  --md-sys-color-surface-container-lowest: #141414;
+  --md-sys-color-surface-container-low: #1e1e1e;
+  --md-sys-color-surface-container: #2a2a2a;
+  --md-sys-color-surface-container-high: #323232;
+  --md-sys-color-surface-container-highest: #3d3d3d;
 
-  --md-sys-color-inverse-surface: #e6e0e9;
-  --md-sys-color-inverse-on-surface: #322f35;
-  --md-sys-color-outline: #938f99;
-  --md-sys-color-outline-variant: #49454f;
+  --md-sys-color-inverse-surface: #f6f5f4;
+  --md-sys-color-inverse-on-surface: #2e3436;
+  --md-sys-color-outline: #6e6d6a;
+  --md-sys-color-outline-variant: #3d3d3d;
 }

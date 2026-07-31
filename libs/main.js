@@ -260,12 +260,13 @@ const chatContainer = document.getElementById('chat-container');
             } else if (!chatContainer.contains(el)) {
                 chatContainer.appendChild(el);
             }
+            // textContent, so no inline SVG here; the format is self-describing.
             if (maxId > 0) {
-                el.textContent = '\uD83D\uDCBE ' + prefixK + 'k\u2713 | ' + suffixK + 'k\u2717 | ' + segments + '\u6BB5';
-                el.style.color = suffixChars > 0 ? '#28a745' : '#999';
+                el.textContent = prefixK + 'k\u2713 | ' + suffixK + 'k\u2717 | ' + segments + '\u6BB5';
+                el.style.color = suffixChars > 0 ? 'var(--md-sys-color-success)' : 'var(--md-sys-color-on-surface-variant)';
             } else {
-                el.textContent = '\uD83D\uDCBE \u9996\u6B21\u53D1\u9001 | ' + ((prefixChars + suffixChars) / 3000).toFixed(1) + 'k';
-                el.style.color = '#999';
+                el.textContent = '\u9996\u6B21\u53D1\u9001 | ' + ((prefixChars + suffixChars) / 3000).toFixed(1) + 'k';
+                el.style.color = 'var(--md-sys-color-on-surface-variant)';
             }
         }
 
@@ -277,7 +278,7 @@ const chatContainer = document.getElementById('chat-container');
                 if (globalSettings.enable_prefix_lock) {
                     var lockMaxId = window._prefixLockMaxId || 0;
                     if (lockMaxId && msgId <= lockMaxId) {
-                        if (typeof showToast === 'function') showToast('\uD83D\uDD12 \u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5\u7F16\u8F91\u8BE5\u6C14\u6CE1', 'error');
+                        if (typeof showToast === 'function') showToast('\u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5\u7F16\u8F91\u8BE5\u6C14\u6CE1', 'error');
                         return Promise.resolve();
                     }
                 }
@@ -298,7 +299,7 @@ const chatContainer = document.getElementById('chat-container');
                 }
                 if (!_lockMaxId && window._prefixLockMaxId) _lockMaxId = window._prefixLockMaxId;
                 if (_lockMaxId && msg.id <= _lockMaxId) {
-                    if (typeof showToast === 'function') showToast('\uD83D\uDD12 \u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5' + (modeType === 'omit' ? '\u6982\u62EC' : '\u9690\u85CF') + '\u8BE5\u6C14\u6CE1', 'error');
+                    if (typeof showToast === 'function') showToast('\u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5' + (modeType === 'omit' ? '\u6982\u62EC' : '\u9690\u85CF') + '\u8BE5\u6C14\u6CE1', 'error');
                     return;
                 }
             }
@@ -323,7 +324,7 @@ const chatContainer = document.getElementById('chat-container');
             if (globalSettings.enable_prefix_lock) {
                 var _dlockMaxId = window._prefixLockMaxId || 0;
                 if (_dlockMaxId && msg.id <= _dlockMaxId) {
-                    if (typeof showToast === 'function') showToast('\uD83D\uDD12 \u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5\u5220\u9664\u8BE5\u6C14\u6CE1', 'error');
+                    if (typeof showToast === 'function') showToast('\u524D\u7F00\u5DF2\u9501\u5B9A\uFF0C\u65E0\u6CD5\u5220\u9664\u8BE5\u6C14\u6CE1', 'error');
                     return;
                 }
             }
@@ -537,10 +538,14 @@ function _doHandleStateUpdate(data) {
                         _applyUiState(currentSession.conversation_history);
                     }
                     document.title = currentSession.name || "AI 助手";
+                    // Themed sessions keep their hue, but the default branch must
+                    // reference the surface token: a hardcoded #f5f5f5 greys out the
+                    // now-white chat area and would read as a glaring white block
+                    // once the dark scheme is active.
                     if (currentSession._theme_hue != null) {
-                        chatContainer.style.background = 'hsl(' + currentSession._theme_hue + ', 30%, 95%)';
+                        chatContainer.style.background = 'hsl(' + currentSession._theme_hue + ', 22%, 97%)';
                     } else {
-                        chatContainer.style.background = '#f5f5f5';
+                        chatContainer.style.background = 'var(--md-sys-color-surface)';
                     }
                     if (_lastRestoredSid !== activeSid) {
                         _lastRestoredSid = activeSid;
@@ -658,8 +663,9 @@ function _doHandleStateUpdate(data) {
                     if (_tmc.textContent.trim().length > 0) return;
                     var _tn = document.createElement('div');
                     _tn.className = 'truncation-notice';
-                    _tn.style.cssText = 'color:#856404; background:#fff3cd; border:1px solid #ffc107; border-radius:4px; padding:8px 12px; font-size:13px;';
-                    _tn.textContent = '\u26A0\uFE0F \u672C\u6B21\u56DE\u590D\u6B63\u6587\u4E3A\u7A7A\uFF0C\u8F93\u51FA\u53EF\u80FD\u88AB\u622A\u65AD\u3002';
+                    // No cssText here: the class already supplies the warning
+                    // container pair, and an inline rule would override it.
+                    _tn.innerHTML = mdIcon('warning', 16) + ' \u672C\u6B21\u56DE\u590D\u6B63\u6587\u4E3A\u7A7A\uFF0C\u8F93\u51FA\u53EF\u80FD\u88AB\u622A\u65AD\u3002';
                     _tmc.appendChild(_tn);
                 });
                 // 重建缓存前缀预估显示（renderChat 会清空 chat-container 销毁该元素）
@@ -681,16 +687,14 @@ function _doHandleStateUpdate(data) {
                         const apActive = currentSession.autopilot_active;
                         if (apActive) {
                             apBtn.innerText = `停止托管 (${currentSession.autopilot_turns_left || 0})`;
-                            apBtn.style.background = '#dc3545';
-                            apBtn.style.color = '#fff';
+                            apBtn.style.background = 'var(--md-sys-color-error-container)';
+                            apBtn.style.color = 'var(--md-sys-color-on-error-container)';
                         } else {
                             apBtn.innerText = '启动托管';
-                            apBtn.style.background = '#ffc107';
-                            apBtn.style.color = '#000';
+                            apBtn.style.background = 'var(--md-sys-color-warning-container)';
+                            apBtn.style.color = 'var(--md-sys-color-on-warning-container)';
                         }
                         apBtn.disabled = false;
-                    apBtn.style.opacity = '1';
-                    apBtn.style.cursor = 'pointer';
                     }
 
                     // 托管活跃时隐藏发送按钮，托管结束（按钮为黄色/灰色）时恢复
@@ -705,9 +709,11 @@ function _doHandleStateUpdate(data) {
                         linkCcBtn.style.display = _showLinkBtn ? '' : 'none';
                         if (_showLinkBtn) {
                             if (currentSession.bound_cc_id) {
-                                linkCcBtn.style.background = '#6f42c1';
+                                linkCcBtn.style.background = 'var(--md-sys-color-tertiary-container)';
+                                linkCcBtn.style.color = 'var(--md-sys-color-on-tertiary-container)';
                             } else {
-                                linkCcBtn.style.background = '#28a745';
+                                linkCcBtn.style.background = 'var(--md-sys-color-success-container)';
+                                linkCcBtn.style.color = 'var(--md-sys-color-on-success-container)';
                             }
                         }
                     }
@@ -1004,10 +1010,12 @@ function _doHandleStateUpdate(data) {
             if (sessionsMap['starred_session_virtual'] && globalSettings.enable_starred) {
                 const div = document.createElement('div');
                 div.className = 'session-item' + ('starred_session_virtual' === currentId ? ' active' : '');
-                div.style.marginTop = '10px';
-                div.style.border = '1px dashed #ffc107';
-                div.style.background = 'starred_session_virtual' === currentId ? '#ffc107' : '#fffdf5';
-                div.innerHTML = `<a href="#" onclick="event.preventDefault(); postAction({action: 'switch_session', sid: 'starred_session_virtual'})" style="flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ${'starred_session_virtual' === currentId ? '#000' : '#d39e00'}; font-weight: bold; text-decoration: none;">${sessionsMap['starred_session_virtual'].name}</a>`;
+                div.style.marginTop = 'var(--md-sys-spacing-2)';
+                div.style.border = 'none';
+                div.style.background = 'var(--md-sys-color-tertiary-container)';
+                div.style.color = 'var(--md-sys-color-on-tertiary-container)';
+                div.innerHTML = mdIcon('push_pin', 14) +
+                    `<a href="#" class="session-title" onclick="event.preventDefault(); postAction({action: 'switch_session', sid: 'starred_session_virtual'})" style="font-weight: 500;">${sessionsMap['starred_session_virtual'].name}</a>`;
                 list.appendChild(div);
             }
             // Hook: 会话管理弹窗打开时自动刷新网格
@@ -1357,9 +1365,13 @@ function _doHandleStateUpdate(data) {
                 tab.dataset.sid = sid;
                 if (sess._theme_hue != null) {
                     var _tabHue = sess._theme_hue;
-                    tab.style.background = (sid === activeSid) ? 'hsl(' + _tabHue + ', 40%, 83%)' : 'hsl(' + _tabHue + ', 35%, 88%)';
+                    tab.style.background = (sid === activeSid) ? 'hsl(' + _tabHue + ', 32%, 92%)' : 'hsl(' + _tabHue + ', 26%, 95%)';
                 } else {
-                    tab.style.background = (sid === activeSid) ? '#d4d4d4' : '#e5e5e5';
+                    // The active tab takes the content-area surface so it visually
+                    // joins the panel above it, which is the point of an M3 tab.
+                    tab.style.background = (sid === activeSid)
+                        ? 'var(--md-sys-color-surface)'
+                        : 'var(--md-sys-color-surface-container-high)';
                 }
                 // Determine status
                 var statusClass = 'idle';
@@ -1403,9 +1415,9 @@ function _doHandleStateUpdate(data) {
             var kanbanBtn = document.createElement('div');
             kanbanBtn.id = 'kanban-btn';
             kanbanBtn.className = 'bottom-tab-add';
-            kanbanBtn.textContent = '\u2261'; // ≡ hamburger-like icon
+            kanbanBtn.innerHTML = mdIcon('bar_chart', 18);
             kanbanBtn.title = '看板';
-            kanbanBtn.style.color = '#6f42c1';
+            kanbanBtn.style.color = 'var(--md-sys-color-tertiary)';
             kanbanBtn.onclick = function() {
                 if (typeof _kanbanActive !== 'undefined' && _kanbanActive) {
                     exitKanban();
@@ -1506,14 +1518,14 @@ function _doHandleStateUpdate(data) {
             var toolbar = document.createElement('div');
             toolbar.className = 'sm-toolbar';
             toolbar.innerHTML =
-                '<button onclick="smNewSession()" class="sm-toolbar-btn">\u2795 新建会话</button>' +
-                '<button onclick="closeSessionManager();createGroup()" class="sm-toolbar-btn">\uD83D\uDCC1 新建组</button>' +
-                '<button onclick="closeSessionManager();openSettingsModal()" class="sm-toolbar-btn">\u2699\uFE0F 全局设置</button>' +
-                '<button onclick="closeSessionManager();openManualModal()" class="sm-toolbar-btn">\uD83D\uDCD6 使用说明</button>' +
-                '<button onclick="exportSnapshot()" class="sm-toolbar-btn">\uD83D\uDCE6 更新</button>' +
-                '<button onclick="smExportRelease()" class="sm-toolbar-btn">\uD83D\uDE80 发布</button>' +
-                '<button onclick="clearLogs()" class="sm-toolbar-btn">\uD83E\uDDF9 清理</button>' +
-                '<button onclick="smToggleArchived()" class="sm-toolbar-btn" id="sm-archive-btn">\uD83D\uDCCB 查看归档</button>';
+                '<button onclick="smNewSession()" class="sm-toolbar-btn">' + mdIcon('add', 16) + ' 新建会话</button>' +
+                '<button onclick="closeSessionManager();createGroup()" class="sm-toolbar-btn">' + mdIcon('create_new_folder', 16) + ' 新建组</button>' +
+                '<button onclick="closeSessionManager();openSettingsModal()" class="sm-toolbar-btn">' + mdIcon('settings', 16) + ' 全局设置</button>' +
+                '<button onclick="closeSessionManager();openManualModal()" class="sm-toolbar-btn">' + mdIcon('book', 16) + ' 使用说明</button>' +
+                '<button onclick="exportSnapshot()" class="sm-toolbar-btn">' + mdIcon('inventory', 16) + ' 更新</button>' +
+                '<button onclick="smExportRelease()" class="sm-toolbar-btn">' + mdIcon('north_east', 16) + ' 发布</button>' +
+                '<button onclick="clearLogs()" class="sm-toolbar-btn" style="color:var(--md-sys-color-error);">' + mdIcon('delete_sweep', 16) + ' 清理</button>' +
+                '<button onclick="smToggleArchived()" class="sm-toolbar-btn" id="sm-archive-btn">' + mdIcon('archive', 16) + ' 查看归档</button>';
             panel.appendChild(toolbar);
             // Body
             var body = document.createElement('div');
@@ -1602,12 +1614,15 @@ function _doHandleStateUpdate(data) {
             var isActive = sid === activeSid;
             var isInTab = _openedTabs.indexOf(sid) >= 0;
             var statusIcon = '';
-            if (s.is_processing || s.active_threads > 0) statusIcon = '\uD83D\uDD04 ';
-            else if (s.autopilot_active) statusIcon = '\uD83E\uDD16 ';
+            if (s.is_processing || s.active_threads > 0) statusIcon = mdIcon('refresh', 14) + ' ';
+            else if (s.autopilot_active) statusIcon = mdIcon('smart_toy', 14) + ' ';
             var cls = 'sm-card' + (isActive ? ' active' : '') + (isInTab ? ' in-tab' : '');
-            return '<div class="' + cls + '" data-sid="' + sid + '" style="border-top:4px solid hsl(' + hue + ',55%,55%);background:linear-gradient(135deg,hsl(' + hue + ',40%,95%) 0%,hsl(' + hue + ',20%,98%) 100%)" onclick="smCardClick(\'' + sid + '\')" oncontextmenu="smCardContext(event,\'' + sid + '\')">' +
+            // The theme hue survives only as the 4px top edge, which is what it is
+            // actually for. The old 135deg gradient fill computed two hsl stops that
+            // would both read as bright smears under the dark scheme.
+            return '<div class="' + cls + '" data-sid="' + sid + '" style="border-top:4px solid hsl(' + hue + ',55%,55%);" onclick="smCardClick(\'' + sid + '\')" oncontextmenu="smCardContext(event,\'' + sid + '\')">' +
                 '<div class="sm-card-name">' + statusIcon + (s.name || '\u672A\u547D\u540D') + '</div>' +
-                (isInTab ? '<div class="sm-card-badge">\u2713</div>' : '') + '</div>';
+                (isInTab ? '<div class="sm-card-badge">' + mdIcon('check', 14) + '</div>' : '') + '</div>';
         }
 
         function smToggleGroup(gid) {
@@ -1637,14 +1652,14 @@ function _doHandleStateUpdate(data) {
             menu.style.top = e.clientY + 'px';
             if (isArchived) {
                 menu.innerHTML =
-                    '<div class="sm-ctx-item" onclick="smCtxUnarchive(\'' + sid + '\')">\u267B\uFE0F \u6062\u590D</div>' +
-                    '<div class="sm-ctx-item sm-ctx-danger" onclick="smCtxDelete(\'' + sid + '\')">\uD83D\uDDD1\uFE0F \u6C38\u4E45\u5220\u9664</div>';
+                    '<div class="sm-ctx-item" onclick="smCtxUnarchive(\'' + sid + '\')">' + mdIcon('undo', 16) + ' \u6062\u590D</div>' +
+                    '<div class="sm-ctx-item sm-ctx-danger" onclick="smCtxDelete(\'' + sid + '\')">' + mdIcon('delete', 16) + ' \u6C38\u4E45\u5220\u9664</div>';
             } else {
                 menu.innerHTML =
-                    '<div class="sm-ctx-item" onclick="smCtxRename(\'' + sid + '\')">\u270F\uFE0F \u91CD\u547D\u540D</div>' +
-                    '<div class="sm-ctx-item" onclick="smCtxClone(\'' + sid + '\')">\uD83D\uDCC4 \u514B\u9686</div>' +
-                    '<div class="sm-ctx-item" onclick="smCtxArchive(\'' + sid + '\')">\uD83D\uDCE6 \u5F52\u6863</div>' +
-                    '<div class="sm-ctx-item sm-ctx-danger" onclick="smCtxDelete(\'' + sid + '\')">\uD83D\uDDD1\uFE0F \u5220\u9664</div>';
+                    '<div class="sm-ctx-item" onclick="smCtxRename(\'' + sid + '\')">' + mdIcon('edit', 16) + ' \u91CD\u547D\u540D</div>' +
+                    '<div class="sm-ctx-item" onclick="smCtxClone(\'' + sid + '\')">' + mdIcon('content_copy', 16) + ' \u514B\u9686</div>' +
+                    '<div class="sm-ctx-item" onclick="smCtxArchive(\'' + sid + '\')">' + mdIcon('archive', 16) + ' \u5F52\u6863</div>' +
+                    '<div class="sm-ctx-item sm-ctx-danger" onclick="smCtxDelete(\'' + sid + '\')">' + mdIcon('delete', 16) + ' \u5220\u9664</div>';
             }
             document.body.appendChild(menu);
             var rect = menu.getBoundingClientRect();
@@ -1708,12 +1723,14 @@ function _doHandleStateUpdate(data) {
             var body = document.getElementById('session-mgr-body');
             if (!body) return;
             var btn = document.getElementById('sm-archive-btn');
+            // innerHTML, not textContent: the labels carry inline SVG and a
+            // textContent assignment would strip the icon on the first toggle.
             if (body.dataset.showArchived === 'true') {
                 body.dataset.showArchived = 'false';
-                if (btn) btn.textContent = '\uD83D\uDCCB \u67E5\u770B\u5F52\u6863';
+                if (btn) btn.innerHTML = mdIcon('archive', 16) + ' \u67E5\u770B\u5F52\u6863';
             } else {
                 body.dataset.showArchived = 'true';
-                if (btn) btn.textContent = '\uD83D\uDCCB \u8FD4\u56DE\u4F1A\u8BDD\u5217\u8868';
+                if (btn) btn.innerHTML = mdIcon('arrow_downward', 16) + ' \u8FD4\u56DE\u4F1A\u8BDD\u5217\u8868';
             }
             renderSessionManagerGrid();
         }

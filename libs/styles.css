@@ -112,6 +112,9 @@
         }
         .session-group-header:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent); }
         .session-group-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* One indent step for grouped rows. The inset shadow alone did not read as
+           hierarchy when the left padding matched a top-level row. */
+        .session-group .session-item { padding-left: var(--md-sys-spacing-4); }
         
         #main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: var(--md-sys-color-surface); }
         #chat-container { flex: 1; overflow-y: auto; padding: var(--md-sys-spacing-6); background: var(--md-sys-color-surface); }
