@@ -88,8 +88,12 @@ function renderHeavyPanel() {
 
 function setUIEnabled(enabled) {
     updateSendButtonCount();
-    sendButton.style.background = enabled ? '#007bff' : '#6c757d';
-    sendButton.style.color = '#fff';
+    sendButton.style.background = enabled
+        ? 'var(--md-sys-color-primary)'
+        : 'var(--md-sys-color-surface-container-highest)';
+    sendButton.style.color = enabled
+        ? 'var(--md-sys-color-on-primary)'
+        : 'var(--md-sys-color-on-surface-variant)';
 }
 
 function openContextManager() {
