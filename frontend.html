@@ -27,7 +27,7 @@
             <div style="font-weight: var(--md-sys-typescale-title-small-weight); margin-bottom: var(--md-sys-spacing-2); display: flex; justify-content: space-between; align-items: center;"><span style="display:flex; align-items:center; gap:var(--md-sys-spacing-1);"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1.2"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M9.5 12h5"/></svg> 已归档</span><button class="md-icon-button" style="width:24px;height:24px;" onclick="document.getElementById('archived-shelf').style.display='none'" title="收起"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
             <div id="archived-list"></div>
         </div>
-        <div style="display:flex; gap:6px; margin: 10px 10px 0; width: calc(100% - 20px); box-sizing: border-box;">
+        <div style="display:flex; gap:var(--md-sys-spacing-2); margin: var(--md-sys-spacing-2) var(--md-sys-spacing-3) var(--md-sys-spacing-3); width: calc(100% - var(--md-sys-spacing-6)); box-sizing: border-box;">
             <button class="md-button md-button--filled" onclick="postAction({action: 'create_session'})" onauxclick="event.preventDefault(); fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_session'})}).then(r=>r.json()).then(d=>{if(d.new_sid)window.open('/?sid='+d.new_sid,'_blank')})" style="flex:1;"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> 新建对话</button>
             <button class="md-icon-button" onclick="createGroup()" style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);" title="创建会话分组"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.2a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M12 10.6v5.4M9.3 13.3h5.4"/></svg></button>
             <button class="md-icon-button" onclick="toggleArchivedShelf()" style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);" title="查看已归档会话"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1.2"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M9.5 12h5"/></svg></button>
@@ -38,9 +38,9 @@
     <div id="main-area">
         <button id="toggle-sidebar" class="toggle-sidebar-btn" onclick="toggleSidebar()" title="折叠/展开侧边栏"><svg class="md-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
         <div id="chat-container">
-            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#999;">
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--md-sys-color-on-surface-variant);">
                 <div class="spinner-ring"></div>
-                <div style="margin-top:12px; font-size:13px;">加载中...</div>
+                <div style="margin-top:var(--md-sys-spacing-3); font-size:var(--md-sys-typescale-body-medium-size);">加载中...</div>
             </div>
         </div>
         <div id="chat-minimap" aria-hidden="true"></div>
@@ -81,28 +81,28 @@
             <button class="md-icon-button" style="background:var(--md-sys-color-surface-container-highest); color:var(--md-sys-color-on-surface-variant);" onclick="addOnlyAssistant()" title="以AI气泡添加（工具调用可正常使用）"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="3.2"/><path d="M12 8V4.8"/><circle cx="9.2" cy="13.2" r="1"/><circle cx="14.8" cy="13.2" r="1"/></svg></button>
             <input type="file" id="image-upload" accept="image/*" style="display:none;" onchange="handleImageUpload(this)">
             <button id="image-upload-btn" class="md-icon-button" style="background:var(--md-sys-color-tertiary-container); color:var(--md-sys-color-on-tertiary-container);" onclick="document.getElementById('image-upload').click()" title="上传图片"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.2"/></svg></button>
-<button style="font-size:10px; display:none; padding:2px 6px;" id="pause-btn" onclick="postAction({action: 'toggle_pause'})">暂停</button>
+<button class="md-button md-button--outlined md-button--compact" style="display:none;" id="pause-btn" onclick="postAction({action: 'toggle_pause'})">暂停</button>
             </div>
         </div>
         <div id="bottom-tab-bar" style="display:none;">
             <div id="bottom-tabs-container"></div>
         </div>
     </div>
-    <div id="edit-modal"><div class="modal-content"><textarea id="edit-textarea" style="flex:1; padding: 15px; resize: none; border:none; outline:none; font-family: inherit;"></textarea><div style="padding:15px; text-align:right; border-top: 1px solid #ddd;"><button onclick="saveEdit()" style="padding: 6px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor:pointer; margin-right: 10px;">保存</button><button onclick="closeEditModal()" style="padding: 6px 15px; cursor:pointer;">取消</button></div></div></div>
+    <div id="edit-modal"><div class="modal-content"><textarea id="edit-textarea" style="flex:1; padding: var(--md-sys-spacing-4); resize: none; border:none; outline:none; font-family: var(--md-sys-typescale-font-mono); font-size: var(--md-sys-typescale-body-medium-size); background: var(--md-sys-color-surface-container-lowest); color: var(--md-sys-color-on-surface);"></textarea><div class="md-modal-footer"><button class="md-button md-button--text md-button--compact" onclick="closeEditModal()">取消</button><button class="md-button md-button--filled md-button--compact" onclick="saveEdit()">保存</button></div></div></div>
 
     <div id="code-monitor-modal">
         <div class="modal-content" style="width: 70%; height: 80%;">
-            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;">代码监听配置</h3>
-                <span style="cursor: pointer; font-size: 20px;" onclick="document.getElementById('code-monitor-modal').style.display='none'">&times;</span>
+            <div class="md-modal-header">
+                <h3>代码监听配置</h3>
+                <button class="md-modal-close" onclick="document.getElementById('code-monitor-modal').style.display='none'" title="关闭"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div style="flex: 1; overflow-y: auto; padding-top: 15px; display: flex; flex-direction: column;">
+            <div style="flex: 1; overflow-y: auto; padding-top: var(--md-sys-spacing-4); display: flex; flex-direction: column; background: var(--md-sys-color-surface-container-low);">
                 <div class="cm-form-group">
-                    <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">监听路径 (每行一个绝对或相对路径):</label>
-                    <textarea id="cm-paths" rows="3" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"></textarea>
+                    <label style="display:block; margin-bottom:var(--md-sys-spacing-1); font-size:var(--md-sys-typescale-title-small-size); font-weight:var(--md-sys-typescale-title-small-weight);">监听路径 (每行一个绝对或相对路径):</label>
+                    <textarea id="cm-paths" rows="3" style="width:100%; padding:var(--md-sys-spacing-2); border:none; border-bottom:1px solid var(--md-sys-color-outline); border-radius:var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0; background:var(--md-sys-color-surface-container-highest); color:var(--md-sys-color-on-surface); font-family:var(--md-sys-typescale-font-mono); outline:none; box-sizing:border-box;"></textarea>
                 </div>
                 <div class="cm-form-group">
-                    <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">包含的后缀:</label>
+                    <label style="display:block; margin-bottom:var(--md-sys-spacing-1); font-size:var(--md-sys-typescale-title-small-size); font-weight:var(--md-sys-typescale-title-small-weight);">包含的后缀:</label>
                     <div class="cm-checkbox-group" id="cm-extensions">
                         <label><input type="checkbox" value=".py"> .py</label>
                         <label><input type="checkbox" value=".html"> .html</label>
@@ -115,26 +115,26 @@
                         <label><input type="checkbox" value=".bib"> .bib</label>
                         <label><input type="checkbox" value=".txt"> .txt</label>
                     </div>
-                    <input type="text" id="cm-custom-ext" placeholder="自定义逗号分隔, 如 .txt, .yaml" style="margin-top:8px; padding:6px; width:100%; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                    <input type="text" id="cm-custom-ext" placeholder="自定义逗号分隔, 如 .txt, .yaml" style="margin-top:var(--md-sys-spacing-2); padding:var(--md-sys-spacing-2); width:100%; border:none; border-bottom:1px solid var(--md-sys-color-outline); border-radius:var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0; background:var(--md-sys-color-surface-container-highest); color:var(--md-sys-color-on-surface); outline:none; box-sizing:border-box;">
                 </div>
-                <div class="cm-form-group" style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <button onclick="scanCodeFiles()" style="padding: 8px 15px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:13px;">扫描文件</button>
-                        <label style="font-size: 13px; font-weight: bold; color: #495057;" title="若完整目录树超过此阈值，则回退为仅显示选中文件的树结构">全量树回退阈值: <input type="number" id="cm-tree-limit" value="10" min="1" max="500" style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;"> k</label>
+                <div class="cm-form-group" style="display: flex; justify-content: space-between; align-items: center; gap: var(--md-sys-spacing-2); flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: var(--md-sys-spacing-3);">
+                        <button class="md-button md-button--filled md-button--compact" onclick="scanCodeFiles()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.4 15.4L20 20"/></svg> 扫描文件</button>
+                        <label class="ctl-group" title="若完整目录树超过此阈值，则回退为仅显示选中文件的树结构">全量树回退阈值: <input type="number" id="cm-tree-limit" class="md-num" value="10" min="1" max="500" style="width:56px;"> k</label>
                     </div>
-                    <div>
-                        <button onclick="toggleAllFiles(true)" style="padding: 4px 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size:12px; margin-right: 5px;">全选</button>
-                        <button onclick="toggleAllFiles(false)" style="padding: 4px 8px; background: #eee; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size:12px;">取消全选</button>
+                    <div style="display: flex; gap: var(--md-sys-spacing-1);">
+                        <button class="md-button md-button--outlined md-button--compact" onclick="toggleAllFiles(true)">全选</button>
+                        <button class="md-button md-button--outlined md-button--compact" onclick="toggleAllFiles(false)">取消全选</button>
                     </div>
                 </div>
                 <div class="cm-form-group" style="flex:1; display: flex; flex-direction: column; min-height: 0;">
-                    <div id="cm-file-list" style="flex: 1; overflow-y: auto; border: 1px solid #ccc; padding: 10px; border-radius:4px; background:#fafafa; font-size:13px;">
-                        请先配置路径和后缀，然后点击“扫描文件”。
+                    <div id="cm-file-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--md-sys-color-outline-variant); padding: var(--md-sys-spacing-3); border-radius:var(--md-sys-shape-corner-small); background:var(--md-sys-color-surface-container-lowest); color:var(--md-sys-color-on-surface); font-size:var(--md-sys-typescale-body-medium-size);">
+                        请先配置路径和后缀，然后点击「扫描文件」。
                     </div>
                 </div>
             </div>
-            <div style="padding:15px; text-align:right; border-top: 1px solid #ddd;">
-                <button onclick="saveCodeMonitor()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor:pointer;">保存并监听</button>
+            <div class="md-modal-footer">
+                <button class="md-button md-button--filled md-button--compact" onclick="saveCodeMonitor()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.8A1.8 1.8 0 0 1 6.8 4h8.4L20 8.8v9.4A1.8 1.8 0 0 1 18.2 20H6.8A1.8 1.8 0 0 1 5 18.2z"/><path d="M8.5 4v5h7"/><circle cx="12.5" cy="14.5" r="2.2"/></svg> 保存并监听</button>
             </div>
         </div>
     </div>
@@ -340,13 +340,13 @@
         </div>
     </div>
 
-    <div id="manual-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+    <div id="manual-modal" class="md-modal-overlay" style="z-index: 1001;">
         <div class="modal-content" style="width: 70%; height: 80%;">
-            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;">用户使用说明书</h3>
-                <span style="cursor: pointer; font-size: 20px;" onclick="closeManualModal()">&times;</span>
+            <div class="md-modal-header">
+                <h3>用户使用说明书</h3>
+                <button class="md-modal-close" onclick="closeManualModal()" title="关闭"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div id="manual-content" style="flex: 1; overflow-y: auto; padding: 25px; line-height: 1.8; font-size: 14px;">
+            <div id="manual-content" style="flex: 1; overflow-y: auto; padding: var(--md-sys-spacing-6); line-height: 1.8; font-size: var(--md-sys-typescale-body-medium-size); background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);">
                 <div>
                 <h4>一、核心概念</h4>
                 <ul>
@@ -355,7 +355,7 @@
                         <ul>
                             <li><strong>概括模式:</strong> 气泡内容在发送给 AI 时被替换为一句话概括，用于压缩上下文长度。</li>
                             <li><strong>折叠:</strong> 仅在界面上折叠显示，不影响发送给 AI 的完整内容。</li>
-                            <li><strong>隐藏:</strong> 气泡从 AI 上下文中完全移除。首次点击🗑️隐藏，再次点击物理删除。</li>
+                            <li><strong>隐藏:</strong> 气泡从 AI 上下文中完全移除。首次点击删除按钮隐藏，再次点击彻底删除。</li>
                         </ul>
                     </li>
                     <li><strong>工具调用:</strong> AI 可以在回复中调用工具来执行操作，如读取文件、编辑代码、运行命令、搜索网页等。工具调用显示为紫色交互块，可逐个采纳或拒绝。采纳后由本地执行器直接处理，结果回填到对话中作为后续输入。</li>
@@ -366,18 +366,18 @@
                     <li><strong>会话管理:</strong>
                         <ul>
                             <li><strong>新建:</strong> 点击左下角「+ 新建对话」按钮。新会话继承当前会话的代码监听配置。</li>
-                            <li><strong>分组:</strong> 点击「📁+」创建分组，拖拽会话到分组中。分组可折叠、重命名、删除。</li>
+                            <li><strong>分组:</strong> 点击侧边栏底部的新建分组按钮创建分组，拖拽会话到分组中。分组可折叠、重命名、删除。</li>
                             <li><strong>标签栏:</strong> 底部标签栏显示已打开的会话，点击快速切换。右键菜单支持克隆、归档、重命名、关闭。</li>
-                            <li><strong>排序:</strong> 按住会话左侧的 ☰ 图标拖拽排序。</li>
-                            <li><strong>归档:</strong> 点击📦按钮归档不常用的会话，可随时恢复。</li>
+                            <li><strong>排序:</strong> 按住会话左侧的拖拽手柄上下拖动排序。</li>
+                            <li><strong>归档:</strong> 点击侧边栏底部的归档按钮收起不常用的会话，可随时恢复。</li>
                         </ul>
                     </li>
                     <li><strong>消息发送:</strong>
                         <ul>
                             <li><strong>普通发送:</strong> 输入内容后点击「发送」或按 Enter。Shift+Enter 换行。</li>
                             <li><strong>多模型:</strong> 在模型下拉菜单中勾选多个模型，系统为每个模型创建独立的回复气泡。</li>
-                            <li><strong>仅添加:</strong> ➕按钮将文本添加为用户或 AI 气泡，不触发回复。</li>
-                            <li><strong>图片上传:</strong> 点击📷按钮或在输入框中 Ctrl+V 粘贴图片上传。</li>
+                            <li><strong>仅添加:</strong> 加号按钮将文本添加为用户气泡，机器人按钮添加为 AI 气泡，两者都不触发回复。</li>
+                            <li><strong>图片上传:</strong> 点击上传图片按钮或在输入框中 Ctrl+V 粘贴图片上传。</li>
                             <li><strong>深度思考:</strong> 点击底部「思考一/二/三」标签循环切换思考深度等级。</li>
                             <li><strong>自动托管:</strong> 设置托管次数后点击「启动托管」，系统自动多轮请求 AI 并自动采纳工具调用，无需人工干预。</li>
                         </ul>
@@ -385,23 +385,23 @@
                     <li><strong>模型管理:</strong>
                         <ul>
                             <li><strong>选择模型:</strong> 点击底部「模型▾」按钮打开下拉菜单，勾选要使用的模型。</li>
-                            <li><strong>🚀 快速发送:</strong> 点击模型前的🚀图标，仅以该模型发送当前输入。</li>
-                            <li><strong>隐藏/恢复:</strong> 点击模型右侧 ➖ 隐藏不常用模型，底部「展开更多」可恢复。</li>
-                            <li><strong>供应商管理:</strong> 点击侧边栏「🔌 模型管理」按钮，打开供应商管理面板。可添加、编辑、删除 API 供应商及其模型列表，支持连通性测试。保存后即时生效。</li>
+                            <li><strong>快速发送:</strong> 点击模型名称前的闪电图标，仅以该模型发送当前输入。</li>
+                            <li><strong>隐藏/恢复:</strong> 点击模型右侧的减号按钮隐藏不常用模型，底部「展开更多模型」可恢复。</li>
+                            <li><strong>供应商管理:</strong> 点击侧边栏「模型管理」按钮，打开供应商管理面板。可添加、编辑、删除 API 供应商及其模型列表，支持连通性测试。保存后即时生效。</li>
                         </ul>
                     </li>
                     <li><strong>气泡操作 (鼠标悬停显示操作栏):</strong>
                         <ul>
                             <li><strong>重试:</strong> 清空该助手气泡内容，以当时的上下文重新发送请求。</li>
-                            <li><strong>👍 / 👎 评分:</strong> 对AI回复进行好评或差评，统计数据累计在对应模型上。再次点击取消评分。</li>
+                            <li><strong>评分:</strong> 用拇指向上或向下按钮对 AI 回复进行好评或差评，统计数据累计在对应模型上。再次点击取消评分。</li>
                             <li><strong>隐藏:</strong> 将气泡从AI上下文中完全移除。隐藏后气泡以蓝色概括框形式显示，点击可取消隐藏。</li>
                             <li><strong>概括/全文:</strong> 在完整内容和AI生成的概括之间切换，用于压缩上下文长度。可在高负载面板中批量操作。</li>
                             <li><strong>折叠/展开:</strong> 在UI上折叠或展开气泡，不影响发送给AI的内容。</li>
-                            <li><strong>📋 复制正文:</strong> 复制气泡的原始文本内容。</li>
-                            <li><strong>📦 复制上下文:</strong> 复制生成该气泡时发送给AI的完整请求 Payload（JSON 格式）。</li>
-                            <li><strong>✏️ 编辑:</strong> 打开全屏编辑器修改气泡原始内容。</li>
-                            <li><strong>🖍️ 批注:</strong> 打开全屏编辑器进行批注。保存后系统自动生成词级 Diff 对比，以删除线和绿色加粗标记差异。批注版本将替代原文发送给AI。</li>
-                            <li><strong>🗑️ 删除:</strong> 首次点击将气泡切换为隐藏状态（软删除，可恢复）。对已隐藏的气泡再次点击则物理销毁，不可恢复。</li>
+                            <li><strong>复制正文:</strong> 复制气泡的原始文本内容。</li>
+                            <li><strong>复制上下文:</strong> 复制生成该气泡时发送给 AI 的完整请求 Payload（JSON 格式）。</li>
+                            <li><strong>编辑:</strong> 打开全屏编辑器修改气泡原始内容。</li>
+                            <li><strong>批注:</strong> 打开全屏编辑器进行批注。保存后系统自动生成词级 Diff 对比，以删除线和绿色加粗标记差异。批注版本将替代原文发送给 AI。</li>
+                            <li><strong>删除:</strong> 首次点击将气泡切换为隐藏状态（软删除，可恢复）。对已隐藏的气泡再次点击则彻底删除，不可恢复。</li>
                         </ul>
                     </li>
                     <li><strong>高级面板:</strong>
@@ -414,8 +414,8 @@
                     <li><strong>工具调用系统:</strong>
                         <ul>
                             <li>AI 回复中的工具调用显示为紫色交互块，含工具名称和参数。</li>
-                            <li><strong>采纳 ✅:</strong> 执行该工具调用，结果回填到对话中。</li>
-                            <li><strong>拒绝 ❌:</strong> 跳过该工具调用并通知 AI。</li>
+                            <li><strong>采纳:</strong> 执行该工具调用，结果回填到对话中。</li>
+                            <li><strong>拒绝:</strong> 跳过该工具调用并通知 AI。</li>
                             <li><strong>一键采纳:</strong> 批量采纳一个气泡中的所有工具调用。</li>
                             <li><strong>排序约束:</strong> 同一气泡内的工具按顺序执行，前一个完成后才执行下一个。</li>
                             <li><strong>自动读取:</strong> 文件被编辑后，系统自动读取最新内容并回填到对话中。</li>
@@ -440,16 +440,16 @@
         </div>
     </div>
 
-    <div id="provider-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+    <div id="provider-modal" class="md-modal-overlay" style="z-index: 1001;">
         <div class="modal-content" style="width: 700px; height: 80%; display: flex; flex-direction: column;">
-            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;">🔌 模型与供应商管理</h3>
-                <span style="cursor: pointer; font-size: 20px;" onclick="closeProviderModal()">&times;</span>
+            <div class="md-modal-header">
+                <h3>模型与供应商管理</h3>
+                <button class="md-modal-close" onclick="closeProviderModal()" title="关闭"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div id="provider-list" style="flex: 1; overflow-y: auto; padding: 15px;"></div>
-            <div style="padding: 15px; border-top: 1px solid #ddd; text-align: right;">
-                <button onclick="saveProviders()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">保存</button>
-                <button onclick="closeProviderModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+            <div id="provider-list" class="md-modal-body"></div>
+            <div class="md-modal-footer">
+                <button class="md-button md-button--text md-button--compact" onclick="closeProviderModal()">取消</button>
+                <button class="md-button md-button--filled md-button--compact" onclick="saveProviders()">保存</button>
             </div>
         </div>
     </div>
