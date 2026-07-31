@@ -399,26 +399,26 @@
                 }
 
                                 if (msg.is_hidden && (msg.is_subagent_request || msg.is_subagent_response)) {
-                    bubble.style.backgroundColor = '#f3e5f5';
-                    bubble.style.border = '1px solid #ce93d8';
+                    bubble.style.backgroundColor = 'var(--md-sys-color-tertiary-container)';
+                    bubble.style.border = 'none';
                     if (msg.is_collapsed) {
                         let _saLabel = msg.is_subagent_request ? 'Subagent 请求' : 'Subagent 响应';
-                        let _saStatus = (msg.is_subagent_response && msg.has_subagent_sse) ? ' ✅' : '';
-                        mainContentContainer.innerHTML = `<div class="summary-box" style="cursor:pointer; border-left-color:#9c27b0; background:#f3e5f5; color:#6a1b9a;" onclick="toggleMode(${index},'collapse')" title="点击展开"><b>[${_saLabel}]${_saStatus}</b> ${msg.summary || '暂无'}</div>`;
+                        let _saStatus = (msg.is_subagent_response && msg.has_subagent_sse) ? (' ' + mdIcon('check_circle', 14)) : '';
+                        mainContentContainer.innerHTML = `<div class="summary-box" style="cursor:pointer; border-left-color:var(--md-sys-color-tertiary); background:var(--md-sys-color-tertiary-container); color:var(--md-sys-color-on-tertiary-container);" onclick="toggleMode(${index},'collapse')" title="点击展开"><b>[${_saLabel}]${_saStatus}</b> ${msg.summary || '暂无'}</div>`;
                     } else {
                     mainContentContainer.innerHTML = `<div class="content">${renderMarkdownProtected(msg.content || msg.summary || '')}</div>`;
                     if (msg.is_subagent_request) {
-                        mainContentContainer.insertAdjacentHTML('beforeend', `<div style="margin:8px 0; text-align:center;"><button onclick="subagentSend('${msg.subagent_id}')" style="padding:8px 20px; background:#6a1b9a; color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px;">🔍 发送 Subagent</button></div>`);
+                        mainContentContainer.insertAdjacentHTML('beforeend', `<div style="margin:var(--md-sys-spacing-2) 0; text-align:center;"><button class="md-button md-button--tonal md-button--compact" onclick="subagentSend('${msg.subagent_id}')">${mdIcon('north_east', 16)} 发送 Subagent</button></div>`);
                     }
                     if (msg.is_subagent_response && msg.has_subagent_sse) {
-                        mainContentContainer.insertAdjacentHTML('beforeend', `<div style="margin:8px 0; text-align:center;"><button onclick="subagentAdopt('${msg.subagent_id}', ${msg.id})" style="padding:8px 20px; background:#28a745; color:#fff; border:none; border-radius:20px; cursor:pointer; font-size:13px;">✅ 采纳此结果返回给CC</button></div>`);
+                        mainContentContainer.insertAdjacentHTML('beforeend', `<div style="margin:var(--md-sys-spacing-2) 0; text-align:center;"><button class="md-button md-button--filled md-button--compact" onclick="subagentAdopt('${msg.subagent_id}', ${msg.id})">${mdIcon('check', 16)} 采纳此结果返回给CC</button></div>`);
                     }
                     }
                 } else if (msg.is_hidden) {
-                    mainContentContainer.innerHTML = `<div class="summary-box" style="cursor: pointer; border-left-color: #007bff; background: #e3f2fd; color: #004085;" onclick="toggleMode(${index}, 'hide')" title="点击取消隐藏"><b>[完全隐藏] 概括：</b>${msg.summary || '暂无'} <span style="font-size: 11px; opacity: 0.8;">(该气泡已从上下文中剔除)</span></div>`;
+                    mainContentContainer.innerHTML = `<div class="summary-box" style="cursor: pointer; border-left-color: var(--md-sys-color-primary); background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);" onclick="toggleMode(${index}, 'hide')" title="点击取消隐藏"><b>[完全隐藏] 概括：</b>${msg.summary || '暂无'} <span style="font-size: var(--md-sys-typescale-label-small-size); opacity: 0.8;">(该气泡已从上下文中剔除)</span></div>`;
                 } else if (isHidden) {
-                    let unreadStyle = msg.is_unread ? 'border-left-color: #28a745; background: #e6ffed; color: #155724;' : '';
-                    let unreadBadge = msg.is_unread ? '<span style="font-size:10px; background:#28a745; color:#fff; padding:1px 4px; border-radius:3px; margin-right:5px; vertical-align:middle;">未读</span>' : '';
+                    let unreadStyle = msg.is_unread ? 'border-left-color: var(--md-sys-color-success); background: var(--md-sys-color-success-container); color: var(--md-sys-color-on-success-container);' : '';
+                    let unreadBadge = msg.is_unread ? '<span class="status-tag" style="background:var(--md-sys-color-success); color:var(--md-sys-color-on-success);">未读</span>' : '';
                     mainContentContainer.innerHTML = `<div class="summary-box" style="cursor: pointer; ${unreadStyle}" onclick="toggleMode(${index}, '${msg.is_omitted ? 'omit' : 'collapse'}')" title="点击展开">${unreadBadge}<b>概括：</b>${msg.summary || '生成中...'}</div>`;
                 } else if (isWaiting) {
                     mainContentContainer.innerHTML = `<div class="content"><i>（<span style="color:#007bff;">${msg.model_name || '默认模型'}</span> 等待中... 已用时 <span class="waiting-time" data-start="${msg.start_time || Date.now()/1000}">0.0</span>s）</i></div>`;
@@ -941,39 +941,39 @@
                                     let saReqMsg = _saEntry.request.msg;
                                     let saReqIdx = _saEntry.request.index;
                                     let saReqDiv = document.createElement('div');
-                                    saReqDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid #9c27b0; padding: 3px 8px; background: #f3e5f5; border-radius: 4px; font-size: 12px;';
+                                    saReqDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid var(--md-sys-color-tertiary); padding: 3px 8px; background: var(--md-sys-color-tertiary-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);';
                                     let saReqContentId = 'sa-req-' + saReqMsg.id;
                                     let saReqTokenK = ((saReqMsg.content || '').length / 3000).toFixed(2);
-                                    let sendBtnHtml = '<button onclick="event.stopPropagation(); subagentSend(\'' + saReqMsg.subagent_id + '\')" style="border:none;background:#6a1b9a;color:#fff;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:3px;margin-left:4px;">🔍 发送</button>';
+                                    let sendBtnHtml = '<button class="md-button md-button--tonal md-button--compact" onclick="event.stopPropagation(); subagentSend(\'' + saReqMsg.subagent_id + '\')" style="min-height:24px;padding:0 var(--md-sys-spacing-2);margin-left:var(--md-sys-spacing-1);">' + mdIcon('north_east', 14) + ' 发送</button>';
                                     saReqDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="var el=document.getElementById(\'' + saReqContentId + '\'); if(el){el.style.display=el.style.display===\'none\'?\'block\':\'none\'; this.querySelector(\'.sa-arrow\').textContent=el.style.display===\'none\'?\'▶\':\'▼\';}">' +
-                                        '<span><span class="sa-arrow" style="font-size:10px;">▶</span> <span style="color:#6a1b9a; font-weight:bold;">🤖 Subagent 请求</span> <span style="color:#999;">[ID:' + saReqMsg.id + '] ~' + saReqTokenK + 'k</span></span>' +
+                                        '<span><span class="sa-arrow" style="font-size:10px;">▶</span> <span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;">' + mdIcon('smart_toy', 14) + ' Subagent 请求</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + saReqMsg.id + '] ~' + saReqTokenK + 'k</span></span>' +
                                         '<span style="display:flex; gap:2px; align-items:center;">' + sendBtnHtml +
-                                            '<button onclick="event.stopPropagation(); copyMsg(' + saReqIdx + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="复制">📋</button>' +
-                                            '<button onclick="event.stopPropagation(); openEditModal(' + saReqMsg.id + ', \'content\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="编辑">✏️</button>' +
-                                            '<button onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + saReqIdx + ',mode_type:\'hide\'})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="隐藏">🙈</button>' +
-                                            '<button onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + saReqIdx + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除">🗑️</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + saReqIdx + ')" title="复制">' + mdIcon('content_copy', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + saReqMsg.id + ', \'content\')" title="编辑">' + mdIcon('edit', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + saReqIdx + ',mode_type:\'hide\'})" title="隐藏">' + mdIcon('visibility_off', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + saReqIdx + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                         '</span></div>' +
-                                        '<div id="' + saReqContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fff; border-radius:4px; border:1px solid #ce93d8; max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(saReqMsg.content || '') + '</div></div>';
+                                        '<div id="' + saReqContentId + '" style="display:none; margin-top:4px; padding:4px; background:var(--md-sys-color-surface-container-lowest); border-radius:var(--md-sys-shape-corner-extra-small); border:1px solid var(--md-sys-color-outline-variant); max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(saReqMsg.content || '') + '</div></div>';
                                     mainContentContainer.appendChild(saReqDiv);
                                 }
                                 if (_saEntry.response) {
                                     let saRespMsg = _saEntry.response.msg;
                                     let saRespIdx = _saEntry.response.index;
                                     let saRespDiv = document.createElement('div');
-                                    let saRespColor = saRespMsg.has_subagent_sse ? '#28a745' : '#fd7e14';
-                                    saRespDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + saRespColor + '; padding: 3px 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;';
+                                    let saRespColor = saRespMsg.has_subagent_sse ? 'var(--md-sys-color-success)' : 'var(--md-sys-color-warning)';
+                                    saRespDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + saRespColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);';
                                     let saRespContentId = 'sa-resp-' + saRespMsg.id;
                                     let saRespTokenK = ((saRespMsg.content || '').length / 3000).toFixed(2);
-                                    let adoptBtnHtml = saRespMsg.has_subagent_sse ? '<button onclick="event.stopPropagation(); subagentAdopt(\'' + saRespMsg.subagent_id + '\', ' + saRespMsg.id + ')" style="border:none;background:#28a745;color:#fff;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:3px;margin-left:4px;">✅ 返回</button>' : '<span style="color:#fd7e14;font-size:10px;">⏳ 响应中...</span>';
+                                    let adoptBtnHtml = saRespMsg.has_subagent_sse ? '<button class="md-button md-button--filled md-button--compact" onclick="event.stopPropagation(); subagentAdopt(\'' + saRespMsg.subagent_id + '\', ' + saRespMsg.id + ')" style="min-height:24px;padding:0 var(--md-sys-spacing-2);margin-left:var(--md-sys-spacing-1);">' + mdIcon('check', 14) + ' 返回</button>' : '<span style="color:var(--md-sys-color-warning);font-size:var(--md-sys-typescale-label-small-size);display:inline-flex;align-items:center;gap:2px;">' + mdIcon('hourglass', 14) + ' 响应中</span>';
                                     saRespDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="var el=document.getElementById(\'' + saRespContentId + '\'); if(el){el.style.display=el.style.display===\'none\'?\'block\':\'none\'; this.querySelector(\'.sa-arrow\').textContent=el.style.display===\'none\'?\'▶\':\'▼\';}">' +
-                                        '<span><span class="sa-arrow" style="font-size:10px;">▶</span> <span style="color:' + saRespColor + '; font-weight:bold;">' + (saRespMsg.has_subagent_sse ? '✅ Subagent 结果' : '⏳ Subagent 响应中') + '</span> <span style="color:#999;">[ID:' + saRespMsg.id + '] ~' + saRespTokenK + 'k</span></span>' +
+                                        '<span><span class="sa-arrow" style="font-size:10px;">▶</span> <span style="color:' + saRespColor + '; font-weight:500; display:inline-flex; align-items:center; gap:4px;">' + (saRespMsg.has_subagent_sse ? mdIcon('check_circle', 14) + ' Subagent 结果' : mdIcon('hourglass', 14) + ' Subagent 响应中') + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + saRespMsg.id + '] ~' + saRespTokenK + 'k</span></span>' +
                                         '<span style="display:flex; gap:2px; align-items:center;">' + adoptBtnHtml +
-                                            '<button onclick="event.stopPropagation(); copyMsg(' + saRespIdx + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="复制">📋</button>' +
-                                            '<button onclick="event.stopPropagation(); openEditModal(' + saRespMsg.id + ', \'content\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="编辑">✏️</button>' +
-                                            '<button onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + saRespIdx + ',mode_type:\'hide\'})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="隐藏">🙈</button>' +
-                                            '<button onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + saRespIdx + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除">🗑️</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + saRespIdx + ')" title="复制">' + mdIcon('content_copy', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + saRespMsg.id + ', \'content\')" title="编辑">' + mdIcon('edit', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + saRespIdx + ',mode_type:\'hide\'})" title="隐藏">' + mdIcon('visibility_off', 14) + '</button>' +
+                                            '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + saRespIdx + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                         '</span></div>' +
-                                        '<div id="' + saRespContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fff; border-radius:4px; border:1px solid #eee; max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(saRespMsg.content || '') + '</div></div>';
+                                        '<div id="' + saRespContentId + '" style="display:none; margin-top:4px; padding:4px; background:var(--md-sys-color-surface-container-lowest); border-radius:var(--md-sys-shape-corner-extra-small); border:1px solid var(--md-sys-color-outline-variant); max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(saRespMsg.content || '') + '</div></div>';
                                     mainContentContainer.appendChild(saRespDiv);
                                 }
                             }
