@@ -57,9 +57,9 @@ function renderProviderList() {
         var testResult = _providerTestResults[idx];
         var testCls = 'prov-btn-test';
         var testText = '测试';
-        if (testResult === 'ok') { testCls = 'prov-btn-test prov-test-ok'; testText = '✓'; }
-        else if (testResult === 'fail') { testCls = 'prov-btn-test prov-test-fail'; testText = '✗'; }
-        else if (testResult === 'testing') { testCls = 'prov-btn-test prov-test-ing'; testText = '…'; }
+        if (testResult === 'ok') { testCls = 'prov-btn-test prov-test-ok'; testText = mdIcon('check', 16); }
+        else if (testResult === 'fail') { testCls = 'prov-btn-test prov-test-fail'; testText = mdIcon('close', 16); }
+        else if (testResult === 'testing') { testCls = 'prov-btn-test prov-test-ing'; testText = mdIcon('hourglass', 16); }
 
         var keyRow = document.createElement('div');
         keyRow.className = 'prov-row';

@@ -7,7 +7,9 @@ function toggleCodeBlock(btn) {
     content.classList.toggle('collapsed');
     chatContainer.scrollTop = scrollBefore;
     if (wrapper.classList.contains('correction-block')) {
-        btn.innerText = content.classList.contains('collapsed') ? '展开 ▾' : '折叠 ▴';
+        btn.innerHTML = content.classList.contains('collapsed')
+            ? '展开 ' + mdIcon('expand_more', 12)
+            : '折叠 ' + mdIcon('expand_less', 12);
         if (!content.classList.contains('collapsed')) {
             var ta = content.querySelector('textarea');
             if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }

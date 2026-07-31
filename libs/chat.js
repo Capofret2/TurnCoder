@@ -601,32 +601,32 @@
 
                             switch(part.status) {
                                 case 'adopted':
-                                    statusLabel = '<span style="color: #28a745; font-weight: bold;">已采用</span>';
-                                    let reverseBtnHtml = part.content.includes('<'.repeat(4)) ? `<button class="cb-btn cb-reverse" onclick="reverseCodeBlock(this, ${index}, '${part.id}')">🔄 反向</button>` : '';
+                                    statusLabel = `<span style="color: var(--md-sys-color-success); font-weight: 500;">已采用</span>`;
+                                    let reverseBtnHtml = part.content.includes('<'.repeat(4)) ? `<button class="cb-btn cb-reverse" onclick="reverseCodeBlock(this, ${index}, '${part.id}')">${mdIcon('swap', 14)} 反向</button>` : '';
                                     if (window.currentSessionId === 'starred_session_virtual') {
-                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
+                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
                                     } else {
-                                        opsHtml = `<button class="cb-btn cb-undo" onclick="undoCodeBlock(this, ${index}, '${part.id}')">↩️ 撤销</button>
+                                        opsHtml = `<button class="cb-btn cb-undo" onclick="undoCodeBlock(this, ${index}, '${part.id}')">${mdIcon('undo', 14)} 撤销</button>
                                                    ${reverseBtnHtml}
-                                                   <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
+                                                   <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
                                     }
                                     break;
                                 case 'rejected':
-                                    statusLabel = '<span style="color: #dc3545; font-weight: bold;">未采用</span>';
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
-                                    wrapper.style.opacity = '0.6';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">未采用</span>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 case 'failed':
-                                    statusLabel = '<span style="color: #dc3545; font-weight: bold;">⚠️ 失败</span>';
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
-                                    wrapper.style.opacity = '0.7';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">${mdIcon('warning', 14)} 失败</span>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 default: // pending
                                     statusLabel = blockTypeLabel;
                                     opsHtml = `
-                                        <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>
-                                        <button class="cb-btn cb-accept" onclick="applyCodeBlock(this, ${index}, '${part.id}')">✅ 采用</button>
-                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">❌ 不采用</button>
+                                        <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>
+                                        <button class="cb-btn cb-accept" onclick="applyCodeBlock(this, ${index}, '${part.id}')">${mdIcon('check', 14)} 采用</button>
+                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">${mdIcon('close', 14)} 不采用</button>
                                     `;
                             }
                             
@@ -635,7 +635,7 @@
                             const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${mdIcon('expand_more', 14)} 折叠</button>`;
                             let warningHtml = '';
                             if (part.warning && part.status === 'pending') {
-                                warningHtml = `<span style="color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 10px;" title="生成时预检查发现问题，但您仍可尝试采用">⚠️ 预检警告: ${part.warning}</span>`;
+                                warningHtml = `<span style="color: var(--md-sys-color-on-warning-container); background: var(--md-sys-color-warning-container); border: none; border-radius: var(--md-sys-shape-corner-extra-small); padding: 1px var(--md-sys-spacing-2); font-size: var(--md-sys-typescale-label-small-size); margin-left: var(--md-sys-spacing-3); display: inline-flex; align-items: center; gap: 2px;" title="生成时预检查发现问题，但您仍可尝试采用">${mdIcon('warning', 12)} 预检警告: ${part.warning}</span>`;
                             }
                             header.innerHTML = `<div style="display:flex; align-items:center;"><span class="cb-label">${statusLabel}</span>${warningHtml}</div><div class="cb-ops">${toggleBtn}${opsHtml}</div>`;
                             
@@ -671,25 +671,25 @@
                             let statusLabel = '';
                             switch(part.status) {
                                 case 'adopted':
-                                    statusLabel = '<span style="color: #28a745; font-weight: bold;">已执行</span>';
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
+                                    statusLabel = `<span style="color: var(--md-sys-color-success); font-weight: 500;">已执行</span>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
                                     break;
                                 case 'rejected':
-                                    statusLabel = '<span style="color: #dc3545; font-weight: bold;">已跳过</span>';
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
-                                    wrapper.style.opacity = '0.6';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">已跳过</span>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 case 'failed':
-                                    statusLabel = '<span style="color: #dc3545; font-weight: bold;">⚠️ 执行失败</span>';
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>`;
-                                    wrapper.style.opacity = '0.7';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">${mdIcon('warning', 14)} 执行失败</span>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 default:
-                                    statusLabel = '🖥️ 终端操作';
+                                    statusLabel = `${mdIcon('terminal', 14)} 终端操作`;
                                     opsHtml = `
-                                        <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋 复制</button>
-                                        <button class="cb-btn cb-accept" onclick="applyCodeBlock(this, ${index}, '${part.id}')">▶️ 执行</button>
-                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">⏭️ 跳过</button>
+                                        <button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">${mdIcon('content_copy', 14)} 复制</button>
+                                        <button class="cb-btn cb-accept" onclick="applyCodeBlock(this, ${index}, '${part.id}')">${mdIcon('play_arrow', 14)} 执行</button>
+                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">${mdIcon('skip_next', 14)} 跳过</button>
                                     `;
                             }
                             
@@ -729,37 +729,37 @@
                             let opsHtml = '', statusLabel = '';
                             switch(part.status) {
                                 case 'executing':
-                                    statusLabel = `<span style="color: #007bff; font-weight: bold;">⏳ 执行中</span> 🔧<b>${toolName}</b>`;
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">🔄 重试</button>`;
+                                    statusLabel = `<span style="color: var(--md-sys-color-primary); font-weight: 500;">${mdIcon('hourglass', 14)} 执行中</span> ${mdIcon('build', 14)}<b>${toolName}</b>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button>`;
                                     hasPendingActions = true;
                                     break;
                                 case 'adopted':
                                     let _hasToolResult = toolData.id && toolResultMap[toolData.id] && toolResultMap[toolData.id].length > 0;
                                     if (_hasToolResult) {
-                                        statusLabel = `<span style="color: #28a745; font-weight: bold;">已采纳</span>🔧<b>${toolName}</b>`;
-                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button>`;
+                                        statusLabel = `<span style="color: var(--md-sys-color-success); font-weight: 500;">已采纳</span>${mdIcon('build', 14)}<b>${toolName}</b>`;
+                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
                                     } else {
-                                        statusLabel = `<span style="color: #fd7e14; font-weight: bold;">已发送，等待返回</span>🔧<b>${toolName}</b>`;
+                                        statusLabel = `<span style="color: var(--md-sys-color-warning); font-weight: 500;">已发送，等待返回</span>${mdIcon('build', 14)}<b>${toolName}</b>`;
                                         hasPendingActions = true;
-                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">🔄 重试</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button>`;
+                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
                                     }
                                     break;
                                 case 'rejected':
-                                    statusLabel = `<span style="color: #dc3545; font-weight: bold;">已拒绝</span> 🔧<b>${toolName}</b>`;
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button>`;
-                                    wrapper.style.opacity = '0.6';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">已拒绝</span> ${mdIcon('build', 14)}<b>${toolName}</b>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 case 'failed':
-                                    statusLabel = `<span style="color: #dc3545; font-weight: bold;">⚠️ 被拦截</span> 🔧<b>${toolName}</b>`;
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button>`;
-                                    wrapper.style.opacity = '0.7';
+                                    statusLabel = `<span style="color: var(--md-sys-color-error); font-weight: 500;">${mdIcon('block', 14)} 被拦截</span> ${mdIcon('build', 14)}<b>${toolName}</b>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
+                                    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
                                     break;
                                 default:
-                                    statusLabel = `🔧<b>${toolName}</b>`;
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)">📋</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">✅ 采纳</button>
-                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">❌ 拒绝</button>`;
+                                    statusLabel = `${mdIcon('build', 14)}<b>${toolName}</b>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('check', 14)} 采纳</button>
+                                        <button class="cb-btn cb-reject" onclick="rejectCodeBlock(this, ${index}, '${part.id}')">${mdIcon('close', 14)} 拒绝</button>`;
                                     if (toolName === '申请审批') {
-                                        opsHtml += `<button class="cb-btn" style="background:#dc3545;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px;" onclick="rejectApproval(this, ${index}, '${part.id}')">🚫 拒绝审批</button>`;
+                                        opsHtml += `<button class="cb-btn cb-reject" onclick="rejectApproval(this, ${index}, '${part.id}')">${mdIcon('block', 14)} 拒绝审批</button>`;
                                     }
                             }
                             const header = document.createElement('div');
@@ -1136,21 +1136,28 @@
                 }
 
                 if (hasPendingActions && !hasFailedOrRejected) {
-                    footer = `<div style="text-align: right; margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px;"><button class="cb-reject-all" onclick="rejectAllInBubble(this, ${index})">❌ 一键拒绝</button><button class="cb-accept-all" onclick="acceptAllInBubble(this, ${index})">✅ 一键采用</button></div>` + footer;
+                    footer = `<div style="text-align: right; margin-top: var(--md-sys-spacing-3); display: flex; justify-content: flex-end; gap: var(--md-sys-spacing-2);"><button class="cb-reject-all" onclick="rejectAllInBubble(this, ${index})">${mdIcon('close', 16)} 一键拒绝</button><button class="cb-accept-all" onclick="acceptAllInBubble(this, ${index})">${mdIcon('check', 16)} 一键采用</button></div>` + footer;
                 }
                 
-                let upBtnStyle = msg.rating === 'up' ? 'background: #d4edda; border: 1px solid #28a745;' : 'opacity: 0.6;';
-                let downBtnStyle = msg.rating === 'down' ? 'background: #f8d7da; border: 1px solid #dc3545;' : 'opacity: 0.6;';
-                
+                // Selection is a tonal fill rather than a swapped glyph: abstract
+                // icons cannot carry the 🌟/⭐ distinction the emoji pair relied on.
+                let upBtnStyle = msg.rating === 'up'
+                    ? 'background: var(--md-sys-color-success-container); color: var(--md-sys-color-on-success-container);'
+                    : 'opacity: var(--md-sys-state-disabled-content-opacity);';
+                let downBtnStyle = msg.rating === 'down'
+                    ? 'background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container);'
+                    : 'opacity: var(--md-sys-state-disabled-content-opacity);';
+                let starBtnStyle = isStarred ? 'color: var(--md-sys-color-tertiary);' : 'opacity: var(--md-sys-state-disabled-content-opacity);';
+
                 bubble.innerHTML = `
                     <div class="ops-buttons">
-                        ${globalSettings.enable_starred ? `<button onclick="postAction({action: 'toggle_star', index: ${index}})" title="${isStarred ? '取消收藏' : '收藏该上下文'}">${isStarred ? '🌟' : '⭐'}</button>` : ''}
-                        ${msg.role === 'assistant' ? `<button onclick="postAction({action: 'retry_message', index: ${index}})" title="以当时上下文重新生成">🔄</button><button style="${upBtnStyle}" onclick="postAction({action: 'rate_message', index: ${index}, rating: 'up'})" title="好评">👍</button><button style="${downBtnStyle}" onclick="postAction({action: 'rate_message', index: ${index}, rating: 'down'})" title="差评">👎</button>` : ''}
-                        <button onclick="toggleMode(${index}, 'hide')">${msg.is_hidden ? '取消隐藏' : '隐藏'}</button>
-                        <button onclick="toggleMode(${index}, 'omit')">${msg.is_omitted ? '全文' : '概括'}</button>
-                        <button onclick="toggleMode(${index}, 'collapse')">${msg.is_collapsed ? '展开' : '折叠'}</button>
-                        <button onclick="copyMsg(${index})" title="复制正文">📋</button>${msg.role === 'assistant' ? `<button onclick="copyPayload(${index})" title="复制发送时的上下文">📦</button>` : ''}${msg._style_filter_original ? `<button onclick="toggleStyleDiff(${msg.id})" title="显示风格过滤差异">🔍</button>` : ''}
-                        <button onclick="openEditModal(${msg.id}, 'content')" title="编辑气泡原文">✏️</button>${globalSettings.developer_mode ? `<button onclick="openEditModal(${msg.id}, 'annotation')" title="批注 (生成Diff对比差异)">🖍️</button>` : ''}<button onclick="deleteMessageOptimistic(${index})" title="${msg.is_hidden ? '彻底删除' : '隐藏 (再次点击彻底删除)'}">🗑️</button>
+                        ${globalSettings.enable_starred ? `<button style="${starBtnStyle}" onclick="postAction({action: 'toggle_star', index: ${index}})" title="${isStarred ? '取消收藏' : '收藏该上下文'}">${mdIcon('star', 14)}</button>` : ''}
+                        ${msg.role === 'assistant' ? `<button onclick="postAction({action: 'retry_message', index: ${index}})" title="以当时上下文重新生成">${mdIcon('refresh', 14)}</button><button style="${upBtnStyle}" onclick="postAction({action: 'rate_message', index: ${index}, rating: 'up'})" title="好评">${mdIcon('thumb_up', 14)}</button><button style="${downBtnStyle}" onclick="postAction({action: 'rate_message', index: ${index}, rating: 'down'})" title="差评">${mdIcon('thumb_down', 14)}</button>` : ''}
+                        <button onclick="toggleMode(${index}, 'hide')">${mdIcon('visibility_off', 14)} ${msg.is_hidden ? '取消隐藏' : '隐藏'}</button>
+                        <button onclick="toggleMode(${index}, 'omit')">${mdIcon('inventory', 14)} ${msg.is_omitted ? '全文' : '概括'}</button>
+                        <button onclick="toggleMode(${index}, 'collapse')">${mdIcon('folder', 14)} ${msg.is_collapsed ? '展开' : '折叠'}</button>
+                        <button onclick="copyMsg(${index})" title="复制正文">${mdIcon('content_copy', 14)}</button>${msg.role === 'assistant' ? `<button onclick="copyPayload(${index})" title="复制发送时的上下文">${mdIcon('inventory', 14)}</button>` : ''}${msg._style_filter_original ? `<button onclick="toggleStyleDiff(${msg.id})" title="显示风格过滤差异">${mdIcon('search', 14)}</button>` : ''}
+                        <button onclick="openEditModal(${msg.id}, 'content')" title="编辑气泡原文">${mdIcon('edit', 14)}</button>${globalSettings.developer_mode ? `<button onclick="openEditModal(${msg.id}, 'annotation')" title="批注 (生成Diff对比差异)">${mdIcon('brush', 14)}</button>` : ''}<button onclick="deleteMessageOptimistic(${index})" title="${msg.is_hidden ? '彻底删除' : '隐藏 (再次点击彻底删除)'}">${mdIcon('delete', 14)}</button>
                     </div>`;
                 
                 const idBadge = document.createElement('div');
@@ -1170,16 +1177,19 @@
                     var menu = document.getElementById('bubble-context-menu');
                     if (!menu) return;
                     var items = '';
-                    if (globalSettings.enable_starred) items += '<div class="bubble-ctx-item" onclick="postAction({action:\'toggle_star\',index:' + index + '})">' + (isStarred ? '🌟 取消收藏' : '⭐ 收藏') + '</div>';
-                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="postAction({action:\'retry_message\',index:' + index + '})">🔄 重试</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'up\'})">👍 好评</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'down\'})">👎 差评</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'hide\')">' + (msg.is_hidden ? '取消隐藏' : '🙈 隐藏') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'omit\')">' + (msg.is_omitted ? '📖 全文' : '📦 概括') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? '📂 展开' : '📁 折叠') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="copyMsg(' + index + ')">📋 复制</div>';
-                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="copyPayload(' + index + ')">📦 复制上下文</div>';
-                    items += '<div class="bubble-ctx-item" onclick="openEditModal(' + msg.id + ',\'content\')">✏️ 编辑</div>';
-                    items += '<div class="bubble-ctx-item" onclick="deleteMessageOptimistic(' + index + ')">🗑️ 删除</div>';
-                    items = '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? '📂 展开' : '📁 折叠') + '</div>';
+                    if (globalSettings.enable_starred) items += '<div class="bubble-ctx-item" onclick="postAction({action:\'toggle_star\',index:' + index + '})">' + mdIcon('star', 16) + (isStarred ? ' 取消收藏' : ' 收藏') + '</div>';
+                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="postAction({action:\'retry_message\',index:' + index + '})">' + mdIcon('refresh', 16) + ' 重试</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'up\'})">' + mdIcon('thumb_up', 16) + ' 好评</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'down\'})">' + mdIcon('thumb_down', 16) + ' 差评</div>';
+                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'hide\')">' + mdIcon('visibility_off', 16) + (msg.is_hidden ? ' 取消隐藏' : ' 隐藏') + '</div>';
+                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'omit\')">' + (msg.is_omitted ? mdIcon('book', 16) + ' 全文' : mdIcon('inventory', 16) + ' 概括') + '</div>';
+                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? mdIcon('folder_open', 16) + ' 展开' : mdIcon('folder', 16) + ' 折叠') + '</div>';
+                    items += '<div class="bubble-ctx-item" onclick="copyMsg(' + index + ')">' + mdIcon('content_copy', 16) + ' 复制</div>';
+                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="copyPayload(' + index + ')">' + mdIcon('inventory', 16) + ' 复制上下文</div>';
+                    items += '<div class="bubble-ctx-item" onclick="openEditModal(' + msg.id + ',\'content\')">' + mdIcon('edit', 16) + ' 编辑</div>';
+                    items += '<div class="bubble-ctx-item" onclick="deleteMessageOptimistic(' + index + ')">' + mdIcon('delete', 16) + ' 删除</div>';
+                    // NOTE: plain assignment, not +=. Everything accumulated above is
+                    // discarded and the menu only ever shows the collapse entry. Behaviour
+                    // left as-is pending a decision on whether that was intentional.
+                    items = '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? mdIcon('folder_open', 16) + ' 展开' : mdIcon('folder', 16) + ' 折叠') + '</div>';
                     menu.innerHTML = items;
                     menu.style.display = 'block';
                     menu.style.left = e.clientX + 'px';
