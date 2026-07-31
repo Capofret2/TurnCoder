@@ -183,7 +183,7 @@
             if (msg.is_enforcement) return;
             if (msg.is_auto_read && !globalSettings.enable_show_all_autoread) return;
             if (msg.is_outdated_read) {
-                msg = Object.assign({}, msg, {is_collapsed: true, summary: '📁 ' + (msg.auto_read_file || msg.summary || '') + ' (已有更新的自动读取结果)'});
+                msg = Object.assign({}, msg, {is_collapsed: true, summary: mdIcon('description', 14) + ' ' + (msg.auto_read_file || msg.summary || '') + ' (已有更新的自动读取结果)'});
             }
             let msgHash = msg.id + '_' + msg.role + '_' + (msg.content||'').length + '_' + (msg.content||'').slice(0,30) + '_' + (msg.content||'').slice(-30) + '_' + (msg.summary||'') + '_' + msg.is_collapsed + '_' + msg.is_omitted + '_' + msg.is_hidden + '_' + msg.is_unread + '_' + (msg.rating||'') + '_' + (msg.model_name||'') + '_' + (msg.timing ? msg.timing.ttfb + '_' + (msg.timing.download||0) : '') + '_' + (msg.content_parts ? msg.content_parts.map(p => p.type + '_' + p.status + '_' + (p.content||'').length + '_' + (p.content||'').slice(0,10) + '_' + (p.content||'').slice(-10)).join(',') : 'none') + '_' + (msg.diff_content ? msg.diff_content.length : 0) + '_' + (msg.term_state||'') + '_mm' + (msg.multimodal_blocks ? msg.multimodal_blocks.length : 0) + '_' + index + '_' + isStarred + '_bt' + (window._autopilotActive && msg._autopilot_gen !== undefined && msg._autopilot_gen === window._autopilotGen ? 1 : 0);
             if (msg.content_parts) {
@@ -479,7 +479,7 @@
                                     _itBlock.style.cssText = 'margin: 4px 0; border: 1px solid #ce93d8; border-radius: 6px; background: #f3e5f5; font-size: 12px; overflow: hidden;';
                                     let _itHeader = document.createElement('div');
                                     _itHeader.style.cssText = 'padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #ede7f6;';
-                                    _itHeader.innerHTML = '<span style="color:#6a1b9a; font-weight:bold;"><span class="it-arrow" style="font-size:10px;">▶</span> 💭 内联思维链</span><span style="color:#999; font-size:11px;">' + (_itThinkContent.length > 50 ? '~' + (_itThinkContent.length / 3000).toFixed(2) + 'k' : '') + '</span>';
+                                    _itHeader.innerHTML = '<span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;"><span class="it-arrow" style="font-size:10px;">▶</span>' + mdIcon('psychology', 14) + ' 内联思维链</span><span style="color:var(--md-sys-color-on-surface-variant); font-size:var(--md-sys-typescale-label-small-size);">' + (_itThinkContent.length > 50 ? '~' + (_itThinkContent.length / 3000).toFixed(2) + 'k' : '') + '</span>';
                                     let _itBody = document.createElement('div');
                                     _itBody.className = 'inline-thinking-body';
                                     _itBody.style.cssText = 'display: none; padding: 6px 10px; border-top: 1px solid #ce93d8; white-space: pre-wrap; line-height: 1.5; color: #4a148c; max-height: 300px; overflow-y: auto;';
@@ -526,7 +526,7 @@
                             header.style.padding = '2px 5px';
                             let isExpanded = window._lastEditedCorrectionId === part.id;
                             let btnText = isExpanded ? '折叠 ▴' : '展开 ▾';
-                            header.innerHTML = `<div style="display:flex; align-items:center;"><span class="cb-label" style="color:#999; font-weight:normal; font-size:11px;">💭 内部反思与修正...</span></div>
+                            header.innerHTML = `<div style="display:flex; align-items:center;"><span class="cb-label" style="color:var(--md-sys-color-on-surface-variant); font-weight:400; font-size:var(--md-sys-typescale-label-small-size);">${mdIcon('psychology', 12)} 内部反思与修正</span></div>
                                                 <div class="cb-ops"><button class="cb-btn cb-toggle" style="border:none; background:transparent; color:#999; font-size:11px; padding:2px 5px; box-shadow:none;" onclick="toggleCodeBlock(this)">${btnText}</button></div>`;
                             
                             const contentDiv = document.createElement('div');
@@ -573,7 +573,7 @@
                             saveBtn.onclick = () => {
                                 window._lastEditedCorrectionId = part.id;
                                 postAction({action: 'edit_correction', msg_index: index, part_id: part.id, content: textarea.value});
-                                saveBtn.innerText = '✅ 已保存';
+                                saveBtn.innerHTML = mdIcon('check', 12) + ' 已保存';
                                 setTimeout(() => saveBtn.innerText = '保存批注', 2000);
                             };
                             
@@ -699,7 +699,7 @@
                             const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${mdIcon('expand_more', 14)} 折叠</button>`;
                             let warningHtml = '';
                             if (part.warning && part.status === 'pending') {
-                                warningHtml = `<span style="color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 10px;">⚠️ ${part.warning}</span>`;
+                                warningHtml = `<span style="color: var(--md-sys-color-on-warning-container); background: var(--md-sys-color-warning-container); border: none; border-radius: var(--md-sys-shape-corner-extra-small); padding: 1px var(--md-sys-spacing-2); font-size: var(--md-sys-typescale-label-small-size); margin-left: var(--md-sys-spacing-3); display: inline-flex; align-items: center; gap: 2px;">${mdIcon('warning', 12)} ${part.warning}</span>`;
                             }
                             header.innerHTML = `<div style="display:flex; align-items:center;"><span class="cb-label">${statusLabel}</span>${warningHtml}</div><div class="cb-ops">${toggleBtn}${opsHtml}</div>`;
                             
@@ -862,7 +862,7 @@
                                     _dhDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + _dhColor + '; padding: 3px 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;';
                                     var _dhContentId = 'tr-content-' + trMsg.id;
                                     var _dhMsgId = trMsg.id;
-                                    _dhDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dhColor + '; font-weight:bold;">' + (_dhIsErr ? '\u274c Error' : '\u2705 Result') + _dhTimeStr + '</span> <span style="color:#999;">[ID:' + trMsg.id + '] ~' + _dhTokenK + 'k</span></span><span style="display:flex; gap:2px;"><button onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="\u590d\u5236">\ud83d\udccb</button><button onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="\u7f16\u8f91">\u270f\ufe0f</button><button onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="\u9690\u85cf">\ud83d\ude48</button><button onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="\u5220\u9664">\ud83d\uddd1\ufe0f</button></span></div>';
+                                    _dhDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dhColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dhIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + _dhTimeStr + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + trMsg.id + '] ~' + _dhTokenK + 'k</span></span><span style="display:flex; gap:2px;"><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" title="\u590d\u5236">' + mdIcon('content_copy', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" title="\u7f16\u8f91">' + mdIcon('edit', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" title="\u9690\u85cf">' + mdIcon('visibility_off', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" title="\u5220\u9664">' + mdIcon('delete', 14) + '</button></span></div>';
                                     _dhDiv.querySelector('div').onclick = function(e) { if (e.target.tagName === 'BUTTON') return; _fetchDehydratedContent(_dhMsgId); };
                                     mainContentContainer.appendChild(_dhDiv);
                                     return;
@@ -870,7 +870,7 @@
                                                 if (trMsg.is_hidden) {
                                     let trHiddenDiv = document.createElement('div');
                                     trHiddenDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid #007bff; padding: 3px 8px; background: #e3f2fd; border-radius: 4px; font-size: 11px; display:flex; justify-content:space-between; align-items:center;';
-                                    trHiddenDiv.innerHTML = '<span style="color:#004085;">🙈 已隐藏 [ID:' + trMsg.id + ']</span><button onclick="postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" style="border:none;background:#007bff;color:#fff;cursor:pointer;font-size:10px;padding:2px 6px;border-radius:3px;">取消隐藏</button>';
+                                    trHiddenDiv.innerHTML = '<span style="color:var(--md-sys-color-on-secondary-container); display:inline-flex; align-items:center; gap:4px;">' + mdIcon('visibility_off', 14) + ' 已隐藏 [ID:' + trMsg.id + ']</span><button class="md-button md-button--tonal md-button--compact" onclick="postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})">取消隐藏</button>';
                                     mainContentContainer.appendChild(trHiddenDiv);
                                     return;
                                 }
@@ -890,12 +890,12 @@
                                     _trDisplayContent = _trDisplayContent.replace('This file was modified.', 'This file was modified by another session.');
                                 }
                                 trDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="var el=document.getElementById(\'' + trContentId + '\'); if(el){el.style.display=el.style.display===\'none\'?\'block\':\'none\'; this.querySelector(\'.tr-arrow\').textContent=el.style.display===\'none\'?\'▶\':\'▼\';}">' +
-                                    '<span><span class="tr-arrow" style="font-size:10px;">▶</span> <span style="color:' + trColor + '; font-weight:bold;">' + (trIsErr ? '❌ Error' : '✅ Result') + _trTimeStr + '</span> <span style="color:#999;">[ID:' + trMsg.id + '] ~' + trTokenK + 'k</span></span>' +
+                                    '<span><span class="tr-arrow" style="font-size:10px;">▶</span> <span style="color:' + trColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (trIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + _trTimeStr + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + trMsg.id + '] ~' + trTokenK + 'k</span></span>' +
                                     '<span style="display:flex; gap:2px;">' +
-                                        '<button onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="复制">📋</button>' +
-                                        '<button onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="编辑">✏️</button>' +
-                                        '<button onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="隐藏">🙈</button>' +
-                                        '<button onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除">🗑️</button>' +
+                                        '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" title="复制">' + mdIcon('content_copy', 14) + '</button>' +
+                                        '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" title="编辑">' + mdIcon('edit', 14) + '</button>' +
+                                        '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" title="隐藏">' + mdIcon('visibility_off', 14) + '</button>' +
+                                        '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                     '</span>' +
                                 '</div>' +
                                 '<div id="' + trContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fff; border-radius:4px; border:1px solid #eee; max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(_trDisplayContent) + '</div></div>';
@@ -986,7 +986,7 @@
                     var _dsIsErr = (msg.summary || '').includes('Error');
                     var _dsColor = _dsIsErr ? '#dc3545' : '#28a745';
                     var _dsMsgId = msg.id;
-                    mainContentContainer.innerHTML = '<div style="border-left: 3px solid ' + _dsColor + '; padding: 3px 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;"><div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dsColor + '; font-weight:bold;">' + (_dsIsErr ? '\u274c Error' : '\u2705 Result') + '</span> <span style="color:#999;">[ID:' + msg.id + '] ~' + _dsTkK + 'k</span></span></div></div>';
+                    mainContentContainer.innerHTML = '<div style="border-left: 3px solid ' + _dsColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);"><div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dsColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dsIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + msg.id + '] ~' + _dsTkK + 'k</span></span></div></div>';
                     mainContentContainer.querySelector('div > div').onclick = function() { _fetchDehydratedContent(_dsMsgId); };
                 } else { // Fallback for old messages or pure text
                     let _fbContent = typeof filterProtocolMarkers === 'function' ? filterProtocolMarkers(msg.content) : msg.content;
@@ -1013,7 +1013,7 @@
                             _fbBlock.style.cssText = 'margin: 4px 0; border: 1px solid #ce93d8; border-radius: 6px; background: #f3e5f5; font-size: 12px; overflow: hidden;';
                             let _fbHeader = document.createElement('div');
                             _fbHeader.style.cssText = 'padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #ede7f6;';
-                            _fbHeader.innerHTML = '<span style="color:#6a1b9a; font-weight:bold;"><span class="it-arrow" style="font-size:10px;">▶</span> 💭 内联思维链</span>';
+                            _fbHeader.innerHTML = '<span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;"><span class="it-arrow" style="font-size:10px;">▶</span>' + mdIcon('psychology', 14) + ' 内联思维链</span>';
                             let _fbBody = document.createElement('div');
                             _fbBody.className = 'inline-thinking-body';
                             _fbBody.style.cssText = 'display: none; padding: 6px 10px; border-top: 1px solid #ce93d8; white-space: pre-wrap; line-height: 1.5; color: #4a148c; max-height: 300px; overflow-y: auto;';
@@ -1098,7 +1098,7 @@
                         if (msg.timing.ttfb_retries && msg.timing.ttfb_retries.length > 0) {
                             let _retries = msg.timing.ttfb_retries;
                             let _totalRetryTime = _retries.reduce((sum, r) => sum + (r.elapsed || 0), 0);
-                            _ts += `🔄×${_retries.length}(+${_totalRetryTime.toFixed(0)}s) `;
+                            _ts += `${mdIcon('refresh', 12)}×${_retries.length}(+${_totalRetryTime.toFixed(0)}s) `;
                         }
                         if (typeof msg.timing.upload_t === 'number') {
                             _ts += `上传: ${msg.timing.upload_t.toFixed(1)}s `;
@@ -1212,16 +1212,16 @@
                         thDiv.style.cssText = 'max-width: 85%; margin-right: auto; margin-bottom: 2px; padding: 4px 10px; border-radius: 8px 8px 2px 2px; background: #f3e5f5; border: 1px solid #ce93d8; font-size: 12px;';
                         if (thMsg.is_hidden) {
                             thDiv.style.background = '#e1bee7';
-                            thDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center;"><span style="color:#6a1b9a;">🙈 思维链已隐藏 [ID:' + thMsg.id + '] ~' + thTokenK + 'k</span><span style="display:flex; gap:2px;"><button onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="复制">📋</button><button onclick="event.stopPropagation(); openEditModal(' + thMsg.id + ', ' + "'content'" + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="编辑">✏️</button><button onclick="event.stopPropagation(); postAction({action:' + "'toggle_mode'" + ',index:' + thIndex + ',mode_type:' + "'hide'" + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="取消隐藏">🙈</button><button onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除">🗑️</button></span></div>';
+                            thDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center;"><span style="color:var(--md-sys-color-on-tertiary-container); display:inline-flex; align-items:center; gap:4px;">' + mdIcon('visibility_off', 14) + ' 思维链已隐藏 [ID:' + thMsg.id + '] ~' + thTokenK + 'k</span><span style="display:flex; gap:2px;"><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" title="复制">' + mdIcon('content_copy', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + thMsg.id + ', ' + "'content'" + ')" title="编辑">' + mdIcon('edit', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'toggle_mode'" + ',index:' + thIndex + ',mode_type:' + "'hide'" + '})" title="取消隐藏">' + mdIcon('visibility', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button></span></div>';
                         } else {
                             let thContentId = 'th-content-' + thMsg.id;
                             thDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="var el=document.getElementById(' + "'" + thContentId + "'" + '); if(el){el.style.display=el.style.display===' + "'none'" + '?' + "'block'" + ':' + "'none'" + '; this.querySelector(' + "'.th-arrow'" + ').textContent=el.style.display===' + "'none'" + '?' + "'▶'" + ':' + "'▼'" + ';}">' +
-                                '<span><span class="th-arrow" style="font-size:10px;">▶</span><span style="color:#6a1b9a; font-weight:bold;">💭 思维链</span> <span style="color:#999;">[ID:' + thMsg.id + '] ~' + thTokenK + 'k</span></span>' +
+                                '<span><span class="th-arrow" style="font-size:10px;">▶</span><span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;">' + mdIcon('psychology', 14) + ' 思维链</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + thMsg.id + '] ~' + thTokenK + 'k</span></span>' +
                                 '<span style="display:flex; gap:2px;">' +
-                                    '<button onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="复制">📋</button>' +
-                                    '<button onclick="event.stopPropagation(); openEditModal(' + thMsg.id + ', ' + "'content'" + ')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="编辑">✏️</button>' +
-                                    '<button onclick="event.stopPropagation(); postAction({action:' + "'toggle_mode'" + ',index:' + thIndex + ',mode_type:' + "'hide'" + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="隐藏">🙈</button>' +
-                                    '<button onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除">🗑️</button>' +
+                                    '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" title="复制">' + mdIcon('content_copy', 14) + '</button>' +
+                                    '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + thMsg.id + ', ' + "'content'" + ')" title="编辑">' + mdIcon('edit', 14) + '</button>' +
+                                    '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'toggle_mode'" + ',index:' + thIndex + ',mode_type:' + "'hide'" + '})" title="隐藏">' + mdIcon('visibility_off', 14) + '</button>' +
+                                    '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                 '</span>' +
                             '</div>' +
                             '<div id="' + thContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fce4ec; border-radius:4px; border:1px solid #f8bbd0; max-height:400px; overflow-y:auto; white-space:pre-wrap; font-size:12px; line-height:1.5;">' + (thMsg.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
