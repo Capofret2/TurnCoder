@@ -1264,6 +1264,7 @@
                 chatContainer.scrollTop = savedScrollTop;
             }
             updateTokenEst();
+            if (typeof renderMinimap === 'function') renderMinimap();
 
             // === Expand state preservation: restore states after rebuild ===
             if (window._expandStateMap && Object.keys(window._expandStateMap).length > 0) {

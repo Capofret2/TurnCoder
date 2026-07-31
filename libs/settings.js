@@ -114,7 +114,9 @@ function applySettingsUI() {
     document.getElementById('steps-container').style.display = globalSettings.enable_steps ? 'inline-block' : 'none';
     if (document.getElementById('code-monitor-btn')) document.getElementById('code-monitor-btn').style.display = globalSettings.enable_tool_inject ? 'none' : 'inline-block';
     if (document.getElementById('deep-think-label')) {
-        document.getElementById('deep-think-label').style.display = globalSettings.enable_deep_think_ui ? 'inline' : 'none';
+        // Empty string clears the inline rule so the .md-button class controls
+        // layout; 'inline' would override its inline-flex and break centring.
+        document.getElementById('deep-think-label').style.display = globalSettings.enable_deep_think_ui ? '' : 'none';
     }
     if (!globalSettings.enable_steps) {
         document.getElementById('max-steps').value = 1;

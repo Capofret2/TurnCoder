@@ -41,6 +41,7 @@ var MD_ICON_GLYPHS = {
     arrow_downward: '<path d="M12 4v15"/><path d="M6 13l6 6 6-6"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     drag_indicator: '<circle cx="9.5" cy="6" r="1.3"/><circle cx="14.5" cy="6" r="1.3"/><circle cx="9.5" cy="12" r="1.3"/><circle cx="14.5" cy="12" r="1.3"/><circle cx="9.5" cy="18" r="1.3"/><circle cx="14.5" cy="18" r="1.3"/>',
+    more_vert: '<circle cx="12" cy="5.4" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.6" r="1.4"/>',
     open_in_new: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5"/>',
 
     /* decisions */

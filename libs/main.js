@@ -742,7 +742,7 @@ function _doHandleStateUpdate(data) {
             div.draggable = true;
             div.dataset.sid = sid;
             div.dataset.order = s.order || 0;
-            if (inGroup) div.style.borderLeft = '3px solid #6f42c1';
+            if (inGroup) div.style.boxShadow = 'inset 2px 0 0 var(--md-sys-color-primary)';
             div.ondragstart = (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({type:'session',sid:sid})); e.currentTarget.style.opacity = '0.5'; };
             div.ondragend = (e) => { e.currentTarget.style.opacity = '1'; };
             div.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
@@ -778,14 +778,12 @@ function _doHandleStateUpdate(data) {
                     }
                 } catch(ex) {}
             };
-            div.innerHTML = '<span style="cursor:grab;padding-right:5px;color:#aaa;user-select:none;" title="拖拽排序">☰</span>' +
-                '<a href="/?sid=' + sid + '" onclick="event.preventDefault();var _o=window.localSid;document.querySelectorAll(\'.session-item.active\').forEach(function(el){el.classList.remove(\'active\')});this.closest(\'.session-item\').classList.add(\'active\');window.localSid=\'' + sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sid + '\',_outgoing_sid:_o});" style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:inherit;text-decoration:none;" title="' + (s.name || '') + '">' + (s.name || '') + '</a>' +
-                '<div style="display:flex;gap:2px;">' +
-                    '<button class="session-btn" onclick="renameSession(\'' + sid + '\',\'' + (s.name || '').replace(/'/g, "\\'") + '\')" title="重命名">✏️</button>' +
-                    '<button class="session-btn" onclick="postAction({action:\'duplicate_session\',sid:\'' + sid + '\'})" title="复制">📄</button>' +
-                    '<button class="session-btn" onclick="postAction({action:\'archive_session\',sid:\'' + sid + '\'})" title="归档">📦</button>' +
-                    '<button class="session-btn session-del" onclick="postAction({action:\'delete_session\',sid:\'' + sid + '\'})" title="删除">✖</button>' +
-                '</div>';
+            // Four inline buttons used to crowd the row until the title had room
+            // for two characters. They now live behind a single overflow menu,
+            // and both affordances stay transparent until hover.
+            div.innerHTML = '<span class="session-drag" title="拖拽排序">' + mdIcon('drag_indicator', 14) + '</span>' +
+                '<a href="/?sid=' + sid + '" class="session-title" onclick="event.preventDefault();var _o=window.localSid;document.querySelectorAll(\'.session-item.active\').forEach(function(el){el.classList.remove(\'active\')});this.closest(\'.session-item\').classList.add(\'active\');window.localSid=\'' + sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sid + '\',_outgoing_sid:_o});" title="' + (s.name || '') + '">' + (s.name || '') + '</a>' +
+                '<button class="session-btn session-more" onclick="openSessionMenu(event, \'' + sid + '\')" title="更多操作">' + mdIcon('more_vert', 16) + '</button>';
             return div;
         }
 
@@ -823,6 +821,85 @@ function _doHandleStateUpdate(data) {
             } catch(e) { showToast('创建失败: ' + e, 'error'); }
         }
 
+
+        // Overflow menu for a session row. Reuses .sm-context-menu / .sm-ctx-item
+        // so all four menus in the app share one appearance, and delegates clicks
+        // instead of inlining a handler per entry.
+        function openSessionMenu(e, sid) {
+            e.preventDefault();
+            e.stopPropagation();
+            var old = document.getElementById('session-item-menu');
+            if (old) old.remove();
+            var sessMap = window._lastSessionsMap || {};
+            var name = (sessMap[sid] && sessMap[sid].name) || '';
+            var menu = document.createElement('div');
+            menu.id = 'session-item-menu';
+            menu.className = 'sm-context-menu';
+            menu.innerHTML =
+                '<div class="sm-ctx-item" data-act="rename">' + mdIcon('edit', 16) + ' 重命名</div>' +
+                '<div class="sm-ctx-item" data-act="clone">' + mdIcon('content_copy', 16) + ' 复制会话</div>' +
+                '<div class="sm-ctx-item" data-act="archive">' + mdIcon('archive', 16) + ' 归档</div>' +
+                '<div class="sm-ctx-item sm-ctx-danger" data-act="delete">' + mdIcon('delete', 16) + ' 删除</div>';
+            document.body.appendChild(menu);
+            // Measure after insertion so the viewport clamp uses real dimensions.
+            var r = menu.getBoundingClientRect();
+            menu.style.left = Math.max(4, Math.min(e.clientX, window.innerWidth - r.width - 8)) + 'px';
+            menu.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - r.height - 8)) + 'px';
+            menu.onclick = function(ev) {
+                var item = ev.target.closest && ev.target.closest('.sm-ctx-item');
+                if (!item) return;
+                var act = item.dataset.act;
+                menu.remove();
+                if (act === 'rename') renameSession(sid, name);
+                else if (act === 'clone') postAction({action: 'duplicate_session', sid: sid});
+                else if (act === 'archive') postAction({action: 'archive_session', sid: sid});
+                else if (act === 'delete') postAction({action: 'delete_session', sid: sid});
+            };
+            setTimeout(function() {
+                document.addEventListener('click', function _close(ev2) {
+                    var m = document.getElementById('session-item-menu');
+                    if (m && !m.contains(ev2.target)) m.remove();
+                    document.removeEventListener('click', _close);
+                });
+            }, 10);
+        }
+
+        // Sidebar width: drag the right edge, persisted across reloads.
+        (function() {
+            var SB_MIN = 180, SB_MAX = 520;
+            var saved = parseInt(localStorage.getItem('sidebar_width') || '', 10);
+            if (saved >= SB_MIN && saved <= SB_MAX) {
+                document.documentElement.style.setProperty('--sidebar-width', saved + 'px');
+            }
+            var handle = document.getElementById('sidebar-resize');
+            var sb = document.getElementById('sidebar');
+            if (!handle || !sb) return;
+            var dragging = false;
+            handle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                dragging = true;
+                sb.classList.add('sb-resizing');
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                var w = Math.max(SB_MIN, Math.min(SB_MAX, e.clientX));
+                document.documentElement.style.setProperty('--sidebar-width', w + 'px');
+            });
+            document.addEventListener('mouseup', function() {
+                if (!dragging) return;
+                dragging = false;
+                sb.classList.remove('sb-resizing');
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                var cur = parseInt(getComputedStyle(document.documentElement)
+                    .getPropertyValue('--sidebar-width'), 10);
+                if (cur) localStorage.setItem('sidebar_width', cur);
+                // Chat width changed, so bubble heights reflow and ticks move.
+                if (typeof renderMinimap === 'function') renderMinimap();
+            });
+        })();
 
         function renderSessions(sessionsMap, currentId) {
             window._lastSessionsMap = sessionsMap; // 保存引用供乐观更新使用
@@ -867,15 +944,16 @@ function _doHandleStateUpdate(data) {
                 gDiv.dataset.gid = gid;
                 gDiv.dataset.order = group.order || 0;
                 gDiv.draggable = true;
-                gDiv.style.cssText = 'margin: 4px 6px; border: 1px solid #e0e0e0; border-radius: 6px; background: #fafafa; transition: border-color 0.2s;';
+                gDiv.style.cssText = 'margin: 2px 0 6px;';
                 // 组自身可拖拽排序
                 gDiv.ondragstart = (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({type:'group',gid:gid})); gDiv.style.opacity = '0.5'; };
                 gDiv.ondragend = (e) => { gDiv.style.opacity = '1'; };
-                // 组作为拖放目标：会话拖入组 / 组排序
-                gDiv.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; gDiv.style.borderColor = '#6f42c1'; };
-                gDiv.ondragleave = () => { gDiv.style.borderColor = '#e0e0e0'; };
+                // 组作为拖放目标：会话拖入组 / 组排序。用 outline 而非 border 表达
+                // 可放置状态：outline 不参与布局，不会在拖拽时挤动组内条目。
+                gDiv.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; gDiv.style.outline = '2px solid var(--md-sys-color-primary)'; };
+                gDiv.ondragleave = () => { gDiv.style.outline = 'none'; };
                 gDiv.ondrop = (e) => {
-                    e.preventDefault(); e.stopPropagation(); gDiv.style.borderColor = '#e0e0e0';
+                    e.preventDefault(); e.stopPropagation(); gDiv.style.outline = 'none';
                     try {
                         var payload = JSON.parse(e.dataTransfer.getData('text/plain'));
                         if (payload.type === 'session') {
@@ -891,13 +969,13 @@ function _doHandleStateUpdate(data) {
                     } catch(ex) {}
                 };
                 const gHeader = document.createElement('div');
-                gHeader.style.cssText = 'display:flex; align-items:center; padding: 6px 8px; cursor:pointer; font-size:12px; font-weight:bold; color:#555; user-select:none;';
-                gHeader.innerHTML = '<span style="margin-right:4px;">' + (group.collapsed ? '▶' : '▼') + '</span>' +
-                    '<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + (group.name || '未命名组') + ' (' + (group.session_ids || []).length + ')</span>' +
-                    '<button onclick="event.stopPropagation(); addSessionToGroup(\'' + gid + '\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="新建会话到此组">➕</button>' +
-                    '<button onclick="event.stopPropagation(); openWaterfall(\'' + gid + '\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="瀑布流监控">📊</button>' +
-                    '<button onclick="event.stopPropagation(); renameGroup(\'' + gid + '\', \'' + (group.name || '').replace(/'/g, "\\'") + '\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="重命名">✏️</button>' +
-                    '<button onclick="event.stopPropagation(); deleteGroup(\'' + gid + '\')" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:1px 3px;" title="删除组">✖</button>';
+                gHeader.className = 'session-group-header';
+                gHeader.innerHTML = '<span class="session-drag" style="opacity:1;">' + (group.collapsed ? mdIcon('chevron_right', 14) : mdIcon('expand_more', 14)) + '</span>' +
+                    '<span class="session-group-title">' + (group.name || '未命名组') + ' (' + (group.session_ids || []).length + ')</span>' +
+                    '<button class="session-btn" onclick="event.stopPropagation(); addSessionToGroup(\'' + gid + '\')" title="新建会话到此组">' + mdIcon('add', 14) + '</button>' +
+                    '<button class="session-btn" onclick="event.stopPropagation(); openWaterfall(\'' + gid + '\')" title="瀑布流监控">' + mdIcon('bar_chart', 14) + '</button>' +
+                    '<button class="session-btn" onclick="event.stopPropagation(); renameGroup(\'' + gid + '\', \'' + (group.name || '').replace(/'/g, "\\'") + '\')" title="重命名">' + mdIcon('edit', 14) + '</button>' +
+                    '<button class="session-btn" onclick="event.stopPropagation(); deleteGroup(\'' + gid + '\')" title="删除组">' + mdIcon('delete', 14) + '</button>';
                 gHeader.onclick = function() {
                     sessionGroups[gid].collapsed = !sessionGroups[gid].collapsed;
                     lastSessionsHash = ''; // 强制重渲染

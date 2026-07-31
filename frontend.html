@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" href="/libs/katex.min.css">
-    <link rel="stylesheet" href="/libs/tokens.css?v=1">
-    <link rel="stylesheet" href="/libs/styles.css?v=5">
+    <link rel="stylesheet" href="/libs/tokens.css?v=2">
+    <link rel="stylesheet" href="/libs/styles.css?v=6">
 </head>
 <body>
     <div id="sidebar">
@@ -32,6 +32,7 @@
             <button class="md-icon-button" onclick="createGroup()" style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);" title="创建会话分组"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.2a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M12 10.6v5.4M9.3 13.3h5.4"/></svg></button>
             <button class="md-icon-button" onclick="toggleArchivedShelf()" style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);" title="查看已归档会话"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1.2"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M9.5 12h5"/></svg></button>
         </div>
+        <div id="sidebar-resize" title="拖动调整侧边栏宽度"></div>
     </div>
 
     <div id="main-area">
@@ -42,7 +43,8 @@
                 <div style="margin-top:12px; font-size:13px;">加载中...</div>
             </div>
         </div>
-        <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;overflow:hidden;background:#f0f0f0;z-index:100;"></div>
+        <div id="chat-minimap" aria-hidden="true"></div>
+        <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;overflow:hidden;background:var(--md-sys-color-surface-container-low);z-index:var(--md-sys-z-kanban);"></div>
         <div id="queue-area"></div>
         <div id="bubble-context-menu" style="display:none; position:fixed; background:var(--md-sys-color-surface-container); border:none; border-radius:var(--md-sys-shape-corner-extra-small); box-shadow:var(--md-sys-elevation-level2); z-index:var(--md-sys-z-context-menu); padding:var(--md-sys-spacing-1) 0; min-width:180px;"></div>
         <div id="tab-context-menu" style="display:none; position:fixed; background:var(--md-sys-color-surface-container); border:none; border-radius:var(--md-sys-shape-corner-extra-small); box-shadow:var(--md-sys-elevation-level2); z-index:var(--md-sys-z-context-menu); padding:var(--md-sys-spacing-1) 0; min-width:180px;">
@@ -59,20 +61,19 @@
                 <button id="billing-sync-btn" class="md-button md-button--tonal md-button--compact" style="display:none; min-height:32px; background:var(--md-sys-color-warning-container); color:var(--md-sys-color-on-warning-container);" onclick="manualBillingSync()" title="手动拉取 sisuo.de 日志并匹配计费">同步计费</button>
                 <button class="md-button md-button--outlined md-button--compact" style="min-height:32px;" onclick="openCodeMonitor()" id="code-monitor-btn" title="代码监听配置"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.2a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2H4z"/><path d="M4 9.2h17.2l-2 8.4a2 2 0 0 1-2 1.6H6.5a2 2 0 0 1-2-1.6z"/></svg><span id="code-token-display"></span></button>
                 <textarea id="user-input" placeholder="输入消息..." rows="1"></textarea>
-                <div style="font-size:11px; color:#666;">
-                    <button type="button" onclick="document.getElementById('model-dropdown').style.display = document.getElementById('model-dropdown').style.display === 'block' ? 'none' : 'block'" style="font-size: 10px; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 1px 4px; cursor: pointer;">模型▾</button>
-                    <div id="model-dropdown" style="display:none; position:absolute; bottom:calc(100% + 5px); right:15px; left:auto; background:white; border:1px solid #ccc; border-radius:4px; padding:8px; box-shadow:0 2px 5px rgba(0,0,0,0.2); white-space:nowrap; z-index:100;">
-                    </div>
+                <div>
+                    <button type="button" class="md-button md-button--outlined md-button--compact" style="min-height:32px;" onclick="document.getElementById('model-dropdown').style.display = document.getElementById('model-dropdown').style.display === 'block' ? 'none' : 'block'">模型 ▾</button>
+                    <div id="model-dropdown"></div>
                 </div>
-                                <div style="font-size:10px; color:#666;" id="steps-container">
-<input type="number" id="max-steps" value="1" min="1" max="10" style="width:28px; font-size:10px;" title="步数">
-                <label id="parallel-label" style="display:none;"><input type="checkbox" id="parallel-mode"> 并</label>
-            </div>
-            <span id="deep-think-label" style="display:none; font-size:10px; color:#dc3545; font-weight:bold; cursor:pointer; margin-right:4px; user-select:none;" onclick="cycleDeepThink()" title="点击切换思考深度：思考一(无)→思考二(中)→思考三(极限)">思考一</span>
-            <div style="font-size:10px; color:#666; display:none;" id="autopilot-container">
-                <input type="number" id="autopilot-turns" value="3" min="1" max="500" style="width:28px; font-size:10px;" title="托管次数">
-                <span id="autopilot-slider-container" style="display:none; margin-left:4px;"><input type="number" id="autopilot-max-k" value="8" min="1" max="100" style="width:28px; font-size:10px;" title="滑动窗口阈值(k)">k</span>
-            </div>
+                <div class="ctl-group" id="steps-container">
+                    <input type="number" id="max-steps" class="md-num" value="1" min="1" max="10" title="步数">
+                    <label id="parallel-label" style="display:none;"><input type="checkbox" id="parallel-mode"> 并</label>
+                </div>
+                <span id="deep-think-label" class="md-button md-button--tonal md-button--compact" style="display:none; min-height:32px;" onclick="cycleDeepThink()" title="点击切换思考深度：思考一(无)→思考二(中)→思考三(极限)">思考一</span>
+                <div class="ctl-group" id="autopilot-container" style="display:none;">
+                    <input type="number" id="autopilot-turns" class="md-num" value="3" min="1" max="500" title="托管次数">
+                    <span id="autopilot-slider-container" style="display:none;"><input type="number" id="autopilot-max-k" class="md-num" value="8" min="1" max="100" title="滑动窗口阈值(k)">k</span>
+                </div>
             <button id="autopilot-btn" class="md-button md-button--compact" style="background:var(--md-sys-color-warning-container); color:var(--md-sys-color-on-warning-container); display:none;" onclick="toggleAutopilot()" title="启动自动托管模型连续生成">托管</button>
                 <button id="send-button" onclick="send(false)">发送</button>
 
@@ -470,7 +471,8 @@
     <script src="/libs/panels.js?v=1"></script>
     <script src="/libs/actions.js?v=1"></script>
     <script src="/libs/kanban.js?v=1"></script>
-    <script src="/libs/chat.js?v=3"></script>
-    <script src="/libs/main.js?v=4"></script>
+    <script src="/libs/minimap.js?v=1"></script>
+    <script src="/libs/chat.js?v=4"></script>
+    <script src="/libs/main.js?v=5"></script>
 </body>
 </html>

@@ -12,53 +12,58 @@
 :root {
   color-scheme: light;
 
-  /* ===== Colour — system roles (M3 baseline light, Flutter seed #6750A4) ==== */
-  --md-sys-color-primary: #6750a4;
+  /* ===== Colour — Adwaita palette on M3 role names =======================
+     Only the values change; every component rule keeps referencing the same
+     tokens, so the whole surface shifts from Material purple to GNOME blue
+     without touching a single selector.
+     ====================================================================== */
+  --md-sys-color-primary: #3584e4;
   --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #eaddff;
-  --md-sys-color-on-primary-container: #21005d;
+  --md-sys-color-primary-container: #d5e5fa;
+  --md-sys-color-on-primary-container: #0f3b70;
 
-  --md-sys-color-secondary: #625b71;
+  --md-sys-color-secondary: #5e5c64;
   --md-sys-color-on-secondary: #ffffff;
-  --md-sys-color-secondary-container: #e8def8;
-  --md-sys-color-on-secondary-container: #1d192b;
+  --md-sys-color-secondary-container: #dbe8fb;
+  --md-sys-color-on-secondary-container: #12395f;
 
-  --md-sys-color-tertiary: #7d5260;
+  --md-sys-color-tertiary: #9141ac;
   --md-sys-color-on-tertiary: #ffffff;
-  --md-sys-color-tertiary-container: #ffd8e4;
-  --md-sys-color-on-tertiary-container: #31111d;
+  --md-sys-color-tertiary-container: #f0dcf4;
+  --md-sys-color-on-tertiary-container: #4c2054;
 
-  --md-sys-color-error: #b3261e;
+  --md-sys-color-error: #c01c28;
   --md-sys-color-on-error: #ffffff;
-  --md-sys-color-error-container: #f9dedc;
-  --md-sys-color-on-error-container: #410e0b;
+  --md-sys-color-error-container: #f8dcdc;
+  --md-sys-color-on-error-container: #641619;
 
-  /* Not part of the M3 spec. Tonally matched so they sit in the same system. */
-  --md-sys-color-success: #146c2e;
+  /* Not part of the M3 spec. Matched to Adwaita green and yellow. */
+  --md-sys-color-success: #26a269;
   --md-sys-color-on-success: #ffffff;
-  --md-sys-color-success-container: #c4eed0;
-  --md-sys-color-on-success-container: #002107;
+  --md-sys-color-success-container: #d7f0e3;
+  --md-sys-color-on-success-container: #12492f;
 
-  --md-sys-color-warning: #7d5800;
+  --md-sys-color-warning: #b5820a;
   --md-sys-color-on-warning: #ffffff;
-  --md-sys-color-warning-container: #ffdf9a;
-  --md-sys-color-on-warning-container: #271900;
+  --md-sys-color-warning-container: #faeac4;
+  --md-sys-color-on-warning-container: #5c4108;
 
-  /* Surfaces: five container steps replace ad-hoc greys and 1px borders. */
-  --md-sys-color-surface: #fef7ff;
-  --md-sys-color-on-surface: #1d1b20;
-  --md-sys-color-surface-variant: #e7e0ec;
-  --md-sys-color-on-surface-variant: #49454f;
+  /* Neutral greys, not M3's primary-tinted whites. Content is pure white and
+     chrome sits one step down, matching a GNOME window. */
+  --md-sys-color-surface: #ffffff;
+  --md-sys-color-on-surface: #2e3436;
+  --md-sys-color-surface-variant: #f0f0ef;
+  --md-sys-color-on-surface-variant: #5f5f5c;
   --md-sys-color-surface-container-lowest: #ffffff;
-  --md-sys-color-surface-container-low: #f7f2fa;
-  --md-sys-color-surface-container: #f3edf7;
-  --md-sys-color-surface-container-high: #ece6f0;
-  --md-sys-color-surface-container-highest: #e6e0e9;
+  --md-sys-color-surface-container-low: #fafafa;
+  --md-sys-color-surface-container: #f2f1f0;
+  --md-sys-color-surface-container-high: #e9e8e7;
+  --md-sys-color-surface-container-highest: #dedddc;
 
-  --md-sys-color-inverse-surface: #322f35;
-  --md-sys-color-inverse-on-surface: #f5eff7;
-  --md-sys-color-outline: #79747e;
-  --md-sys-color-outline-variant: #cac4d0;
+  --md-sys-color-inverse-surface: #303030;
+  --md-sys-color-inverse-on-surface: #ffffff;
+  --md-sys-color-outline: #a8a5a1;
+  --md-sys-color-outline-variant: #d6d3d0;
   --md-sys-color-shadow: #000000;
   --md-sys-color-scrim: #000000;
   --md-sys-color-surface-tint: var(--md-sys-color-primary);
@@ -71,32 +76,39 @@
   --md-sys-state-disabled-content-opacity: 0.38;
   --md-sys-state-disabled-container-opacity: 0.12;
 
-  /* ===== Shape scale ===== */
+  /* ===== Layout ===== */
+  --sidebar-width: 248px;
+
+  /* ===== Shape scale — tightened toward Adwaita ==========================
+     GNOME keeps corners small: 6px on buttons and list rows, 8px on cards,
+     12px on windows. M3's 28px dialog radius is its most recognisable trait
+     and the least GNOME-like, so it drops to 16px.
+     ====================================================================== */
   --md-sys-shape-corner-none: 0;
   --md-sys-shape-corner-extra-small: 4px;
-  --md-sys-shape-corner-small: 8px;
-  --md-sys-shape-corner-medium: 12px;
-  --md-sys-shape-corner-large: 16px;
-  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-small: 6px;
+  --md-sys-shape-corner-medium: 8px;
+  --md-sys-shape-corner-large: 12px;
+  --md-sys-shape-corner-extra-large: 16px;
   --md-sys-shape-corner-full: 9999px;
 
-  /* ===== Elevation — two stacked shadows per level, per M3 ===== */
+  /* ===== Elevation — flattened ===========================================
+     M3 stacks a 30%-opacity contact shadow under a diffuse one, which reads as
+     grime at GNOME's scale. Adwaita separates surfaces with a 1px outline and
+     keeps shadows faint, reserving real depth for popovers and dialogs.
+     ====================================================================== */
   --md-sys-elevation-level0: none;
-  --md-sys-elevation-level1:
-    0 1px 2px 0 rgba(0, 0, 0, 0.30),
-    0 1px 3px 1px rgba(0, 0, 0, 0.15);
-  --md-sys-elevation-level2:
-    0 1px 2px 0 rgba(0, 0, 0, 0.30),
-    0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level1: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --md-sys-elevation-level2: 0 1px 3px rgba(0, 0, 0, 0.12);
   --md-sys-elevation-level3:
-    0 1px 3px 0 rgba(0, 0, 0, 0.30),
-    0 4px 8px 3px rgba(0, 0, 0, 0.15);
+    0 2px 8px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.10);
   --md-sys-elevation-level4:
-    0 2px 3px 0 rgba(0, 0, 0, 0.30),
-    0 6px 10px 4px rgba(0, 0, 0, 0.15);
+    0 4px 12px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.10);
   --md-sys-elevation-level5:
-    0 4px 4px 0 rgba(0, 0, 0, 0.30),
-    0 8px 12px 6px rgba(0, 0, 0, 0.15);
+    0 8px 24px rgba(0, 0, 0, 0.22),
+    0 2px 4px rgba(0, 0, 0, 0.12);
 
   /* ===== Typography ===== */
   --md-sys-typescale-font: "Roboto", "Noto Sans SC", "PingFang SC",
