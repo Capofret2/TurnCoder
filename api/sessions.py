@@ -28,7 +28,9 @@ class SessionMixin:
             'enable_custom_webfetch_jina': True,
             'enable_webfetch_headless': True,
             'enable_bottom_tabs': False,
-            'enable_auto_update': True
+            # 默认关闭：启动时自动拉取并应用远程更新会在用户未明确同意的情况下
+            # 覆写本地源码，属于不该默认开启的行为。需要时在设置面板手动勾选。
+            'enable_auto_update': False
         }
 
         # 兼容并迁移旧版单一文件

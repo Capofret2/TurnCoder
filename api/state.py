@@ -185,7 +185,7 @@ class StateMixin:
                 'enable_tool_description_enforcement': False,
                 'enable_truncation_detection': False,
                 'enable_partial_read': False,
-                'enable_auto_update': True
+                'enable_auto_update': False
             })
         }
 
