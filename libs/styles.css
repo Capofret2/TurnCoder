@@ -80,6 +80,11 @@
             transition: opacity var(--md-sys-motion-duration-short3) linear;
         }
         .session-item:hover .session-drag { opacity: 1; }
+        /* Grouped rows keep the handle visible: it is the only affordance telling
+           the user this level is draggable, and reaching for the title instead is
+           what used to start a native link drag. */
+        .session-group .session-item .session-drag { opacity: 0.55; }
+        .session-group .session-item:hover .session-drag { opacity: 1; }
         .session-btn {
             border: none; background: transparent; cursor: pointer;
             width: 26px; height: 26px; padding: 0; flex-shrink: 0;

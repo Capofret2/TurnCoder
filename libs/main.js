@@ -757,20 +757,57 @@ function _doHandleStateUpdate(data) {
             document.querySelectorAll('#session-list .session-group').forEach(function(n) { n.style.outline = 'none'; });
         }
 
+        function _rowId(el) { return el.dataset.sid || el.dataset.gid; }
+
+        function _siblingRows(el, sel) {
+            return Array.prototype.slice.call(
+                el.parentElement.querySelectorAll(':scope > ' + sel));
+        }
+
         /**
-         * Midpoint between the drop target and its neighbour on that side.
-         * A fixed ±0.001 step assumes neighbouring orders are always further apart
-         * than that, but every drag halves the gap, so after a few reorders the step
-         * jumps past the neighbour and the drag lands in the wrong slot.
+         * Work out and dispatch the new order for a dragged row.
+         *
+         * The midpoint between the drop target and its neighbour is used when it
+         * actually lands strictly between the two. It often does not: sessions
+         * created in a batch share one default order, and repeated drags halve the
+         * gap until it hits float precision. In both cases the midpoint equals a
+         * value already in use, the backend writes a no-op, sessionsHash is
+         * unchanged and the drag looks like it did nothing at all.
+         *
+         * The fallback renumbers the whole container 1..N in its desired final
+         * sequence, which needs no assumptions about the existing values, and only
+         * posts for rows whose order actually changes.
+         *
+         * @param {Element} targetEl row the pointer was released over
+         * @param {string} draggedId sid or gid being moved (may be from elsewhere)
+         * @param {boolean} after true when dropped on the lower half of the target
+         * @param {string} sel child selector identifying sibling rows
+         * @param {function(string, number)} post receives (id, order) to dispatch
          */
-        function _neighbourOrder(targetEl, after, sel) {
-            var rows = Array.prototype.slice.call(
-                targetEl.parentElement.querySelectorAll(':scope > ' + (sel || '.session-item')));
-            var i = rows.indexOf(targetEl);
-            var t = parseFloat(targetEl.dataset.order) || 0;
-            var nb = after ? rows[i + 1] : rows[i - 1];
-            if (!nb) return after ? t + 1 : t - 1;
-            return (t + (parseFloat(nb.dataset.order) || 0)) / 2;
+        function _dispatchReorder(targetEl, draggedId, after, sel, post) {
+            var rows = _siblingRows(targetEl, sel);
+            var ids = rows.map(_rowId);
+            var ord = {};
+            rows.forEach(function(r) { ord[_rowId(r)] = parseFloat(r.dataset.order) || 0; });
+            var targetId = _rowId(targetEl);
+            var ti = ids.indexOf(targetId);
+            if (ti < 0) return;
+
+            // Skip past the dragged row itself: measuring a gap against the element
+            // being moved is meaningless.
+            var step = after ? 1 : -1;
+            var nbId = ids[ti + step];
+            if (nbId === draggedId) nbId = ids[ti + step * 2];
+
+            var t = ord[targetId];
+            if (nbId === undefined) { post(draggedId, after ? t + 1 : t - 1); return; }
+            var mid = (t + ord[nbId]) / 2;
+            if (mid !== t && mid !== ord[nbId]) { post(draggedId, mid); return; }
+
+            var seq = ids.filter(function(id) { return id !== draggedId; });
+            var at = seq.indexOf(targetId);
+            seq.splice(after ? at + 1 : at, 0, draggedId);
+            seq.forEach(function(id, i) { if (ord[id] !== i + 1) post(id, i + 1); });
         }
 
         /**
@@ -862,10 +899,12 @@ function _doHandleStateUpdate(data) {
                             // 从一个组拖到另一个组 = 移入新组
                             postAction({action: 'add_session_to_group', group_id: targetInGroup, sid: payload.sid});
                         }
-                        // 排序：取目标与同侧邻居的中点，见 _neighbourOrder 注释
+                        // 排序：中点可用则用中点，否则整段重新编号，见 _dispatchReorder
                         var _r = e.currentTarget.getBoundingClientRect();
                         var isAfter = (e.clientY - _r.top) > _r.height / 2;
-                        postAction({action: 'reorder_session', sid: payload.sid, new_order: _neighbourOrder(e.currentTarget, isAfter)});
+                        _dispatchReorder(e.currentTarget, payload.sid, isAfter, '.session-item', function(_sid, _ord) {
+                            postAction({action: 'reorder_session', sid: _sid, new_order: _ord});
+                        });
                     }
                 } catch(ex) {}
             };
@@ -873,7 +912,7 @@ function _doHandleStateUpdate(data) {
             // for two characters. They now live behind a single overflow menu,
             // and both affordances stay transparent until hover.
             div.innerHTML = '<span class="session-drag" title="拖拽排序">' + mdIcon('drag_indicator', 14) + '</span>' +
-                '<a href="/?sid=' + sid + '" class="session-title" onclick="event.preventDefault();var _o=window.localSid;document.querySelectorAll(\'.session-item.active\').forEach(function(el){el.classList.remove(\'active\')});this.closest(\'.session-item\').classList.add(\'active\');window.localSid=\'' + sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sid + '\',_outgoing_sid:_o});" title="' + (s.name || '') + '">' + (s.name || '') + '</a>' +
+                '<a href="/?sid=' + sid + '" class="session-title" draggable="false" onclick="event.preventDefault();var _o=window.localSid;document.querySelectorAll(\'.session-item.active\').forEach(function(el){el.classList.remove(\'active\')});this.closest(\'.session-item\').classList.add(\'active\');window.localSid=\'' + sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sid + '\',_outgoing_sid:_o});" title="' + (s.name || '') + '">' + (s.name || '') + '</a>' +
                 '<button class="session-btn session-more" onclick="openSessionMenu(event, \'' + sid + '\')" title="更多操作">' + mdIcon('more_vert', 16) + '</button>';
             return div;
         }
@@ -1067,12 +1106,11 @@ function _doHandleStateUpdate(data) {
                             postAction({action: 'add_session_to_group', group_id: gid, sid: payload.sid});
                         } else if (payload.type === 'group' && payload.gid !== gid) {
                             // 组排序：根据拖放位置计算新 order
-                            // Midpoint, same reasoning as session reordering: a fixed
-                            // ±0.001 step is halved by every drag and eventually jumps
-                            // past the neighbour it was meant to land beside.
                             var rect = gDiv.getBoundingClientRect();
                             var isAfter = (e.clientY - rect.top) > (rect.height / 2);
-                            postAction({action: 'update_session_group', group_id: payload.gid, order: _neighbourOrder(gDiv, isAfter, '.session-group')});
+                            _dispatchReorder(gDiv, payload.gid, isAfter, '.session-group', function(_gid, _ord) {
+                                postAction({action: 'update_session_group', group_id: _gid, order: _ord});
+                            });
                         }
                     } catch(ex) {}
                 };
