@@ -1,0 +1,32 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-REPLACE_WITH_YOUR_TOKEN",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:5001",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6",
+    "API_TIMEOUT_MS": "3000000",
+    "MAX_THINKING_TOKENS": "128000",
+    "CLAUDE_CODE_USE_HAIKU": "1",
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "HTTP_PROXY": "",
+    "HTTPS_PROXY": "",
+    "ALL_PROXY": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "NotebookEdit(*)",
+      "Agent(*)"
+    ],
+    "ask": [
+      "Bash(sudo:*)"
+    ],
+    "defaultMode": "dontAsk"
+  }
+}

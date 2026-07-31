@@ -672,7 +672,7 @@ def handle_action():
                 # 收集所有需要包含的文件
                 _root_files = [
                     'app.py', 'config.py', 'frontend.html', 'updater.py', 'tool_call_backtest.py',
-                    'cc_system.json', 'cc_tools.json', 'cc_tools_simulate.json', 'settings.json',
+                    'cc_system.json', 'cc_tools.json', 'cc_tools_simulate.json',
                     'tool_system.json', 'tools.json',
                     'requirements.txt',
                 ]

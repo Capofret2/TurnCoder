@@ -1,0 +1,29 @@
+[
+  {
+    "name": "ExampleProviderA",
+    "api_url": "https://api.example-provider-a.com/v1/chat/completions",
+    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
+    "models": [
+      "claude-opus-4-6",
+      "claude-opus-4-6-thinking",
+      "gpt-5.5"
+    ]
+  },
+  {
+    "name": "ExampleProviderB",
+    "api_url": "https://api.example-provider-b.com/v1/chat/completions",
+    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
+    "models": [
+      "gemini-3.1-pro-preview",
+      "glm-5.2"
+    ]
+  },
+  {
+    "name": "LocalOrSelfHosted",
+    "api_url": "http://127.0.0.1:8000/v1/chat/completions",
+    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
+    "models": [
+      "your-local-model-name"
+    ]
+  }
+]

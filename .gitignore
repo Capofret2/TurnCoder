@@ -9,10 +9,16 @@ build/
 # Environment & secrets
 .env
 *.env.*
+# Live credential files — copy the .example templates and fill in your own keys
+providers.json
+settings.json
+!providers.example.json
+!settings.example.json
 
 # User data (sessions, images, logs)
 data/
 raw_dumps/
+webfetch_cache/
 
 # Update system
 data/updates/
