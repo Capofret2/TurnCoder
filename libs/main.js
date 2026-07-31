@@ -742,18 +742,103 @@ function _doHandleStateUpdate(data) {
         // 会话组相关全局变量
         let sessionGroups = {};
 
+        /** Keep exactly one insert indicator visible while the pointer sweeps rows. */
+        function _markSessionDrop(el, after) {
+            document.querySelectorAll('#session-list .sess-drop-before, #session-list .sess-drop-after')
+                .forEach(function(n) { if (n !== el) n.classList.remove('sess-drop-before', 'sess-drop-after'); });
+            el.classList.toggle('sess-drop-before', !after);
+            el.classList.toggle('sess-drop-after', after);
+        }
+
+        function _clearSessionDropMarks() {
+            document.querySelectorAll('#session-list .session-item').forEach(function(n) {
+                n.classList.remove('sess-dragging', 'sess-drop-before', 'sess-drop-after');
+            });
+            document.querySelectorAll('#session-list .session-group').forEach(function(n) { n.style.outline = 'none'; });
+        }
+
+        /**
+         * Midpoint between the drop target and its neighbour on that side.
+         * A fixed ±0.001 step assumes neighbouring orders are always further apart
+         * than that, but every drag halves the gap, so after a few reorders the step
+         * jumps past the neighbour and the drag lands in the wrong slot.
+         */
+        function _neighbourOrder(targetEl, after) {
+            var rows = Array.prototype.slice.call(
+                targetEl.parentElement.querySelectorAll(':scope > .session-item'));
+            var i = rows.indexOf(targetEl);
+            var t = parseFloat(targetEl.dataset.order) || 0;
+            var nb = after ? rows[i + 1] : rows[i - 1];
+            if (!nb) return after ? t + 1 : t - 1;
+            return (t + (parseFloat(nb.dataset.order) || 0)) / 2;
+        }
+
+        /**
+         * FLIP reorder animation. offsetTop rather than getBoundingClientRect:
+         * grouped and ungrouped rows both resolve their offsetParent to #sidebar
+         * (the only positioned ancestor), and offsetTop is immune to scroll, so the
+         * measurement stays comparable across a full list rebuild.
+         */
+        function _captureSessionTops() {
+            var m = {};
+            document.querySelectorAll('#session-list .session-item').forEach(function(el) {
+                if (el.dataset.sid) m[el.dataset.sid] = el.offsetTop;
+            });
+            return m;
+        }
+
+        function _playSessionFlip(prev) {
+            if (!prev) return;
+            document.querySelectorAll('#session-list .session-item').forEach(function(el) {
+                var sid = el.dataset.sid;
+                if (!sid || prev[sid] === undefined) return;
+                var delta = prev[sid] - el.offsetTop;
+                if (!delta) return;
+                el.style.transition = 'none';
+                el.style.transform = 'translateY(' + delta + 'px)';
+                requestAnimationFrame(function() {
+                    el.style.transition = 'transform var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized)';
+                    el.style.transform = '';
+                    el.addEventListener('transitionend', function _done() {
+                        el.style.transition = '';
+                        el.removeEventListener('transitionend', _done);
+                    });
+                });
+            });
+        }
+
         function _createSessionItem(sid, s, currentId, inGroup) {
             const div = document.createElement('div');
             div.className = 'session-item' + (sid === currentId ? ' active' : '');
             div.draggable = true;
             div.dataset.sid = sid;
             div.dataset.order = s.order || 0;
-            if (inGroup) div.style.boxShadow = 'inset 2px 0 0 var(--md-sys-color-primary)';
-            div.ondragstart = (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({type:'session',sid:sid})); e.currentTarget.style.opacity = '0.5'; };
-            div.ondragend = (e) => { e.currentTarget.style.opacity = '1'; };
-            div.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+            div.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', JSON.stringify({type: 'session', sid: sid}));
+                e.dataTransfer.effectAllowed = 'move';
+                // Deferred one frame on purpose: the browser snapshots the element at
+                // the end of the synchronous dragstart phase to build the drag image,
+                // so dimming it now would dim the ghost too and show two faint copies.
+                requestAnimationFrame(function() { div.classList.add('sess-dragging'); });
+            };
+            div.ondragend = () => { _clearSessionDropMarks(); };
+            div.ondragover = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (div.classList.contains('sess-dragging')) return;
+                var r = div.getBoundingClientRect();
+                _markSessionDrop(div, (e.clientY - r.top) > r.height / 2);
+            };
+            // dragleave bubbles up from children, so without the relatedTarget test
+            // moving onto the row's own title would clear the indicator and flicker.
+            div.ondragleave = (e) => {
+                if (!div.contains(e.relatedTarget)) {
+                    div.classList.remove('sess-drop-before', 'sess-drop-after');
+                }
+            };
             div.ondrop = (e) => {
                 e.preventDefault(); e.stopPropagation();
+                _clearSessionDropMarks();
                 try {
                     var payload = JSON.parse(e.dataTransfer.getData('text/plain'));
                     if (payload.type === 'session' && payload.sid !== sid) {
@@ -777,10 +862,10 @@ function _doHandleStateUpdate(data) {
                             // 从一个组拖到另一个组 = 移入新组
                             postAction({action: 'add_session_to_group', group_id: targetInGroup, sid: payload.sid});
                         }
-                        // 排序
-                        var targetOrder = parseFloat(e.currentTarget.dataset.order);
-                        var isAfter = (e.clientY - e.currentTarget.getBoundingClientRect().top) > (e.currentTarget.getBoundingClientRect().height / 2);
-                        postAction({action: 'reorder_session', sid: payload.sid, new_order: isAfter ? targetOrder + 0.001 : targetOrder - 0.001});
+                        // 排序：取目标与同侧邻居的中点，见 _neighbourOrder 注释
+                        var _r = e.currentTarget.getBoundingClientRect();
+                        var isAfter = (e.clientY - _r.top) > _r.height / 2;
+                        postAction({action: 'reorder_session', sid: payload.sid, new_order: _neighbourOrder(e.currentTarget, isAfter)});
                     }
                 } catch(ex) {}
             };
@@ -872,6 +957,12 @@ function _doHandleStateUpdate(data) {
 
         // Sidebar width: drag the right edge, persisted across reloads.
         (function() {
+            // Document-level dragend fallback. If the drop's re-render finishes before
+            // dragend dispatches, the source row is already gone with innerHTML and its
+            // own handler never fires, leaving sess-dragging stuck on whichever row
+            // takes that id next — visibly a session dimmed forever.
+            document.addEventListener('dragend', function() { _clearSessionDropMarks(); });
+
             var SB_MIN = 180, SB_MAX = 520;
             var saved = parseInt(localStorage.getItem('sidebar_width') || '', 10);
             if (saved >= SB_MIN && saved <= SB_MAX) {
@@ -910,6 +1001,13 @@ function _doHandleStateUpdate(data) {
         function renderSessions(sessionsMap, currentId) {
             window._lastSessionsMap = sessionsMap; // 保存引用供乐观更新使用
             const list = document.getElementById('session-list');
+            // Capture before the rebuild for the FLIP pass at the end. scrollTop is
+            // saved for two reasons: clearing innerHTML collapses the container and
+            // the browser resets scroll to 0 (so far every state push has scrolled
+            // the sidebar back to the top), and FLIP is only correct if the scroll
+            // offset is unchanged between measurements.
+            const _flipFrom = _captureSessionTops();
+            const _savedScroll = list.scrollTop;
             list.innerHTML = '';
             // 整个列表作为拖放目标：会话拖到空白区域 = 移出分组
             list.ondragover = (e) => { e.preventDefault(); };
@@ -957,7 +1055,10 @@ function _doHandleStateUpdate(data) {
                 // 组作为拖放目标：会话拖入组 / 组排序。用 outline 而非 border 表达
                 // 可放置状态：outline 不参与布局，不会在拖拽时挤动组内条目。
                 gDiv.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; gDiv.style.outline = '2px solid var(--md-sys-color-primary)'; };
-                gDiv.ondragleave = () => { gDiv.style.outline = 'none'; };
+                // relatedTarget test for the same reason as the row handler: dragleave
+                // bubbles from children, so moving onto a row inside the group would
+                // otherwise strobe the outline off and on.
+                gDiv.ondragleave = (e) => { if (!gDiv.contains(e.relatedTarget)) gDiv.style.outline = 'none'; };
                 gDiv.ondrop = (e) => {
                     e.preventDefault(); e.stopPropagation(); gDiv.style.outline = 'none';
                     try {
@@ -991,11 +1092,17 @@ function _doHandleStateUpdate(data) {
                 gDiv.appendChild(gHeader);
                 if (!group.collapsed) {
                     const gBody = document.createElement('div');
-                    gBody.style.cssText = 'padding: 0;';
-                    (group.session_ids || []).forEach(sid => {
-                        if (!sessionsMap[sid] || sessionsMap[sid].soft_deleted) return;
-                        gBody.appendChild(_createSessionItem(sid, sessionsMap[sid], currentId, true));
-                    });
+                    gBody.style.cssText = 'padding: 0 0 var(--md-sys-spacing-1);';
+                    // Sorted by the same order field the ungrouped branch uses. Walking
+                    // session_ids in array order was why reorder_session looked like a
+                    // no-op inside a group: the backend did update order, but this loop
+                    // discarded it and re-rendered the original sequence.
+                    (group.session_ids || [])
+                        .filter(function(gs) { return sessionsMap[gs] && !sessionsMap[gs].soft_deleted; })
+                        .sort(function(a, b) { return (sessionsMap[a].order || 0) - (sessionsMap[b].order || 0); })
+                        .forEach(function(gs) {
+                            gBody.appendChild(_createSessionItem(gs, sessionsMap[gs], currentId, true));
+                        });
                     gDiv.appendChild(gBody);
                 }
                 list.appendChild(gDiv);
@@ -1018,6 +1125,10 @@ function _doHandleStateUpdate(data) {
                     `<a href="#" class="session-title" onclick="event.preventDefault(); postAction({action: 'switch_session', sid: 'starred_session_virtual'})" style="font-weight: 500;">${sessionsMap['starred_session_virtual'].name}</a>`;
                 list.appendChild(div);
             }
+            // Order matters: restore scroll first, then measure. Otherwise FLIP reads
+            // the scroll jump as row movement and slides the entire list at once.
+            if (_savedScroll) list.scrollTop = _savedScroll;
+            _playSessionFlip(_flipFrom);
             // Hook: 会话管理弹窗打开时自动刷新网格
             if (document.getElementById('session-mgr-body')) renderSessionManagerGrid();
         }

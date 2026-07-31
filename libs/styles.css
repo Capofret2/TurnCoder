@@ -113,8 +113,28 @@
         .session-group-header:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent); }
         .session-group-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         /* One indent step for grouped rows. The inset shadow alone did not read as
-           hierarchy when the left padding matched a top-level row. */
-        .session-group .session-item { padding-left: var(--md-sys-spacing-4); }
+           hierarchy when the left padding matched a top-level row. It lives here
+           rather than as an inline style so the inline box-shadow slot stays free. */
+        .session-group .session-item {
+            padding-left: var(--md-sys-spacing-4);
+            box-shadow: inset 2px 0 0 var(--md-sys-color-primary);
+        }
+        /* Drag states. The insert indicator is an ::after pseudo-element, not a
+           box-shadow: grouped rows already spend that property on their left edge
+           and a single element cannot stack two inset directions. */
+        .session-item { position: relative; }
+        .session-item.sess-dragging {
+            opacity: 0.4;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .session-item.sess-drop-before::after,
+        .session-item.sess-drop-after::after {
+            content: ''; position: absolute; left: 0; right: 0; height: 2px;
+            background: var(--md-sys-color-primary);
+            border-radius: 1px; pointer-events: none;
+        }
+        .session-item.sess-drop-before::after { top: -1px; }
+        .session-item.sess-drop-after::after { bottom: -1px; }
         
         #main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: var(--md-sys-color-surface); }
         #chat-container { flex: 1; overflow-y: auto; padding: var(--md-sys-spacing-6); background: var(--md-sys-color-surface); }
