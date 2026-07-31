@@ -160,11 +160,15 @@
         Object.keys(toolResultMap).forEach(tuId => { toolResultMap[tuId].forEach(tr => toolResultSkipSet.add(tr.msg.id)); });
         for (let i = 0; i < history.length; i++) {
             let m = history[i];
-            let isThinking = (m.model_name && m.model_name.endsWith('(思考过程)')) || m.tool_type === 'thinking';
+            // cc_type, not tool_type: worker_engine sets cc_type='thinking' when it
+            // creates the bubble, so the tool_type test never fired and detection
+            // rested entirely on the model_name suffix. Thinking bubbles produced
+            // without that suffix were never absorbed into their reply.
+            let isThinking = (m.model_name && m.model_name.endsWith('(思考过程)')) || m.cc_type === 'thinking';
             if (isThinking) {
                 for (let j = i + 1; j < history.length; j++) {
                     let next = history[j];
-                    if (next.role === 'assistant' && !((next.model_name && next.model_name.endsWith('(思考过程)')) || next.tool_type === 'thinking')) {
+                    if (next.role === 'assistant' && !((next.model_name && next.model_name.endsWith('(思考过程)')) || next.cc_type === 'thinking')) {
                         if (!next.is_hidden) {
                             if (!thinkingMap[next.id]) thinkingMap[next.id] = [];
                             thinkingMap[next.id].push({msg: m, index: i});

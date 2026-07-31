@@ -220,7 +220,7 @@ class StateMixin:
             from .style_filter import apply_style_filter
             for _sf_sid, _sf_sess in self.sessions.items():
                 for _sf_msg in _sf_sess.get('conversation_history', []):
-                    if _sf_msg.get('role') != 'assistant' or _sf_msg.get('tool_type') == 'thinking':
+                    if _sf_msg.get('role') != 'assistant' or _sf_msg.get('cc_type') == 'thinking':
                         continue
                     if _new_sf and not _sf_msg.get('_style_filter_original'):
                         _sf_orig = {}

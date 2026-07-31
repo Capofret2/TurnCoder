@@ -101,7 +101,7 @@ class ResponseMixin:
             _t_idx = next((i for i, m in enumerate(session['conversation_history']) if m['id'] == original_target_id), -1)
             if _t_idx > 0:
                 _think_bubble = session['conversation_history'][_t_idx - 1]
-                if _think_bubble.get('tool_type') == 'thinking' and _think_bubble.get('content'):
+                if _think_bubble.get('cc_type') == 'thinking' and _think_bubble.get('content'):
                     _tc = _think_bubble['content']
                     _tok_m = re.search(r'\[令牌([a-z0-9]+)\]', _tc)
                     _sum_in_think = re.search(r'\[概括开头\].*?\[概括结尾\]', _tc, re.DOTALL)
@@ -421,7 +421,7 @@ class ResponseMixin:
         # 语言风格后处理过滤器
         _sf_settings = getattr(self, 'global_settings', {})
         if _sf_settings.get('enable_style_filter', False):
-            if target_msg.get('tool_type') != 'thinking':
+            if target_msg.get('cc_type') != 'thinking':
                 from .style_filter import apply_style_filter
                 _sf_originals = {}
                 for _sf_part in target_msg.get('content_parts', []):

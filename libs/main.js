@@ -1509,7 +1509,7 @@ function _doHandleStateUpdate(data) {
             } else {
                 // No cache: show loading spinner while fresh data is being fetched
                 currentHistory = [];
-                document.getElementById('chat-container').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#999;"><div class="spinner-ring"></div><div style="margin-top:12px;font-size:13px;">加载中...</div></div>';
+                document.getElementById('chat-container').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--md-sys-color-on-surface-variant);"><div class="spinner-ring"></div><div style="margin-top:var(--md-sys-spacing-3);font-size:var(--md-sys-typescale-body-medium-size);">加载中...</div></div>';
             }
             renderBottomTabs();
             // Async fetch fresh data (pass _outgoing_sid for state save routing)
