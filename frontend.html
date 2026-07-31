@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" href="/libs/katex.min.css">
     <link rel="stylesheet" href="/libs/tokens.css?v=2">
-    <link rel="stylesheet" href="/libs/styles.css?v=6">
+    <link rel="stylesheet" href="/libs/styles.css?v=7">
 </head>
 <body>
     <div id="sidebar">
@@ -119,7 +119,7 @@
                 </div>
                 <div class="cm-form-group" style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <button onclick="scanCodeFiles()" style="padding: 8px 15px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:13px;">🔍 扫描文件</button>
+                        <button onclick="scanCodeFiles()" style="padding: 8px 15px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size:13px;">扫描文件</button>
                         <label style="font-size: 13px; font-weight: bold; color: #495057;" title="若完整目录树超过此阈值，则回退为仅显示选中文件的树结构">全量树回退阈值: <input type="number" id="cm-tree-limit" value="10" min="1" max="500" style="width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 4px;"> k</label>
                     </div>
                     <div>
@@ -139,203 +139,203 @@
         </div>
     </div>
 
-    <div id="settings-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1001;">
+    <div id="settings-modal" class="md-modal-overlay" style="z-index: 1001;">
         <div class="modal-content" style="width: 800px; height: auto; max-height: 80%;">
-            <div style="padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;">全局设置</h3>
-                <span style="cursor: pointer; font-size: 20px;" onclick="closeSettingsModal()">&times;</span>
+            <div class="md-modal-header">
+                <h3>全局设置</h3>
+                <button class="md-modal-close" onclick="closeSettingsModal()" title="关闭"><svg class="md-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-                <div style="padding: 20px; font-size: 14px; line-height: 1.8; overflow-y: auto; flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px;">
-                    <div style="margin-bottom: 15px; border-bottom: 2px solid #ffc107; padding-bottom: 15px; grid-column: 1 / -1;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="md-modal-body settings-grid">
+                    <div class="settings-item" style="border-left: 2px solid var(--md-sys-color-warning); grid-column: 1 / -1;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-developer-mode" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔧 开发者模式</span>
+                        <span class="settings-title">开发者模式</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后显示完整的开发者工具和高级设置选项。关闭时隐藏调试、重启、导出等开发功能。</div>
+                    <div class="settings-desc">开启后显示完整的开发者工具和高级设置选项。关闭时隐藏调试、重启、导出等开发功能。</div>
                 </div>
     
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-streaming" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🌊 流式传输</span>
+                        <span class="settings-title">流式传输</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后实时逐字显示 AI 回复，关闭后等待完整回复后一次性显示。</div>
+                    <div class="settings-desc">开启后实时逐字显示 AI 回复，关闭后等待完整回复后一次性显示。</div>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-pure-mode" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🧹 纯净模式</span>
+                        <span class="settings-title">纯净模式</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后发送给大模型的上下文将采用标准多轮对话格式，无系统提示词、无工具注入。适用于创意写作、翻译等不需要工具的纯对话场景。</div>
+                    <div class="settings-desc">开启后发送给大模型的上下文将采用标准多轮对话格式，无系统提示词、无工具注入。适用于创意写作、翻译等不需要工具的纯对话场景。</div>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-style-filter" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔍 语言风格过滤</span>
+                        <span class="settings-title">语言风格过滤</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后自动对 AI 回复执行语言风格后处理，替换中文括号、破折号、感叹号等。</div>
+                    <div class="settings-desc">开启后自动对 AI 回复执行语言风格后处理，替换中文括号、破折号、感叹号等。</div>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-auto-update" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔄 启动时自动更新</span>
+                        <span class="settings-title">启动时自动更新</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后每次启动服务器时自动检查并应用远程更新。</div>
+                    <div class="settings-desc">开启后每次启动服务器时自动检查并应用远程更新。</div>
                 </div>
 
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-billing-sync-button" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">💰 显示手动计费同步按钮</span>
+                        <span class="settings-title">显示手动计费同步按钮</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后在底部输入栏的消费金额旁显示「同步计费」按钮，点击可手动拉取 sisuo.de 日志并匹配到对应气泡。</div>
+                    <div class="settings-desc">开启后在底部输入栏的消费金额旁显示「同步计费」按钮，点击可手动拉取 sisuo.de 日志并匹配到对应气泡。</div>
                 </div>
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-bulk-logging" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📝 启用批量日志记录</span>
+                        <span class="settings-title">启用批量日志记录</span>
                     </label>
-                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后将记录 API 请求转储(raw_dumps)、响应转储(resp_dumps)和子代理转储(subagent_dumps)。关闭时这些大量文件不会生成，但诊断日志(cc_diag.log)等单文件日志不受影响。</div>
+                <div class="settings-desc">开启后将记录 API 请求转储(raw_dumps)、响应转储(resp_dumps)和子代理转储(subagent_dumps)。关闭时这些大量文件不会生成，但诊断日志(cc_diag.log)等单文件日志不受影响。</div>
                 </div>
 
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-starred" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">启用全局上下文收藏功能</span>
+                        <span class="settings-title">启用全局上下文收藏功能</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">气泡可被收藏，作为固定上下文长期置于请求开头（会话栏底部可管理）。</div>
+                    <div class="settings-desc">气泡可被收藏，作为固定上下文长期置于请求开头（会话栏底部可管理）。</div>
                 </div>
 
 
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-tool-lower-bound" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔧 启用工具调用数量下限 (>=5)</span>
+                        <span class="settings-title">启用工具调用数量下限 (>=5)</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，如果模型单个气泡内调用的工具数量少于5个，将自动拒绝并要求重写以最大化API效用。</div>
+                    <div class="settings-desc">开启后，如果模型单个气泡内调用的工具数量少于5个，将自动拒绝并要求重写以最大化API效用。</div>
                 </div>
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-tool-desc-enforcement" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📏 工具调用前置描述强制</span>
+                        <span class="settings-title">工具调用前置描述强制</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，如果模型的工具调用前面缺少足够长度的描述文本，系统自动注入隐形假用户气泡提醒模型补充描述。阈值：Edit/Write/Read 需 5%，Bash/WebSearch/WebFetch 需 25%。</div>
+                    <div class="settings-desc">开启后，如果模型的工具调用前面缺少足够长度的描述文本，系统自动注入隐形假用户气泡提醒模型补充描述。阈值：Edit/Write/Read 需 5%，Bash/WebSearch/WebFetch 需 25%。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-cc-simulate" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🖥️ CC模拟（本地执行 Read/Write/Edit/Bash）</span>
+                        <span class="settings-title">CC模拟（本地执行 Read/Write/Edit/Bash）</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 Read/Write/Edit/Bash 四种工具调用在 ChatApp 内部直接执行，无需链接 Claude Code。使用 cc_tools_simulate.json 作为工具定义。</div>
+                    <div class="settings-desc">开启后 Read/Write/Edit/Bash 四种工具调用在 ChatApp 内部直接执行，无需链接 Claude Code。使用 cc_tools_simulate.json 作为工具定义。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-partial-read" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📄 部分读入</span>
+                        <span class="settings-title">部分读入</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后，上下文组装时 Read 结果按可见行集合过滤，仅保留 AI 实际读取过的行范围，减少上下文噪声。</div>
+                    <div class="settings-desc">开启后，上下文组装时 Read 结果按可见行集合过滤，仅保留 AI 实际读取过的行范围，减少上下文噪声。</div>
                 </div>
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-descriptor-tool-calls" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📝 描述符格式工具调用</span>
+                        <span class="settings-title">描述符格式工具调用</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 AI 使用 [ToolName开始]...[ToolName结束] 描述符格式调用工具，替代旧的 JSON 标记包裹格式。Prompt 注入时只教 AI 新格式。关闭时使用旧 JSON 格式。</div>
+                    <div class="settings-desc">开启后 AI 使用 [ToolName开始]...[ToolName结束] 描述符格式调用工具，替代旧的 JSON 标记包裹格式。Prompt 注入时只教 AI 新格式。关闭时使用旧 JSON 格式。</div>
                 </div>
 
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-routing-token" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🎯 路由令牌注入</span>
+                        <span class="settings-title">路由令牌注入</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 system prompt 中注入动态路由令牌。关闭后 system 字段保持静态，提升缓存命中率。</div>
+                    <div class="settings-desc">开启后 system prompt 中注入动态路由令牌。关闭后 system 字段保持静态，提升缓存命中率。</div>
                 </div>
 
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-ttfb-retry" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">⏱️ 首字超时重试</span>
+                        <span class="settings-title">首字超时重试</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后每次请求20秒内须建立TCP连接，连接后再给20秒等首字。超时自动重试，最多10次。</div>
+                    <div class="settings-desc">开启后每次请求20秒内须建立TCP连接，连接后再给20秒等首字。超时自动重试，最多10次。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-cache-control" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">💾 缓存标记</span>
+                        <span class="settings-title">缓存标记</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后在 Anthropic 协议请求中添加 cache_control 断点标记，启用 prompt caching。5 分钟有效期。</div>
+                    <div class="settings-desc">开启后在 Anthropic 协议请求中添加 cache_control 断点标记，启用 prompt caching。5 分钟有效期。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-multiturn-format" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📨 多轮格式拆分</span>
+                        <span class="settings-title">多轮格式拆分</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 OpenAI 协议路径将系统内容和对话历史拆为两条独立消息发送，使静态系统部分可被缓存。仅影响非 Anthropic 协议。</div>
+                    <div class="settings-desc">开启后 OpenAI 协议路径将系统内容和对话历史拆为两条独立消息发送，使静态系统部分可被缓存。仅影响非 Anthropic 协议。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-prefix-lock" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔒 前缀锁定</span>
+                        <span class="settings-title">前缀锁定</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后阻止对已发送过的前缀气泡的编辑、删除、概括操作，同时关闭 auto-read 功能以保护缓存前缀稳定性。</div>
+                    <div class="settings-desc">开启后阻止对已发送过的前缀气泡的编辑、删除、概括操作，同时关闭 auto-read 功能以保护缓存前缀稳定性。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-planned-tools" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔀 计划式工具调用</span>
+                        <span class="settings-title">计划式工具调用</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后工具调用分为「立即」和「计划」两种模式。立即工具并行执行，计划工具按声明的等待清单在依赖成功后执行、依赖失败时自动拒绝。</div>
+                    <div class="settings-desc">开启后工具调用分为「立即」和「计划」两种模式。立即工具并行执行，计划工具按声明的等待清单在依赖成功后执行、依赖失败时自动拒绝。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-enable_thinking_retry" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🧠 思考重试</span>
+                        <span class="settings-title">思考重试</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后深度思考模式下模型未返回思维链时自动重试最多3次，3次均失败则返回错误。关闭时不做重试直接接受。</div>
+                    <div class="settings-desc">开启后深度思考模式下模型未返回思维链时自动重试最多3次，3次均失败则返回错误。关闭时不做重试直接接受。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-show-all-autoread" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📖 显示全部自动读取气泡</span>
+                        <span class="settings-title">显示全部自动读取气泡</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后渲染所有 autoread 气泡，关闭时每个文件仅显示最新一条已吸附的自动读取结果。</div>
+                    <div class="settings-desc">开启后渲染所有 autoread 气泡，关闭时每个文件仅显示最新一条已吸附的自动读取结果。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-truncation-detection" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📝 输出截断续接</span>
+                        <span class="settings-title">输出截断续接</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后检测 AI 回复是否被截断，如缺少概括区块结束标记，自动注入续接指令让模型继续输出。</div>
+                    <div class="settings-desc">开启后检测 AI 回复是否被截断，如缺少概括区块结束标记，自动注入续接指令让模型继续输出。</div>
                 </div>
 
 
-                <div style="margin-bottom: 15px; display:none;" class="adv-opt">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item adv-opt" style="display:none;">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-reverse-context" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🔄 倒序上下文 (Reverse Context)</span>
+                        <span class="settings-title">倒序上下文 (Reverse Context)</span>
                     </label>
-                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后最新的消息放在上下文开头，系统提示词和规则放在末尾。可能改善模型对最近指令的关注度。</div>
+                <div class="settings-desc">开启后最新的消息放在上下文开头，系统提示词和规则放在末尾。可能改善模型对最近指令的关注度。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-anthropic-protocol" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">📡 Claude 使用 Anthropic Messages 协议</span>
+                        <span class="settings-title">Claude 使用 Anthropic Messages 协议</span>
                     </label>
-                <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后 Claude 模型请求使用 /v1/messages 端点和原生 Anthropic 格式，而非 /v1/chat/completions。</div>
+                <div class="settings-desc">开启后 Claude 模型请求使用 /v1/messages 端点和原生 Anthropic 格式，而非 /v1/chat/completions。</div>
                 </div>
-                <div style="margin-bottom: 15px;" class="dev-only-setting">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="settings-item dev-only-setting">
+                    <label class="settings-label">
                         <input type="checkbox" id="set-cc-inject" onchange="saveSettings()">
-                        <span style="margin-left: 8px;">🧰 注入CC工具和系统提示词</span>
+                        <span class="settings-title">注入CC工具和系统提示词</span>
                     </label>
-                    <div style="font-size: 12px; color: #666; margin-left: 24px;">开启后自动加载 cc_tools.json 和 cc_system.json 注入请求上下文。Anthropic 协议走 system 字段，OpenAI 协议走 messages 开头。不依赖任何其他开关。</div>
+                    <div class="settings-desc">开启后自动加载 cc_tools.json 和 cc_system.json 注入请求上下文。Anthropic 协议走 system 字段，OpenAI 协议走 messages 开头。不依赖任何其他开关。</div>
                 </div>
-                <div id="adv-opt-toggle" style="margin-top: 15px; text-align: center; border-top: 1px dashed #ddd; padding-top: 10px; grid-column: 1 / -1;">
-                    <button onclick="document.querySelectorAll('.adv-opt').forEach(function(el){el.style.display=el.style.display==='none'?'':'none'});this.textContent=this.textContent.indexOf('展开')>=0?'收起更多选项 ▴':'展开更多选项 ▾'" style="padding: 6px 15px; cursor: pointer; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; color: #666;">展开更多选项 ▾</button>
+                <div id="adv-opt-toggle" style="margin-top: var(--md-sys-spacing-2); text-align: center; border-top: 1px solid var(--md-sys-color-outline-variant); padding-top: var(--md-sys-spacing-3); grid-column: 1 / -1;">
+                    <button class="md-button md-button--text md-button--compact" onclick="document.querySelectorAll('.adv-opt').forEach(function(el){el.style.display=el.style.display==='none'?'':'none'});this.textContent=this.textContent.indexOf('展开')>=0?'收起更多选项 ▴':'展开更多选项 ▾'">展开更多选项 ▾</button>
                 </div>
             </div>
-            <div style="padding: 15px; text-align: right; border-top: 1px solid #ddd;">
-                <button onclick="closeSettingsModal()" style="padding: 6px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px;">关闭</button>
+            <div class="md-modal-footer">
+                <button class="md-button md-button--filled md-button--compact" onclick="closeSettingsModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -392,7 +392,7 @@
                     </li>
                     <li><strong>气泡操作 (鼠标悬停显示操作栏):</strong>
                         <ul>
-                            <li><strong>🔄 重试:</strong> 清空该助手气泡内容，以当时的上下文重新发送请求。</li>
+                            <li><strong>重试:</strong> 清空该助手气泡内容，以当时的上下文重新发送请求。</li>
                             <li><strong>👍 / 👎 评分:</strong> 对AI回复进行好评或差评，统计数据累计在对应模型上。再次点击取消评分。</li>
                             <li><strong>隐藏:</strong> 将气泡从AI上下文中完全移除。隐藏后气泡以蓝色概括框形式显示，点击可取消隐藏。</li>
                             <li><strong>概括/全文:</strong> 在完整内容和AI生成的概括之间切换，用于压缩上下文长度。可在高负载面板中批量操作。</li>
@@ -448,7 +448,7 @@
             </div>
             <div id="provider-list" style="flex: 1; overflow-y: auto; padding: 15px;"></div>
             <div style="padding: 15px; border-top: 1px solid #ddd; text-align: right;">
-                <button onclick="saveProviders()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">💾 保存</button>
+                <button onclick="saveProviders()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">保存</button>
                 <button onclick="closeProviderModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
             </div>
         </div>
