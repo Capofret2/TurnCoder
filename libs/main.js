@@ -1573,14 +1573,14 @@ function _doHandleStateUpdate(data) {
             // + 新建会话按钮
             var addBtn = document.createElement('div');
             addBtn.className = 'bottom-tab-add';
-            addBtn.textContent = '+';
+            addBtn.innerHTML = mdIcon('add', 18);
             addBtn.title = '新建会话';
             addBtn.onclick = function() { postAction({action: 'create_session'}); };
             container.appendChild(addBtn);
-            // ⊞ 会话管理按钮
+            // 会话管理按钮。innerHTML 而非 textContent：后者会把 SVG 转义成标签源码。
             var mgrBtn = document.createElement('div');
             mgrBtn.className = 'bottom-tab-add sm-open-btn';
-            mgrBtn.textContent = '\u229E';
+            mgrBtn.innerHTML = mdIcon('grid_view', 18);
             mgrBtn.title = '会话管理';
             mgrBtn.onclick = function() { openSessionManager(); };
             container.appendChild(mgrBtn);
@@ -1684,8 +1684,8 @@ function _doHandleStateUpdate(data) {
             // Header
             var header = document.createElement('div');
             header.className = 'sm-header';
-            header.innerHTML = '<h2 style="margin:0;font-size:18px;">会话管理</h2>' +
-                '<span class="sm-close" onclick="closeSessionManager()">&times;</span>';
+            header.innerHTML = '<h2>会话管理</h2>' +
+                '<span class="sm-close" onclick="closeSessionManager()" title="关闭">' + mdIcon('close', 20) + '</span>';
             panel.appendChild(header);
             // Toolbar
             var toolbar = document.createElement('div');
@@ -1734,7 +1734,7 @@ function _doHandleStateUpdate(data) {
             }
             sids.sort(function(a, b) { return (sessMap[a].order || 0) - (sessMap[b].order || 0); });
             if (sids.length === 0) {
-                body.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">' + (showArchived ? '无归档会话' : '无会话') + '</div>';
+                body.innerHTML = '<div class="sm-empty">' + (showArchived ? '无归档会话' : '无会话') + '</div>';
                 return;
             }
             var html = '';
@@ -1748,13 +1748,13 @@ function _doHandleStateUpdate(data) {
                     groupSids.forEach(function(sid) { groupedSids.add(sid); });
                     var isCollapsed = group.collapsed;
                     html += '<div class="sm-section">';
-                    html += '<div class="sm-section-header" onclick="smToggleGroup(\'' + gid + '\')"><span class="sm-fold-icon">' + (isCollapsed ? '\u25B6' : '\u25BC') + '</span>';
+                    html += '<div class="sm-section-header" onclick="smToggleGroup(\'' + gid + '\')"><span class="sm-fold-icon">' + (isCollapsed ? mdIcon('chevron_right', 14) : mdIcon('expand_more', 14)) + '</span>';
                     html += '<span class="sm-section-title">' + (group.name || '\u672A\u547D\u540D\u7EC4') + '</span>';
                     html += '<span class="sm-section-count">' + groupSids.length + '</span>';
                     html += '<div class="sm-section-actions" onclick="event.stopPropagation()">';
-                    html += '<button class="sm-section-btn" onclick="addSessionToGroup(\'' + gid + '\')" title="\u65B0\u5EFA">\u2795</button>';
-                    html += '<button class="sm-section-btn" onclick="closeSessionManager();renameGroup(\'' + gid + '\', \'' + (group.name || '').replace(/'/g, "\\'") + '\')" title="\u91CD\u547D\u540D">\u270F\uFE0F</button>';
-                    html += '<button class="sm-section-btn" onclick="closeSessionManager();deleteGroup(\'' + gid + '\')" title="\u5220\u9664">\uD83D\uDDD1\uFE0F</button>';
+                    html += '<button class="sm-section-btn" onclick="addSessionToGroup(\'' + gid + '\')" title="\u65B0\u5EFA">' + mdIcon('add', 14) + '</button>';
+                    html += '<button class="sm-section-btn" onclick="closeSessionManager();renameGroup(\'' + gid + '\', \'' + (group.name || '').replace(/'/g, "\\'") + '\')" title="\u91CD\u547D\u540D">' + mdIcon('edit', 14) + '</button>';
+                    html += '<button class="sm-section-btn" onclick="closeSessionManager();deleteGroup(\'' + gid + '\')" title="\u5220\u9664" style="color:var(--md-sys-color-error);">' + mdIcon('delete', 14) + '</button>';
                     html += '</div></div>';
                     if (!isCollapsed) {
                         html += '<div class="sm-section-body"><div class="sm-grid">';

@@ -122,7 +122,7 @@ class StateMixin:
                                     'execution_time_s': _m.get('execution_time_s'),
                                     '_dehydrated': True,
                                 }
-                        elif _m.get('is_hidden') or (_m.get('is_collapsed') and not (_m.get('model_name', '').endswith('\u601d\u8003\u8fc7\u7a0b)') or _m.get('tool_type') == 'thinking')):
+                        elif _m.get('is_hidden') or (_m.get('is_collapsed') and not (_m.get('model_name', '').endswith('\u601d\u8003\u8fc7\u7a0b)') or _m.get('cc_type') == 'thinking')):
                             _mc = {
                                 'id': _m.get('id'),
                                 'role': _m.get('role', 'user'),

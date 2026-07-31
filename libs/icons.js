@@ -74,6 +74,7 @@ var MD_ICON_GLYPHS = {
     image: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16.5l-5.2-5.2L9.5 17.5"/>',
     photo_camera: '<path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.2"/>',
     bar_chart: '<path d="M6 20V11M12 20V5M18 20v-6"/>',
+    grid_view: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
     dns: '<rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01"/>',
     search: '<circle cx="11" cy="11" r="6"/><path d="M15.4 15.4L20 20"/>',
     psychology: '<path d="M7.4 15.4A4.2 4.2 0 0 1 8 7.2 5.2 5.2 0 0 1 17.4 8.4 3.6 3.6 0 0 1 16.6 15.4z"/><circle cx="7.2" cy="18.8" r="1.2"/><circle cx="10.4" cy="20.6" r="0.9"/>',
