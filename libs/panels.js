@@ -10,10 +10,10 @@ function renderQueue(queue, isPaused) {
         div.className = 'queue-item';
         div.innerHTML = '<span class="queue-content">[ID:'+item.id+'] '+item.content+'</span>' +
             '<div class="queue-ops">' +
-            '<button onclick="postAction({action: \'manage_queue\', manage_action: \'early\', index: '+i+'})">🔥</button>' +
-            '<button onclick="postAction({action: \'manage_queue\', manage_action: \'up\', index: '+i+'})">⬆️</button>' +
-            '<button onclick="postAction({action: \'manage_queue\', manage_action: \'down\', index: '+i+'})">⬇️</button>' +
-            '<button onclick="postAction({action: \'manage_queue\', manage_action: \'del\', index: '+i+'})">❌</button>' +
+            '<button class="md-icon-button md-icon-button--compact" title="插队优先" onclick="postAction({action: \'manage_queue\', manage_action: \'early\', index: '+i+'})">' + mdIcon('local_fire', 16) + '</button>' +
+            '<button class="md-icon-button md-icon-button--compact" title="上移" onclick="postAction({action: \'manage_queue\', manage_action: \'up\', index: '+i+'})">' + mdIcon('arrow_upward', 16) + '</button>' +
+            '<button class="md-icon-button md-icon-button--compact" title="下移" onclick="postAction({action: \'manage_queue\', manage_action: \'down\', index: '+i+'})">' + mdIcon('arrow_downward', 16) + '</button>' +
+            '<button class="md-icon-button md-icon-button--compact" title="移出队列" onclick="postAction({action: \'manage_queue\', manage_action: \'del\', index: '+i+'})">' + mdIcon('close', 16) + '</button>' +
             '</div>';
         queueArea.appendChild(div);
     });
@@ -68,20 +68,20 @@ function renderHeavyPanel() {
     if (heavyMessages.length === 0) {
         html += '<div style="padding:15px; text-align:center; color:#999; font-size:12px;">无 >5k Token 的气泡记录</div>';
     } else {
-        html += '<div style="padding:8px 12px; font-weight:bold; font-size:13px; border-bottom:1px solid #eee; background:#f8f9fa;">高负载气泡清单 (原尺寸 >5k)</div>';
+        html += '<div style="padding:var(--md-sys-spacing-3) var(--md-sys-spacing-4); font-size:var(--md-sys-typescale-title-small-size); font-weight:var(--md-sys-typescale-title-small-weight); color:var(--md-sys-color-on-surface); background:var(--md-sys-color-surface-container-high);">高负载气泡清单 (原尺寸 >5k)</div>';
         heavyMessages.forEach(function(hm) {
             var summaryText = hm.summary || '无概括';
-            html += '<div style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; border-bottom:1px solid #f0f0f0; font-size:12px; transition: background 0.2s;" onmouseover="this.style.background=\'#f1f8ff\'" onmouseout="this.style.background=\'transparent\'">' +
-                '<span onclick="scrollToMsg(' + (hm.scrollId || hm.id) + ')" style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:10px; cursor:pointer; color:#007bff; text-decoration:underline;" title="点击跳转到该气泡">[ID: ' + hm.id + '] ' + summaryText + '</span>' +
-                '<div style="display:flex; gap: 4px;">' +
-                '<button onclick="openEditSummaryModal(' + hm.index + ')" style="padding:2px 6px; font-size:11px; border:1px solid #bbb; border-radius:4px; background:#fff; cursor:pointer;" title="编辑概括">✏️</button>' +
-                '<button onclick="postAction({action: \'toggle_mode\', index: ' + hm.index + ', mode_type: \'omit\'})" style="padding:2px 10px; font-size:11px; border:1px solid #bbb; border-radius:4px; background:' + (hm.is_omitted ? '#ffc107' : '#fff') + '; cursor:pointer; min-width: 48px;">' + (hm.is_omitted ? '全文' : '概括') + '</button>' +
+            html += '<div class="hp-row">' +
+                '<span onclick="scrollToMsg(' + (hm.scrollId || hm.id) + ')" style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:var(--md-sys-spacing-3); cursor:pointer; color:var(--md-sys-color-primary);" title="点击跳转到该气泡">[ID: ' + hm.id + '] ' + summaryText + '</span>' +
+                '<div style="display:flex; gap:var(--md-sys-spacing-1); align-items:center;">' +
+                '<button class="md-icon-button md-icon-button--compact" onclick="openEditSummaryModal(' + hm.index + ')" title="编辑概括">' + mdIcon('edit', 16) + '</button>' +
+                '<button class="md-button md-button--compact ' + (hm.is_omitted ? 'md-button--tonal' : 'md-button--outlined') + '" onclick="postAction({action: \'toggle_mode\', index: ' + hm.index + ', mode_type: \'omit\'})" style="min-width:56px;">' + (hm.is_omitted ? '全文' : '概括') + '</button>' +
                 '</div></div>';
         });
     }
-    html += '<div style="padding: 10px; border-top: 1px solid #eee; text-align: center; background: #f8f9fa;">' +
-        '<button onclick="openContextManager()" style="padding: 6px 12px; background: #17a2b8; color: #fff; border: 1px solid #138496; border-radius: 4px; cursor: pointer; font-size: 12px; width: 100%; font-weight: bold;">🎛️ 管理上下文</button>' +
-        '<button onclick="renderContextVisualization()" style="padding: 6px 12px; background: #5e35b1; color: #fff; border: 1px solid #4527a0; border-radius: 4px; cursor: pointer; font-size: 12px; width: 100%; font-weight: bold; margin-top: 6px;">📊 上下文构成可视化</button>' +
+    html += '<div style="padding: var(--md-sys-spacing-3); background: var(--md-sys-color-surface-container-high); display:flex; flex-direction:column; gap:var(--md-sys-spacing-2);">' +
+        '<button class="md-button md-button--filled md-button--compact md-button--block" onclick="openContextManager()">' + mdIcon('settings', 16) + ' 管理上下文</button>' +
+        '<button class="md-button md-button--tonal md-button--compact md-button--block" onclick="renderContextVisualization()">' + mdIcon('bar_chart', 16) + ' 上下文构成可视化</button>' +
         '</div>';
     panel.innerHTML = html;
 }
@@ -97,34 +97,41 @@ function openContextManager() {
     if (existing) { existing.remove(); return; }
     var ov = document.createElement('div');
     ov.id = 'ctx-mgr-overlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:2000;';
+    ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+        + 'background:color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);'
+        + 'display:flex;justify-content:center;align-items:center;z-index:var(--md-sys-z-overlay);';
     ov.onclick = function(e) { if (e.target === this) this.remove(); };
     var box = document.createElement('div');
-    box.style.cssText = 'width:460px;background:#fff;border-radius:8px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+    box.style.cssText = 'width:460px;background:var(--md-sys-color-surface-container-high);'
+        + 'color:var(--md-sys-color-on-surface);'
+        + 'border-radius:var(--md-sys-shape-corner-extra-large);'
+        + 'padding:var(--md-sys-spacing-6);box-shadow:var(--md-sys-elevation-level3);';
     var thChecked = (typeof thinkingVisible !== 'undefined' && thinkingVisible) ? 'checked' : '';
-    box.innerHTML = '<h3 style="margin:0 0 15px 0;">🎛️ 上下文批量管理</h3>' +
-        '<div style="margin-bottom:12px;"><b>筛选类型</b><br>' +
-        '<label style="margin-right:10px;"><input type="checkbox" id="cm-type-thinking"> 💭 思维链</label>' +
-        '<label style="margin-right:10px;"><input type="checkbox" id="cm-type-assistant"> 💬 回复</label><br>' +
-        '<label style="margin-right:10px;"><input type="checkbox" id="cm-type-user"> 👤 用户</label>' +
-        '<label style="margin-right:10px;"><input type="checkbox" id="cm-type-tool"> 🔧 工具返回</label><br>' +
-        '<label><input type="checkbox" id="cm-type-image"> 🖼️ 含有图片</label></div>' +
+    box.innerHTML = '<h3 style="margin:0 0 var(--md-sys-spacing-4) 0;font-size:var(--md-sys-typescale-title-large-size);font-weight:var(--md-sys-typescale-title-large-weight);display:flex;align-items:center;gap:var(--md-sys-spacing-2);">' + mdIcon('settings', 22) + ' 上下文批量管理</h3>' +
+        '<div style="margin-bottom:var(--md-sys-spacing-3);"><b>筛选类型</b>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:var(--md-sys-spacing-2);margin-top:var(--md-sys-spacing-2);">' +
+        '<label class="md-chip"><input type="checkbox" id="cm-type-thinking">' + mdIcon('psychology', 16) + ' 思维链</label>' +
+        '<label class="md-chip"><input type="checkbox" id="cm-type-assistant">' + mdIcon('smart_toy', 16) + ' 回复</label>' +
+        '<label class="md-chip"><input type="checkbox" id="cm-type-user">' + mdIcon('edit', 16) + ' 用户</label>' +
+        '<label class="md-chip"><input type="checkbox" id="cm-type-tool">' + mdIcon('settings', 16) + ' 工具返回</label>' +
+        '<label class="md-chip"><input type="checkbox" id="cm-type-image">' + mdIcon('image', 16) + ' 含有图片</label>' +
+        '</div></div>' +
         '<div style="margin-bottom:12px;"><b>ID 范围</b> ' +
         '<input type="number" id="cm-id-min" placeholder="最小" style="width:80px;"> ~ ' +
         '<input type="number" id="cm-id-max" placeholder="最大" style="width:80px;"></div>' +
         '<div style="margin-bottom:12px;"><b>长度范围</b> ' +
         '<input type="number" id="cm-size-min" value="0" step="0.1" style="width:60px;"> ~ ' +
         '<input type="number" id="cm-size-max-modal" value="" step="0.1" style="width:60px;" placeholder="不限"> k</div>' +
-        '<div id="cm-preview" style="margin-bottom:15px;padding:8px;background:#f8f9fa;border-radius:4px;font-size:12px;color:#666;">计算中...</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-        '<button id="cm-btn-omit" onclick="batchContextAction(\'omit\')" style="padding:8px;background:#ffc107;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📦 概括 (0)</button>' +
-        '<button id="cm-btn-expand" onclick="batchContextAction(\'expand\')" style="padding:8px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📖 展开 (0)</button>' +
-        '<button id="cm-btn-hide" onclick="batchContextAction(\'hide\')" style="padding:8px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🙈 隐藏 (0)</button>' +
-        '<button id="cm-btn-unhide" onclick="batchContextAction(\'unhide\')" style="padding:8px;background:#6c757d;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">👁️ 取消隐藏 (0)</button>' +
-        '<button id="cm-btn-purge" onclick="batchContextAction(\'purge\')" style="padding:8px;background:#dc3545;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;grid-column:span 2;">🗑️ 彻底删除已隐藏 (0)</button></div>' +
-        '<div style="border-top:1px solid #eee;padding-top:10px;margin-top:12px;">' +
-        '<label><input type="checkbox" id="cm-thinking-toggle" ' + thChecked + ' onchange="postAction({action:\'toggle_thinking_visible\'});showToast(\'已切换（仅影响新产生的思维链）\',\'success\')"> 💭 新思维链默认可见（不影响已有气泡）</label></div>' +
-        '<div style="text-align:right;margin-top:12px;"><button onclick="document.getElementById(\'ctx-mgr-overlay\').remove()" style="padding:6px 15px;cursor:pointer;">关闭</button></div>';
+        '<div id="cm-preview" style="margin-bottom:var(--md-sys-spacing-4);padding:var(--md-sys-spacing-3);background:var(--md-sys-color-surface-container);border-radius:var(--md-sys-shape-corner-small);font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);">计算中...</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--md-sys-spacing-2);">' +
+        '<button id="cm-btn-omit" class="md-button md-button--tonal md-button--compact" onclick="batchContextAction(\'omit\')">' + mdIcon('inventory', 16) + ' 概括 (0)</button>' +
+        '<button id="cm-btn-expand" class="md-button md-button--tonal md-button--compact" onclick="batchContextAction(\'expand\')">' + mdIcon('book', 16) + ' 展开 (0)</button>' +
+        '<button id="cm-btn-hide" class="md-button md-button--tonal md-button--compact" onclick="batchContextAction(\'hide\')">' + mdIcon('visibility_off', 16) + ' 隐藏 (0)</button>' +
+        '<button id="cm-btn-unhide" class="md-button md-button--outlined md-button--compact" onclick="batchContextAction(\'unhide\')">' + mdIcon('visibility', 16) + ' 取消隐藏 (0)</button>' +
+        '<button id="cm-btn-purge" class="md-button md-button--danger md-button--compact" onclick="batchContextAction(\'purge\')" style="grid-column:span 2;">' + mdIcon('delete_sweep', 16) + ' 彻底删除已隐藏 (0)</button></div>' +
+        '<div style="border-top:1px solid var(--md-sys-color-outline-variant);padding-top:var(--md-sys-spacing-3);margin-top:var(--md-sys-spacing-3);">' +
+        '<label style="display:flex;align-items:center;gap:var(--md-sys-spacing-2);cursor:pointer;"><input type="checkbox" id="cm-thinking-toggle" ' + thChecked + ' onchange="postAction({action:\'toggle_thinking_visible\'});showToast(\'已切换（仅影响新产生的思维链）\',\'success\')">' + mdIcon('psychology', 16) + ' 新思维链默认可见（不影响已有气泡）</label></div>' +
+        '<div style="text-align:right;margin-top:var(--md-sys-spacing-4);"><button class="md-button md-button--text" onclick="document.getElementById(\'ctx-mgr-overlay\').remove()">关闭</button></div>';
     ov.appendChild(box);
     document.body.appendChild(ov);
     ['cm-type-thinking','cm-type-assistant','cm-type-user','cm-type-tool','cm-type-image','cm-id-min','cm-id-max','cm-size-min','cm-size-max-modal'].forEach(function(id) {
@@ -187,8 +194,16 @@ function updateContextManagerPreview() {
     });
     var el = document.getElementById('cm-preview');
     if (el) el.innerHTML = '匹配: <b>' + count + '</b> 个气泡, 约 <b>' + totalK.toFixed(1) + '</b>k tokens';
-    var bl = {'cm-btn-omit':'📦 概括 ('+ac.omit+')','cm-btn-expand':'📖 展开 ('+ac.expand+')','cm-btn-hide':'🙈 隐藏 ('+ac.hide+')','cm-btn-unhide':'👁️ 取消隐藏 ('+ac.unhide+')','cm-btn-purge':'🗑️ 彻底删除已隐藏 ('+ac.purge+')'};
-    for (var bid in bl) { var b = document.getElementById(bid); if (b) b.textContent = bl[bid]; }
+    // innerHTML, not textContent: these labels carry inline SVG, and a
+    // textContent assignment would strip the icon on the first refresh.
+    var bl = {
+        'cm-btn-omit': mdIcon('inventory', 16) + ' 概括 (' + ac.omit + ')',
+        'cm-btn-expand': mdIcon('book', 16) + ' 展开 (' + ac.expand + ')',
+        'cm-btn-hide': mdIcon('visibility_off', 16) + ' 隐藏 (' + ac.hide + ')',
+        'cm-btn-unhide': mdIcon('visibility', 16) + ' 取消隐藏 (' + ac.unhide + ')',
+        'cm-btn-purge': mdIcon('delete_sweep', 16) + ' 彻底删除已隐藏 (' + ac.purge + ')'
+    };
+    for (var bid in bl) { var b = document.getElementById(bid); if (b) b.innerHTML = bl[bid]; }
 }
 
 async function batchContextAction(action) {

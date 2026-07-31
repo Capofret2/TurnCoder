@@ -130,17 +130,32 @@ function showToast(message, type) {
         container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 90; display: flex; flex-direction: column; gap: 10px; pointer-events: none; max-height: calc(100vh - 120px); overflow-y: auto;';
         document.body.appendChild(container);
     }
+    // M3 snackbar: inverse surface so the notice reads against any background.
+    // The error/success distinction moves to a 4px leading edge, which keeps the
+    // inverse treatment intact instead of swapping the whole fill.
     var toast = document.createElement('div');
-    var bgColor = type === 'error' ? '#f8d7da' : '#d4edda';
-    var textColor = type === 'error' ? '#721c24' : '#155724';
-    var borderColor = type === 'error' ? '#f5c6cb' : '#c3e6cb';
-    toast.style.cssText = 'background-color: ' + bgColor + '; color: ' + textColor + '; border: 1px solid ' + borderColor + '; padding: 12px 16px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: flex-start; justify-content: space-between; min-width: 250px; max-width: 350px; pointer-events: auto; font-size: 13px; transition: opacity 0.3s;';
+    var accent = type === 'error' ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-success)';
+    toast.style.cssText = 'background: var(--md-sys-color-inverse-surface);'
+        + ' color: var(--md-sys-color-inverse-on-surface);'
+        + ' border: none; border-left: 4px solid ' + accent + ';'
+        + ' padding: var(--md-sys-spacing-3) var(--md-sys-spacing-4);'
+        + ' border-radius: var(--md-sys-shape-corner-extra-small);'
+        + ' box-shadow: var(--md-sys-elevation-level3);'
+        + ' display: flex; align-items: flex-start; justify-content: space-between; gap: var(--md-sys-spacing-3);'
+        + ' min-width: 250px; max-width: 380px; min-height: 48px; box-sizing: border-box;'
+        + ' pointer-events: auto;'
+        + ' font-size: var(--md-sys-typescale-body-medium-size);'
+        + ' letter-spacing: var(--md-sys-typescale-body-medium-tracking);'
+        + ' transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard-accelerate);';
     var msgSpan = document.createElement('span');
     msgSpan.innerText = message;
-    msgSpan.style.cssText = 'margin-right: 15px; word-break: break-word; line-height: 1.4;';
+    msgSpan.style.cssText = 'word-break: break-word; line-height: 1.4; align-self: center;';
     var closeBtn = document.createElement('span');
-    closeBtn.innerHTML = '&times;';
-    closeBtn.style.cssText = 'cursor: pointer; font-size: 20px; font-weight: bold; line-height: 1; color: inherit; opacity: 0.7; padding-left: 5px;';
+    closeBtn.innerHTML = mdIcon('close', 18);
+    closeBtn.style.cssText = 'cursor: pointer; line-height: 1; color: inherit; opacity: 0.8;'
+        + ' width: 24px; height: 24px; flex-shrink: 0;'
+        + ' display: inline-flex; align-items: center; justify-content: center;'
+        + ' border-radius: var(--md-sys-shape-corner-full);';
     closeBtn.onclick = function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 300); };
     toast.appendChild(msgSpan);
     toast.appendChild(closeBtn);
@@ -151,25 +166,48 @@ function showToast(message, type) {
 // Non-blocking prompt modal (replaces native window.prompt)
 function showPromptModal(message, defaultValue) {
     return new Promise(function(resolve) {
+        // M3 basic dialog. Action area follows the spec ordering: the dismissive
+        // action sits left as a text button, the confirming action right as filled.
         var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:9999;';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+            + 'background:color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);'
+            + 'display:flex;justify-content:center;align-items:center;z-index:9999;';
         var box = document.createElement('div');
-        box.style.cssText = 'background:#fff;border-radius:8px;padding:20px 24px;min-width:320px;max-width:450px;box-shadow:0 8px 32px rgba(0,0,0,0.25);';
+        box.style.cssText = 'background:var(--md-sys-color-surface-container-high);'
+            + 'color:var(--md-sys-color-on-surface);'
+            + 'border-radius:var(--md-sys-shape-corner-extra-large);'
+            + 'padding:var(--md-sys-spacing-6);min-width:320px;max-width:450px;'
+            + 'box-shadow:var(--md-sys-elevation-level3);';
         var msgEl = document.createElement('div');
-        msgEl.style.cssText = 'margin-bottom:12px;font-size:14px;color:#333;white-space:pre-wrap;line-height:1.5;';
+        msgEl.style.cssText = 'margin-bottom:var(--md-sys-spacing-4);'
+            + 'font-size:var(--md-sys-typescale-body-large-size);'
+            + 'letter-spacing:var(--md-sys-typescale-body-large-tracking);'
+            + 'color:var(--md-sys-color-on-surface-variant);white-space:pre-wrap;line-height:1.5;';
         msgEl.textContent = message;
         var input = document.createElement('input');
         input.type = 'text';
         input.value = defaultValue || '';
-        input.style.cssText = 'width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px;box-sizing:border-box;margin-bottom:16px;';
+        input.style.cssText = 'width:100%;padding:var(--md-sys-spacing-2) var(--md-sys-spacing-3);'
+            + 'border:none;border-bottom:1px solid var(--md-sys-color-outline);'
+            + 'border-radius:var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0;'
+            + 'background:var(--md-sys-color-surface-container-highest);'
+            + 'color:var(--md-sys-color-on-surface);outline:none;'
+            + 'font-family:inherit;font-size:var(--md-sys-typescale-body-large-size);'
+            + 'min-height:40px;box-sizing:border-box;margin-bottom:var(--md-sys-spacing-6);';
         var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:var(--md-sys-spacing-2);';
+        var _mdBtnBase = 'min-height:40px;border-radius:var(--md-sys-shape-corner-full);cursor:pointer;'
+            + 'font-family:inherit;font-size:var(--md-sys-typescale-label-large-size);'
+            + 'font-weight:var(--md-sys-typescale-label-large-weight);'
+            + 'letter-spacing:var(--md-sys-typescale-label-large-tracking);';
         var cancelBtn = document.createElement('button');
         cancelBtn.textContent = '取消';
-        cancelBtn.style.cssText = 'padding:6px 16px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:13px;';
+        cancelBtn.style.cssText = _mdBtnBase + 'padding:0 var(--md-sys-spacing-3);border:none;'
+            + 'background:transparent;color:var(--md-sys-color-primary);';
         var okBtn = document.createElement('button');
         okBtn.textContent = '确认';
-        okBtn.style.cssText = 'padding:6px 16px;border:none;border-radius:4px;background:#007bff;color:#fff;cursor:pointer;font-size:13px;';
+        okBtn.style.cssText = _mdBtnBase + 'padding:0 var(--md-sys-spacing-6);border:none;'
+            + 'background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);';
         cancelBtn.onclick = function() { overlay.remove(); resolve(null); };
         okBtn.onclick = function() { overlay.remove(); resolve(input.value); };
         input.onkeydown = function(e) { if (e.key === 'Enter') { overlay.remove(); resolve(input.value); } if (e.key === 'Escape') { overlay.remove(); resolve(null); } };
