@@ -950,6 +950,44 @@
     line-height: 1.5;
 }
 
+/* Inline thinking block — the same concept as .th-card but parsed out of
+   [思考开始] markers inside a reply, so it lives in the text flow. It shares the
+   tertiary palette and nothing else: reusing .th-card would apply that card's
+   negative margin and tuck the block behind its own bubble.
+   display:none stays inline on the body, because the _expandStateMap save pass
+   tests el.style.display === 'block' and would never record a class-driven one. */
+.inline-thinking-block {
+    margin: var(--md-sys-spacing-1) 0;
+    border: none;
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-tertiary-container);
+    color: var(--md-sys-color-on-tertiary-container);
+    font-size: var(--md-sys-typescale-body-small-size);
+    overflow: hidden;
+}
+.inline-thinking-header {
+    padding: var(--md-sys-spacing-1) var(--md-sys-spacing-3);
+    cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: var(--md-sys-spacing-2);
+    background: color-mix(in srgb, var(--md-sys-color-on-tertiary-container) 6%, var(--md-sys-color-tertiary-container));
+    transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+.inline-thinking-header:hover {
+    background: color-mix(in srgb, var(--md-sys-color-on-tertiary-container) 12%, var(--md-sys-color-tertiary-container));
+}
+.inline-thinking-body {
+    padding: var(--md-sys-spacing-2) var(--md-sys-spacing-3);
+    margin: 0 var(--md-sys-spacing-1) var(--md-sys-spacing-1);
+    border: none;
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    white-space: pre-wrap; word-wrap: break-word;
+    line-height: 1.5;
+    max-height: 300px; overflow-y: auto;
+}
+
 /* ==========================================================================
    Composer controls. The bare number inputs and the model popover were the
    last raw-browser widgets left in the input row.

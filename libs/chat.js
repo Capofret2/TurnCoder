@@ -221,11 +221,13 @@
                 if (msg.is_omitted) bubble.classList.add('omit-mode');
                 if (msg.is_terminal) {
                     if (msg.term_state === 'running') {
-                        bubble.style.backgroundColor = '#fff9c4';
-                        bubble.style.border = '1px solid #ffe082';
+                        bubble.style.backgroundColor = 'var(--md-sys-color-warning-container)';
+                        bubble.style.color = 'var(--md-sys-color-on-warning-container)';
+                        bubble.style.border = 'none';
                     } else {
-                        bubble.style.backgroundColor = '#f7f7f9';
-                        bubble.style.border = '1px solid #e0e0e0';
+                        bubble.style.backgroundColor = 'var(--md-sys-color-surface-container-low)';
+                        bubble.style.color = 'var(--md-sys-color-on-surface)';
+                        bubble.style.border = '1px solid var(--md-sys-color-outline-variant)';
                     }
                 }
 
@@ -424,7 +426,7 @@
                     mainContentContainer.innerHTML = `<div class="content"><i>（<span style="color:#007bff;">${msg.model_name || '默认模型'}</span> 等待中... 已用时 <span class="waiting-time" data-start="${msg.start_time || Date.now()/1000}">0.0</span>s）</i></div>`;
                 } else if (msg.is_terminal) {
                     let safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    mainContentContainer.innerHTML = `<div class="content"><pre style="background:transparent; border:none; padding:0; margin:0; color:#333; font-family:Consolas, monospace; font-size:12px; white-space:pre-wrap; word-wrap:break-word;">${safeContent}</pre></div>`;
+                    mainContentContainer.innerHTML = `<div class="content"><pre style="background:transparent; border:none; padding:0; margin:0; color:inherit; font-family:var(--md-sys-typescale-font-mono); font-size:var(--md-sys-typescale-body-small-size); white-space:pre-wrap; word-wrap:break-word;">${safeContent}</pre></div>`;
                 } else if (msg.diff_content) {
                     mainContentContainer.innerHTML = `<div class="content">${renderMarkdownProtected(msg.diff_content)}</div>`;
                 } else if (msg.content_parts) {
@@ -476,13 +478,12 @@
                                     let _itBlock = document.createElement('div');
                                     _itBlock.className = 'inline-thinking-block';
                                     _itBlock.setAttribute('data-type', 'inline_thinking');
-                                    _itBlock.style.cssText = 'margin: 4px 0; border: 1px solid #ce93d8; border-radius: 6px; background: #f3e5f5; font-size: 12px; overflow: hidden;';
                                     let _itHeader = document.createElement('div');
-                                    _itHeader.style.cssText = 'padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #ede7f6;';
+                                    _itHeader.className = 'inline-thinking-header';
                                     _itHeader.innerHTML = '<span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;"><span class="it-arrow" style="font-size:10px;">▶</span>' + mdIcon('psychology', 14) + ' 内联思维链</span><span style="color:var(--md-sys-color-on-surface-variant); font-size:var(--md-sys-typescale-label-small-size);">' + (_itThinkContent.length > 50 ? '~' + (_itThinkContent.length / 3000).toFixed(2) + 'k' : '') + '</span>';
                                     let _itBody = document.createElement('div');
                                     _itBody.className = 'inline-thinking-body';
-                                    _itBody.style.cssText = 'display: none; padding: 6px 10px; border-top: 1px solid #ce93d8; white-space: pre-wrap; line-height: 1.5; color: #4a148c; max-height: 300px; overflow-y: auto;';
+                                    _itBody.style.display = 'none';
                                     _itBody.textContent = _itThinkContent;
                                     _itExpandIdx++;
                                     _itBody.setAttribute('data-expand-id', 'it-' + msg.id + '-' + _itExpandIdx);
@@ -664,7 +665,7 @@
                             
                             const wrapper = document.createElement('div');
                             wrapper.className = 'code-block-wrapper';
-                            wrapper.style.borderColor = '#ffe082';
+                            wrapper.style.borderColor = 'var(--md-sys-color-warning)';
                             wrapper.dataset.raw = encodeURIComponent(part.content);
 
                             let opsHtml = '';
@@ -695,7 +696,8 @@
                             
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
-                            header.style.backgroundColor = '#fff8e1';
+                            header.style.backgroundColor = 'var(--md-sys-color-warning-container)';
+                            header.style.color = 'var(--md-sys-color-on-warning-container)';
                             const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${mdIcon('expand_more', 14)} 折叠</button>`;
                             let warningHtml = '';
                             if (part.warning && part.status === 'pending') {
@@ -706,7 +708,7 @@
                             const contentDiv = document.createElement('div');
                             contentDiv.className = 'code-block-content';
                             let safeTermContent = part.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            contentDiv.innerHTML = `<pre style="background-color: #fff8e1 !important; border-color: #ffe082; padding: 12px; font-family: Consolas, monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word;">${safeTermContent}</pre>`;
+                            contentDiv.innerHTML = `<pre style="background-color: var(--md-sys-color-warning-container) !important; color: var(--md-sys-color-on-warning-container); border: none; padding: var(--md-sys-spacing-3); font-family: var(--md-sys-typescale-font-mono); font-size: var(--md-sys-typescale-body-medium-size); white-space: pre-wrap; word-wrap: break-word;">${safeTermContent}</pre>`;
 
                             wrapper.appendChild(header);
                             wrapper.appendChild(contentDiv);
@@ -722,9 +724,9 @@
                             wrapper.className = 'code-block-wrapper';
                             if (part._is_planned) {
                                 wrapper.classList.add('cb-planned');
-                                wrapper.style.borderLeft = '3px solid #e91e63';
+                                wrapper.style.borderLeft = '3px solid var(--md-sys-color-tertiary)';
                             }
-                            wrapper.style.borderColor = '#ccc';
+                            wrapper.style.borderColor = 'var(--md-sys-color-outline-variant)';
                             wrapper.dataset.raw = encodeURIComponent(part.content);
                             let opsHtml = '', statusLabel = '';
                             switch(part.status) {
@@ -764,14 +766,16 @@
                             }
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
-                            header.style.backgroundColor = part._is_planned ? '#fce4ec' : '#ede7f6';
+                            header.style.backgroundColor = part._is_planned
+                                ? 'var(--md-sys-color-tertiary-container)'
+                                : 'var(--md-sys-color-surface-container-high)';
                             let ccToggleText = (part.status === 'adopted') ? (mdIcon('chevron_right', 14) + ' 展开') : (mdIcon('expand_more', 14) + ' 折叠');
-                            let _seqBadge = part._tool_seq ? `<span style="background:#7e57c2;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:6px;">#${part._tool_seq}</span>` : '';
+                            let _seqBadge = part._tool_seq ? `<span class="status-tag" style="background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);margin-left:var(--md-sys-spacing-2);">#${part._tool_seq}</span>` : '';
                             let _waitBadge = '';
                             if (part._is_planned && part._wait_list && part._wait_list.length > 0) {
-                                _waitBadge = `<span style="background:#e91e63;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:4px;">等待 ${part._wait_list.map(n => '#' + n).join(' ')}</span>`;
+                                _waitBadge = `<span class="status-tag" style="background:var(--md-sys-color-tertiary);color:var(--md-sys-color-on-tertiary);">等待 ${part._wait_list.map(n => '#' + n).join(' ')}</span>`;
                             }
-                                                        header.innerHTML = `<div style="display:flex;align-items:center;"><span class="cb-label">${statusLabel}</span>${_seqBadge}${_waitBadge}<span style="color:#7e57c2;font-size:11px;margin-left:10px;">(${toolId})</span></div><div class="cb-ops"><button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${ccToggleText}</button>${opsHtml}</div>`;
+                                                        header.innerHTML = `<div style="display:flex;align-items:center;"><span class="cb-label">${statusLabel}</span>${_seqBadge}${_waitBadge}<span style="color:var(--md-sys-color-on-surface-variant);font-size:var(--md-sys-typescale-label-small-size);margin-left:var(--md-sys-spacing-3);">(${toolId})</span></div><div class="cb-ops"><button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${ccToggleText}</button>${opsHtml}</div>`;
                             header.style.cursor = 'pointer';
                             header.onclick = function(e) { if (!e.target.closest('button')) toggleCodeBlock(this.querySelector('.cb-toggle')); };
                             const contentDiv = document.createElement('div');
@@ -788,7 +792,7 @@
                                 }
                                 let _hp = [];
                                 for (let [_pk, _pv] of Object.entries(toolData.input || {})) {
-                                    let _nameHtml = '<span style="color:#7c3aed; font-size:var(--font-main); font-weight:500;">' + _e(_pk) + ':</span>';
+                                    let _nameHtml = '<span style="color:var(--md-sys-color-primary); font-size:var(--font-main); font-weight:500;">' + _e(_pk) + ':</span>';
                                     let _pvStr = String(_pv);
                                     let _highlighted = '';
                                     let _paramLang = null;
@@ -824,7 +828,7 @@
                                     let _valueHtml = '<code class="hljs" style="background:transparent; padding:0; font-size:var(--font-main);">' + _highlighted + '</code>';
                                     _hp.push(_nameHtml + '\n' + _valueHtml);
                                 }
-                                contentDiv.innerHTML = '<pre class="tool-params-hljs" style="background:#f6f8fa; padding:12px; border-radius:6px; font-size:var(--font-main); font-family:Consolas, Monaco, monospace; white-space:pre-wrap; word-wrap:break-word; margin:0; border:1px solid #ccc; line-height:1.5;">' + _hp.join('\n\n') + '</pre>';
+                                contentDiv.innerHTML = '<pre class="tool-params-hljs" style="background:var(--md-sys-color-surface-container); padding:var(--md-sys-spacing-3); border-radius:var(--md-sys-shape-corner-small); font-size:var(--font-main); font-family:var(--md-sys-typescale-font-mono); white-space:pre-wrap; word-wrap:break-word; margin:0; border:none; line-height:1.5;">' + _hp.join('\n\n') + '</pre>';
                             }
                             wrapper.appendChild(header);
                             wrapper.appendChild(contentDiv);
@@ -836,7 +840,7 @@
                                 let _rejBtn = document.createElement('button');
                                 _rejBtn.setAttribute('data-testid', 'reject-approval');
                                 _rejBtn.textContent = '拒绝审批';
-                                _rejBtn.style.cssText = 'background:#dc3545;color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:13px;';
+                                _rejBtn.className = 'cb-btn cb-reject';
                                 _rejBtn.onclick = function() { rejectApproval(_rejBtn, index, part.id); };
                                 _approvalRejectDiv.appendChild(_rejBtn);
                                 mainContentContainer.appendChild(_approvalRejectDiv);
@@ -856,10 +860,10 @@
                                 if (trMsg._dehydrated) {
                                     var _dhTokenK = ((trMsg._content_len || 0) / 3000).toFixed(2);
                                     var _dhIsErr = (trMsg.summary || '').includes('Error');
-                                    var _dhColor = _dhIsErr ? '#dc3545' : '#28a745';
+                                    var _dhColor = _dhIsErr ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-success)';
                                     var _dhTimeStr = (trMsg.execution_time_s != null) ? ' ' + trMsg.execution_time_s.toFixed(1) + 's' : '';
                                     var _dhDiv = document.createElement('div');
-                                    _dhDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + _dhColor + '; padding: 3px 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;';
+                                    _dhDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + _dhColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);';
                                     var _dhContentId = 'tr-content-' + trMsg.id;
                                     var _dhMsgId = trMsg.id;
                                     _dhDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dhColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dhIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + _dhTimeStr + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + trMsg.id + '] ~' + _dhTokenK + 'k</span></span><span style="display:flex; gap:2px;"><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" title="\u590d\u5236">' + mdIcon('content_copy', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" title="\u7f16\u8f91">' + mdIcon('edit', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" title="\u9690\u85cf">' + mdIcon('visibility_off', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" title="\u5220\u9664">' + mdIcon('delete', 14) + '</button></span></div>';
@@ -869,16 +873,18 @@
                                 }
                                                 if (trMsg.is_hidden) {
                                     let trHiddenDiv = document.createElement('div');
-                                    trHiddenDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid #007bff; padding: 3px 8px; background: #e3f2fd; border-radius: 4px; font-size: 11px; display:flex; justify-content:space-between; align-items:center;';
+                                    trHiddenDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid var(--md-sys-color-primary); padding: 3px 8px; background: var(--md-sys-color-secondary-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-label-small-size); display:flex; justify-content:space-between; align-items:center;';
                                     trHiddenDiv.innerHTML = '<span style="color:var(--md-sys-color-on-secondary-container); display:inline-flex; align-items:center; gap:4px;">' + mdIcon('visibility_off', 14) + ' 已隐藏 [ID:' + trMsg.id + ']</span><button class="md-button md-button--tonal md-button--compact" onclick="postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})">取消隐藏</button>';
                                     mainContentContainer.appendChild(trHiddenDiv);
                                     return;
                                 }
                                 let trTokenK = ((trMsg.content || '').length / 3000).toFixed(2);
                                 let trIsErr = (trMsg.summary || '').includes('Error');
-                                let trColor = trIsErr ? '#dc3545' : '#28a745';
+                                let trColor = trIsErr ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-success)';
                                 let trDiv = document.createElement('div');
-                                trDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + trColor + '; padding: 3px 8px; background: #f8f9fa; border-radius: 04px 4px 0; font-size: 12px;';
+                                // The old value read "04px 4px 0" — a malformed three-value
+                                // radius that left the bottom-right corner square.
+                                trDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + trColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);';
                                 let trContentId = 'tr-content-' + trMsg.id;
                                 let _trTimeStr = (trMsg.execution_time_s != null) ? ' ' + trMsg.execution_time_s.toFixed(1) + 's' : '';
                                 // Autoread annotation: replace generic backend text with contextual message.
@@ -898,13 +904,13 @@
                                         '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                     '</span>' +
                                 '</div>' +
-                                '<div id="' + trContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fff; border-radius:4px; border:1px solid #eee; max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(_trDisplayContent) + '</div></div>';
+                                '<div id="' + trContentId + '" style="display:none; margin-top:4px; padding:4px; background:var(--md-sys-color-surface-container-lowest); border-radius:var(--md-sys-shape-corner-extra-small); border:1px solid var(--md-sys-color-outline-variant); max-height:300px; overflow-y:auto;"><div class="content">' + renderMarkdownProtected(_trDisplayContent) + '</div></div>';
                                 mainContentContainer.appendChild(trDiv);
                                 if (trMsg.multimodal_blocks) {
                                     trMsg.multimodal_blocks.forEach(function(mb) {
                                         if (mb.type === 'image' || mb.type === 'document') {
                                             let mmDiv = document.createElement('div');
-                                            mmDiv.style.cssText = 'margin: 4px 0 4px 0; padding: 4px; border-left: 3px solid #17a2b8; background: #f0f8ff; border-radius: 4px;';
+                                            mmDiv.style.cssText = 'margin: 4px 0 4px 0; padding: 4px; border-left: 3px solid var(--md-sys-color-tertiary); background: var(--md-sys-color-tertiary-container); border-radius: var(--md-sys-shape-corner-extra-small);';
                                             let src = mb.source || {};
                                             let mediaType = src.media_type || 'image/jpeg';
                                             let srcUrl = '';
@@ -984,7 +990,7 @@
                     // Dehydrated standalone tool_result: render as normal collapsed result
                     var _dsTkK = ((msg._content_len || 0) / 3000).toFixed(2);
                     var _dsIsErr = (msg.summary || '').includes('Error');
-                    var _dsColor = _dsIsErr ? '#dc3545' : '#28a745';
+                    var _dsColor = _dsIsErr ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-success)';
                     var _dsMsgId = msg.id;
                     mainContentContainer.innerHTML = '<div style="border-left: 3px solid ' + _dsColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);"><div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dsColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dsIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + msg.id + '] ~' + _dsTkK + 'k</span></span></div></div>';
                     mainContentContainer.querySelector('div > div').onclick = function() { _fetchDehydratedContent(_dsMsgId); };
@@ -1010,13 +1016,12 @@
                             let _fbBlock = document.createElement('div');
                             _fbBlock.className = 'inline-thinking-block';
                             _fbBlock.setAttribute('data-type', 'inline_thinking');
-                            _fbBlock.style.cssText = 'margin: 4px 0; border: 1px solid #ce93d8; border-radius: 6px; background: #f3e5f5; font-size: 12px; overflow: hidden;';
                             let _fbHeader = document.createElement('div');
-                            _fbHeader.style.cssText = 'padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #ede7f6;';
+                            _fbHeader.className = 'inline-thinking-header';
                             _fbHeader.innerHTML = '<span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;"><span class="it-arrow" style="font-size:10px;">▶</span>' + mdIcon('psychology', 14) + ' 内联思维链</span>';
                             let _fbBody = document.createElement('div');
                             _fbBody.className = 'inline-thinking-body';
-                            _fbBody.style.cssText = 'display: none; padding: 6px 10px; border-top: 1px solid #ce93d8; white-space: pre-wrap; line-height: 1.5; color: #4a148c; max-height: 300px; overflow-y: auto;';
+                            _fbBody.style.display = 'none';
                             _fbBody.textContent = _fbThinkContent;
                             _fbExpandIdx++;
                             _fbBody.setAttribute('data-expand-id', 'itfb-' + msg.id + '-' + _fbExpandIdx);
@@ -1057,7 +1062,7 @@
                     msg.multimodal_blocks.forEach(function(mb) {
                         if (mb.type === 'image' || mb.type === 'document') {
                             let mmDiv2 = document.createElement('div');
-                            mmDiv2.style.cssText = 'margin: 4px 0; padding: 4px; border-left: 3px solid #17a2b8; background: #f0f8ff; border-radius: 4px;';
+                            mmDiv2.style.cssText = 'margin: 4px 0; padding: 4px; border-left: 3px solid var(--md-sys-color-tertiary); background: var(--md-sys-color-tertiary-container); border-radius: var(--md-sys-shape-corner-extra-small);';
                             let mmSrc = mb.source || {};
                             let mmMediaType = mmSrc.media_type || 'image/jpeg';
                             let mmSrcUrl = '';
@@ -1129,7 +1134,7 @@
                     }
                     let batonStr = '';
                     if (window._autopilotActive && msg._autopilot_gen !== undefined && msg._autopilot_gen === window._autopilotGen) {
-                        batonStr = '<span class="baton-marker" style="color:#dc3545;font-size:11px;font-weight:bold;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#dc3545;margin-right:3px;animation:baton-pulse 1s infinite;vertical-align:middle;box-shadow:0 0 4px rgba(220,53,69,0.8);"></span>\u6258\u7BA1\u4E2D</span>';
+                        batonStr = '<span class="baton-marker"><span style="display:inline-block;width:6px;height:6px;border-radius:var(--md-sys-shape-corner-full);background:var(--md-sys-color-error);margin-right:3px;animation:baton-pulse 1s infinite;vertical-align:middle;box-shadow:0 0 4px color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);"></span>\u6258\u7BA1\u4E2D</span>';
                     }
                     let footerParts = [tags, batonStr, timeStr, mName, timingStr, billingStr, `~${tokenK}k`].filter(s => s);
                     footer = `<div class="bubble-footer">${footerParts.join(' | ')}</div>`;
