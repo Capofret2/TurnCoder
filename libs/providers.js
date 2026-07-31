@@ -42,7 +42,7 @@ function renderProviderList() {
         header.className = 'prov-row';
         header.innerHTML =
             '<input type="text" id="prov-name-' + idx + '" value="' + _escAttr(prov.name || '') + '" placeholder="供应商名称" class="prov-input prov-name-input">' +
-            '<button onclick="removeProvider(' + idx + ')" class="prov-btn-danger" title="删除此供应商">🗑️</button>';
+            '<button onclick="removeProvider(' + idx + ')" class="prov-btn-danger" title="删除此供应商">' + mdIcon('delete', 16) + '</button>';
         card.appendChild(header);
 
         // URL row
@@ -66,7 +66,7 @@ function renderProviderList() {
         keyRow.innerHTML =
             '<span class="prov-label">Key</span>' +
             '<input type="password" id="prov-key-' + idx + '" value="' + _escAttr(prov.api_key || '') + '" placeholder="API 密钥" class="prov-input">' +
-            '<button onclick="_toggleKeyVis(\'prov-key-' + idx + '\')" class="prov-btn-eye" title="显示/隐藏">👁</button>' +
+            '<button onclick="_toggleKeyVis(\'prov-key-' + idx + '\')" class="prov-btn-eye" title="显示/隐藏">' + mdIcon('visibility', 16) + '</button>' +
             '<button onclick="testProvider(' + idx + ')" class="' + testCls + '" title="测试连通性">' + testText + '</button>';
         card.appendChild(keyRow);
 

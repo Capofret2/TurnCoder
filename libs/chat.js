@@ -632,7 +632,7 @@
                             
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
-                            const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">🔽 折叠</button>`;
+                            const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${mdIcon('expand_more', 14)} 折叠</button>`;
                             let warningHtml = '';
                             if (part.warning && part.status === 'pending') {
                                 warningHtml = `<span style="color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 10px;" title="生成时预检查发现问题，但您仍可尝试采用">⚠️ 预检警告: ${part.warning}</span>`;
@@ -696,7 +696,7 @@
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
                             header.style.backgroundColor = '#fff8e1';
-                            const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">🔽 折叠</button>`;
+                            const toggleBtn = `<button class="cb-btn cb-toggle" onclick="toggleCodeBlock(this)">${mdIcon('expand_more', 14)} 折叠</button>`;
                             let warningHtml = '';
                             if (part.warning && part.status === 'pending') {
                                 warningHtml = `<span style="color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 10px;">⚠️ ${part.warning}</span>`;
@@ -765,7 +765,7 @@
                             const header = document.createElement('div');
                             header.className = 'code-block-header';
                             header.style.backgroundColor = part._is_planned ? '#fce4ec' : '#ede7f6';
-                            let ccToggleText = (part.status === 'adopted') ? '▶️ 展开' : '🔽 折叠';
+                            let ccToggleText = (part.status === 'adopted') ? (mdIcon('chevron_right', 14) + ' 展开') : (mdIcon('expand_more', 14) + ' 折叠');
                             let _seqBadge = part._tool_seq ? `<span style="background:#7e57c2;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:6px;">#${part._tool_seq}</span>` : '';
                             let _waitBadge = '';
                             if (part._is_planned && part._wait_list && part._wait_list.length > 0) {

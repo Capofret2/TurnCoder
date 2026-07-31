@@ -73,7 +73,7 @@ function renderModelDropdown() {
         var provHtml = prov ? '<span style="font-size: 9px; padding: 1px 4px; background: #e9ecef; border-radius: 3px; color: #495057; margin-right: 6px; border: 1px solid #ced4da;">' + prov + '</span>' : '';
         var label = document.createElement('label');
         label.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer; min-width:340px;';
-        label.innerHTML = '<span style="display:flex; align-items:center;"><span onclick="sendWithModel(\'' + m + '\', event)" style="cursor:pointer; padding:0 6px 0 0;" title="仅以此模型发送">🚀</span><input type="checkbox" class="model-cb" value="' + m + '" ' + isChecked + '> ' + provHtml + modelDisplay + '</span><span style="font-size: 10px; color: #888; margin-left: auto; margin-right: 10px;">总:' + stats.total + ' 好:' + stats.up + ' 差:' + stats.down + '</span><span onclick="hideModel(\'' + m + '\', event)" style="cursor:pointer; color:#dc3545; padding:0 4px;" title="隐藏模型">➖</span>';
+        label.innerHTML = '<span style="display:flex; align-items:center;"><span onclick="sendWithModel(\'' + m + '\', event)" style="cursor:pointer; padding:0 6px 0 0; color:var(--md-sys-color-primary);" title="仅以此模型发送">' + mdIcon('bolt', 16) + '</span><input type="checkbox" class="model-cb" value="' + m + '" ' + isChecked + '> ' + provHtml + modelDisplay + '</span><span style="font-size: var(--md-sys-typescale-label-small-size); color: var(--md-sys-color-on-surface-variant); margin-left: auto; margin-right: var(--md-sys-spacing-3);">总:' + stats.total + ' 好:' + stats.up + ' 差:' + stats.down + '</span><span onclick="hideModel(\'' + m + '\', event)" style="cursor:pointer; color:var(--md-sys-color-error); padding:0 var(--md-sys-spacing-1);" title="隐藏模型">' + mdIcon('remove', 16) + '</span>';
         container.appendChild(label);
     });
     if (hiddenModelsList.length > 0) {
@@ -93,7 +93,7 @@ function renderModelDropdown() {
                 var provHtml = prov ? '<span style="font-size: 8px; padding: 1px 3px; background: #e9ecef; border-radius: 2px; color: #666; margin-right: 4px;">' + prov + '</span>' : '';
                 var item = document.createElement('div');
                 item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; color:#666;';
-                item.innerHTML = '<span>' + provHtml + modelDisplay + '</span><button type="button" onclick="restoreModel(\'' + m + '\', event)" style="border:none; background:transparent; cursor:pointer; color:#28a745; padding:0 4px;" title="恢复模型">➕</button>';
+                item.innerHTML = '<span>' + provHtml + modelDisplay + '</span><button type="button" class="md-icon-button md-icon-button--compact" onclick="restoreModel(\'' + m + '\', event)" style="color:var(--md-sys-color-tertiary);" title="恢复模型">' + mdIcon('add', 16) + '</button>';
                 hiddenContainer.appendChild(item);
             });
             moreDivider.appendChild(hiddenContainer);

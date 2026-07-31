@@ -13,7 +13,9 @@ function toggleCodeBlock(btn) {
             if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
         }
     } else {
-        btn.innerText = content.classList.contains('collapsed') ? '▶️ 展开' : '🔽 折叠';
+        btn.innerHTML = content.classList.contains('collapsed')
+            ? mdIcon('chevron_right', 14) + ' 展开'
+            : mdIcon('expand_more', 14) + ' 折叠';
     }
 }
 
@@ -21,15 +23,17 @@ function copyCodeBlock(btn) {
     var wrapper = btn.closest('.code-block-wrapper');
     var rawCode = decodeURIComponent(wrapper.dataset.raw);
     navigator.clipboard.writeText(rawCode);
-    var oldText = btn.innerText;
-    btn.innerText = '✅ 已复制';
-    setTimeout(function() { btn.innerText = oldText; }, 2000);
+    // innerHTML on both ends: the label carries an inline SVG, and reading it
+    // back with innerText would drop the icon when the timer restores it.
+    var oldHtml = btn.innerHTML;
+    btn.innerHTML = mdIcon('check', 14) + ' 已复制';
+    setTimeout(function() { btn.innerHTML = oldHtml; }, 2000);
 }
 
 async function applyCodeBlock(btn, index, partId) {
     var wrapper = btn.closest('.code-block-wrapper');
     var rawCode = decodeURIComponent(wrapper.dataset.raw);
-    btn.innerText = '⏳ 处理中...';
+    btn.innerHTML = mdIcon('hourglass', 14) + ' 处理中';
     btn.disabled = true;
     try {
         var res = await fetch('/api/action', {
@@ -38,8 +42,7 @@ async function applyCodeBlock(btn, index, partId) {
         });
         var data = await res.json();
         if (data.success) {
-            btn.innerText = '✅ 已采用';
-            btn.style.background = '#28a745';
+            btn.innerHTML = mdIcon('check_circle', 14) + ' 已采用';
             wrapper.classList.add('accepted');
             var rejectBtn = wrapper.querySelector('.cb-reject');
             if (rejectBtn) rejectBtn.disabled = true;
@@ -53,7 +56,7 @@ async function applyCodeBlock(btn, index, partId) {
         } else {
             var readableError = formatBlockError(data);
             var msgId2 = currentHistory[index].id;
-            btn.innerText = '⚠️ 采用失败';
+            btn.innerHTML = mdIcon('warning', 14) + ' 采用失败';
             btn.title = readableError;
             btn.disabled = true;
             wrapper.style.opacity = '0.7';
@@ -66,7 +69,7 @@ async function applyCodeBlock(btn, index, partId) {
             postAction({action: 'add_only', text: '应用代码操作失败 (ID: ' + msgId2 + '):\n' + readableError + '\n\n' + bt + '\n' + rawCode + '\n' + bt});
         }
     } catch(e) {
-        btn.innerText = '⚠️ 异常';
+        btn.innerHTML = mdIcon('error', 14) + ' 异常';
         btn.disabled = true;
         wrapper.style.opacity = '0.7';
     }
@@ -74,11 +77,11 @@ async function applyCodeBlock(btn, index, partId) {
 
 function rejectCodeBlock(btn, index, partId) {
     var wrapper = btn.closest('.code-block-wrapper');
-    btn.innerText = '❌ 已不采用';
+    btn.innerHTML = mdIcon('close', 14) + ' 已不采用';
     var acceptBtn = wrapper.querySelector('.cb-accept');
     if (acceptBtn) acceptBtn.disabled = true;
     btn.disabled = true;
-    wrapper.style.opacity = '0.5';
+    wrapper.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
     var bubble = wrapper.closest('.message-bubble');
     if (bubble) { var acceptAll = bubble.querySelector('.cb-accept-all'); if (acceptAll) acceptAll.style.display = 'none'; }
     if (index !== undefined && partId) postAction({action: 'update_block_status', index: index, part_id: partId, status: 'rejected'});
@@ -97,11 +100,11 @@ async function ccToolAccept(btn, index, partId, isRetry = false) {
         var toolData = JSON.parse(rawCode);
         postAction({action: 'cc_accept_tool', tool_json: toolData, index: index, part_id: partId, is_retry: isRetry});
     } catch(e) {
-        btn.innerText = '❌ 解析失败';
+        btn.innerHTML = mdIcon('error', 14) + ' 解析失败';
         return;
     }
 
-    btn.innerText = '⏳ 队列排队中...';
+    btn.innerHTML = mdIcon('hourglass', 14) + ' 队列排队中';
     btn.disabled = true;
     btn.classList.add('cc-wait-btn');
     btn.dataset.partId = partId;
@@ -126,8 +129,8 @@ function formatBlockError(errObj) {
 async function acceptAllInBubble(btnElem, index) {
     // 统一由后端排序引擎处理，前端只发一次请求
     btnElem.disabled = true;
-    btnElem.style.opacity = '0.4';
-    btnElem.innerText = '⏳ 后端执行中...';
+    btnElem.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
+    btnElem.innerHTML = mdIcon('hourglass', 16) + ' 后端执行中';
     try {
         await postAction({action: 'cc_accept_all', index: index});
     } catch(e) {
@@ -137,7 +140,7 @@ async function acceptAllInBubble(btnElem, index) {
     setTimeout(function() {
         btnElem.disabled = false;
         btnElem.style.opacity = '1';
-        btnElem.innerText = '✅ 一键采用本气泡内全部代码操作';
+        btnElem.innerHTML = mdIcon('check', 16) + ' 一键采用本气泡内全部代码操作';
     }, 2000);
 }
 
@@ -145,8 +148,8 @@ async function rejectAllInBubble(btnElem, index) {
     var msg = currentHistory[index];
     if (!msg || !msg.content_parts) return;
     btnElem.disabled = true;
-    btnElem.style.opacity = '0.4';
-    btnElem.innerText = '⏳ 拒绝中...';
+    btnElem.style.opacity = 'var(--md-sys-state-disabled-content-opacity)';
+    btnElem.innerHTML = mdIcon('hourglass', 16) + ' 拒绝中';
     var pendingParts = msg.content_parts.filter(function(p) {
         return (p.type === 'code' || p.type === 'terminal' || p.type === 'tool_use_part') && p.status === 'pending';
     });
@@ -156,22 +159,22 @@ async function rejectAllInBubble(btnElem, index) {
             await postAction({action: 'update_block_status', index: index, part_id: part.id, status: 'rejected'});
         }
     }
-    btnElem.innerText = '❌ 已全部拒绝';
+    btnElem.innerHTML = mdIcon('close', 16) + ' 已全部拒绝';
     setTimeout(function() {
         btnElem.disabled = false;
         btnElem.style.opacity = '1';
-        btnElem.innerText = '❌ 一键拒绝本气泡内全部操作';
+        btnElem.innerHTML = mdIcon('close', 16) + ' 一键拒绝本气泡内全部操作';
     }, 2000);
 }
 
 async function undoCodeBlock(btn, index, partId) {
-    btn.innerText = '⏳ 撤销中...';
+    btn.innerHTML = mdIcon('hourglass', 14) + ' 撤销中';
     btn.disabled = true;
     try {
         await postAction({action: 'undo_code_block', index: index, part_id: partId});
     } catch(e) {
         showToast('撤销异常：' + e.toString(), 'error');
-        btn.innerText = '↩️ 撤销';
+        btn.innerHTML = mdIcon('undo', 14) + ' 撤销';
         btn.disabled = false;
     }
 }
@@ -189,7 +192,7 @@ async function reverseCodeBlock(btn, index, partId) {
     var replaceLines = lines.slice(sepIdx + 1, endIdx);
     var newLines = lines.slice(0, startIdx + 1).concat(replaceLines).concat(lines.slice(sepIdx, sepIdx + 1)).concat(searchLines).concat(lines.slice(endIdx));
     var reverseCode = newLines.join('\n');
-    btn.innerText = '⏳ 反向中...';
+    btn.innerHTML = mdIcon('hourglass', 14) + ' 反向中';
     btn.disabled = true;
     try {
         // 先将状态设回pending，避免幂等性保护阻止反向操作
@@ -205,12 +208,12 @@ async function reverseCodeBlock(btn, index, partId) {
             // 反向失败，恢复已采用状态
             await postAction({action: 'update_block_status', index: index, part_id: partId, status: 'adopted'});
             showToast('反向替换失败: ' + formatBlockError(data), 'error');
-            btn.innerText = '🔄 反向';
+            btn.innerHTML = mdIcon('swap', 14) + ' 反向';
             btn.disabled = false;
         }
     } catch(e) {
         showToast('反向操作异常：' + e.toString(), 'error');
-        btn.innerText = '🔄 反向';
+        btn.innerHTML = mdIcon('swap', 14) + ' 反向';
         btn.disabled = false;
     }
 }
