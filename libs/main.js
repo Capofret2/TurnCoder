@@ -763,9 +763,9 @@ function _doHandleStateUpdate(data) {
          * than that, but every drag halves the gap, so after a few reorders the step
          * jumps past the neighbour and the drag lands in the wrong slot.
          */
-        function _neighbourOrder(targetEl, after) {
+        function _neighbourOrder(targetEl, after, sel) {
             var rows = Array.prototype.slice.call(
-                targetEl.parentElement.querySelectorAll(':scope > .session-item'));
+                targetEl.parentElement.querySelectorAll(':scope > ' + (sel || '.session-item')));
             var i = rows.indexOf(targetEl);
             var t = parseFloat(targetEl.dataset.order) || 0;
             var nb = after ? rows[i + 1] : rows[i - 1];
@@ -1067,11 +1067,12 @@ function _doHandleStateUpdate(data) {
                             postAction({action: 'add_session_to_group', group_id: gid, sid: payload.sid});
                         } else if (payload.type === 'group' && payload.gid !== gid) {
                             // 组排序：根据拖放位置计算新 order
+                            // Midpoint, same reasoning as session reordering: a fixed
+                            // ±0.001 step is halved by every drag and eventually jumps
+                            // past the neighbour it was meant to land beside.
                             var rect = gDiv.getBoundingClientRect();
                             var isAfter = (e.clientY - rect.top) > (rect.height / 2);
-                            var targetOrder = parseFloat(gDiv.dataset.order);
-                            var newOrder = isAfter ? targetOrder + 0.001 : targetOrder - 0.001;
-                            postAction({action: 'update_session_group', group_id: payload.gid, order: newOrder});
+                            postAction({action: 'update_session_group', group_id: payload.gid, order: _neighbourOrder(gDiv, isAfter, '.session-group')});
                         }
                     } catch(ex) {}
                 };
@@ -1267,19 +1268,28 @@ function _doHandleStateUpdate(data) {
             if (existing) existing.remove();
             var ov = document.createElement('div');
             ov.id = 'waterfall-overlay';
-            ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;justify-content:center;align-items:center;z-index:2000;';
+            ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+                + 'background:color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);'
+                + 'display:flex;justify-content:center;align-items:center;z-index:var(--md-sys-z-overlay);';
             ov.onclick = function(e) { if (e.target === this) this.remove(); };
             var box = document.createElement('div');
-            box.style.cssText = 'width:90%;height:85%;background:#fff;border-radius:8px;display:flex;flex-direction:column;overflow:hidden;';
-            box.innerHTML = '<div style="padding:12px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;"><h3 style="margin:0;">📊 瀑布流监控</h3><span style="cursor:pointer;font-size:20px;" onclick="document.getElementById(\'waterfall-overlay\').remove()">&times;</span></div><div id="waterfall-body" style="flex:1;overflow:auto;padding:16px;"><div style="text-align:center;color:#999;">加载中...</div></div>';
+            box.style.cssText = 'width:90%;height:85%;background:var(--md-sys-color-surface-container-high);'
+                + 'color:var(--md-sys-color-on-surface);'
+                + 'border-radius:var(--md-sys-shape-corner-extra-large);'
+                + 'box-shadow:var(--md-sys-elevation-level3);'
+                + 'display:flex;flex-direction:column;overflow:hidden;';
+            box.innerHTML = '<div class="md-modal-header"><h3>' + mdIcon('bar_chart', 18) + ' 瀑布流监控</h3>'
+                + '<button class="md-modal-close" onclick="document.getElementById(\'waterfall-overlay\').remove()" title="关闭">' + mdIcon('close', 18) + '</button></div>'
+                + '<div id="waterfall-body" class="md-modal-body">'
+                + '<div style="text-align:center;color:var(--md-sys-color-on-surface-variant);">加载中...</div></div>';
             ov.appendChild(box);
             document.body.appendChild(ov);
             fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'get_group_waterfall', group_id:gid})})
                 .then(r => r.json()).then(data => {
-                    if (data.status !== 'ok') { document.getElementById('waterfall-body').innerHTML = '<div style="color:red;">加载失败</div>'; return; }
+                    if (data.status !== 'ok') { document.getElementById('waterfall-body').innerHTML = '<div style="color:var(--md-sys-color-error);">加载失败</div>'; return; }
                     var wf = data.waterfall;
                     var body = document.getElementById('waterfall-body');
-                    if (!wf || wf.length === 0) { body.innerHTML = '<div style="text-align:center;color:#999;">此分组没有会话</div>'; return; }
+                    if (!wf || wf.length === 0) { body.innerHTML = '<div style="text-align:center;color:var(--md-sys-color-on-surface-variant);">此分组没有会话</div>'; return; }
                     // 收集所有时间点并排序（用于非线性时间轴）
                     var allTimes = [];
                     wf.forEach(function(sess) {
@@ -1287,7 +1297,7 @@ function _doHandleStateUpdate(data) {
                         sess.bubbles.forEach(function(b) { allTimes.push(b.created_at); });
                     });
                     allTimes.sort(function(a,b){return a-b;});
-                    if (allTimes.length === 0) { body.innerHTML = '<div style="text-align:center;color:#999;">无气泡数据</div>'; return; }
+                    if (allTimes.length === 0) { body.innerHTML = '<div style="text-align:center;color:var(--md-sys-color-on-surface-variant);">无气泡数据</div>'; return; }
                     // 构建非线性时间轴：将超过30分钟的间隔压缩为固定高度
                     var GAP_THRESHOLD = 1800; // 30分钟
                     var GAP_PIXELS = 60; // 压缩后的间隔高度（足够大以产生视觉分隔）
@@ -1335,37 +1345,51 @@ function _doHandleStateUpdate(data) {
                     var totalW = timeColW + wf.length * (colW + 4);
                     var minTime = allTimes[0], maxTime = allTimes[allTimes.length-1];
                     var html = '<div style="font-weight:bold;margin-bottom:12px;">' + (data.group_name || '') + ' — ' + wf.length + ' 个会话, ' + allTimes.length + ' 条消息</div>';
-                    html += '<div style="overflow:auto;position:relative;border:1px solid #eee;border-radius:4px;max-height:calc(100% - 50px);" id="wf-scroll">';
+                    html += '<div style="overflow:auto;position:relative;border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);max-height:calc(100% - 50px);" id="wf-scroll">';
                     html += '<div style="position:relative;width:' + totalW + 'px;height:' + totalH + 'px;padding-top:' + headerH + 'px;">';
                     // 左侧时间刻度
                     segments.forEach(function(seg) {
                         if (seg.is_gap) {
                             var gapH = (seg.end - seg.start) / 3600;
-                            html += '<div style="position:absolute;top:' + (headerH + seg.y_start) + 'px;left:0;width:' + totalW + 'px;height:' + GAP_PIXELS + 'px;font-size:10px;color:#aaa;text-align:left;line-height:' + GAP_PIXELS + 'px;padding-left:8px;background:repeating-linear-gradient(0deg,#f5f5f5,#f5f5f5 1px,#fff 1px,#fff 4px);border-top:1px dashed #ddd;border-bottom:1px dashed #ddd;">⋮ 间隔 ' + gapH.toFixed(1) + ' 小时</div>';
+                            // The stripe marks a compressed gap so the timeline is not read
+                            // as continuous. Two hardcoded light greys became a bright band
+                            // under the dark scheme; the surface pair keeps it textured but
+                            // quiet in either theme.
+                            html += '<div style="position:absolute;top:' + (headerH + seg.y_start) + 'px;left:0;width:' + totalW + 'px;height:' + GAP_PIXELS + 'px;'
+                                + 'font-size:var(--md-sys-typescale-label-small-size);color:var(--md-sys-color-on-surface-variant);'
+                                + 'text-align:left;line-height:' + GAP_PIXELS + 'px;padding-left:var(--md-sys-spacing-2);'
+                                + 'background:repeating-linear-gradient(0deg,var(--md-sys-color-surface-container-high),var(--md-sys-color-surface-container-high) 1px,var(--md-sys-color-surface) 1px,var(--md-sys-color-surface) 4px);'
+                                + 'border-top:1px solid var(--md-sys-color-outline-variant);border-bottom:1px solid var(--md-sys-color-outline-variant);">'
+                                + mdIcon('more_vert', 12) + ' 间隔 ' + gapH.toFixed(1) + ' 小时</div>';
                         } else {
                             var startStr = new Date(seg.start * 1000).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
                             var endStr = new Date(seg.end * 1000).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
-                            html += '<div style="position:absolute;top:' + (headerH + seg.y_start) + 'px;left:0;width:' + (timeColW-4) + 'px;font-size:9px;color:#666;text-align:right;padding-right:4px;border-right:1px solid #eee;">' + startStr + '</div>';
+                            // Start label stays stronger than the end label, preserving the
+                            // #666 / #999 hierarchy the original relied on.
+                            html += '<div style="position:absolute;top:' + (headerH + seg.y_start) + 'px;left:0;width:' + (timeColW-4) + 'px;font-size:9px;color:var(--md-sys-color-on-surface-variant);text-align:right;padding-right:4px;border-right:1px solid var(--md-sys-color-outline-variant);">' + startStr + '</div>';
                             if (seg.y_end - seg.y_start > 30) {
-                                html += '<div style="position:absolute;top:' + (headerH + seg.y_end - 12) + 'px;left:0;width:' + (timeColW-4) + 'px;font-size:9px;color:#999;text-align:right;padding-right:4px;border-right:1px solid #eee;">' + endStr + '</div>';
+                                html += '<div style="position:absolute;top:' + (headerH + seg.y_end - 12) + 'px;left:0;width:' + (timeColW-4) + 'px;font-size:9px;color:color-mix(in srgb, var(--md-sys-color-on-surface-variant) 60%, transparent);text-align:right;padding-right:4px;border-right:1px solid var(--md-sys-color-outline-variant);">' + endStr + '</div>';
                             }
                         }
                     });
                     // 列头
                     wf.forEach(function(sess, ci) {
                         var x = timeColW + ci * (colW + 4);
-                        html += '<div style="position:absolute;top:0;left:' + x + 'px;width:' + colW + 'px;font-size:10px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#555;font-weight:bold;padding:4px 0;cursor:pointer;border-bottom:1px solid #eee;height:' + (headerH-8) + 'px;line-height:' + (headerH-8) + 'px;" onclick="var _o=window.localSid;window.localSid=\'' + sess.sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sess.sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sess.sid + '\',_outgoing_sid:_o});document.getElementById(\'waterfall-overlay\').remove();" title="' + sess.name + ' (' + sess.bubble_count + ' 条)">' + sess.name.substring(0, 14) + '</div>';
+                        html += '<div style="position:absolute;top:0;left:' + x + 'px;width:' + colW + 'px;font-size:var(--md-sys-typescale-label-small-size);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--md-sys-color-on-surface);font-weight:500;padding:4px 0;cursor:pointer;border-bottom:1px solid var(--md-sys-color-outline-variant);height:' + (headerH-8) + 'px;line-height:' + (headerH-8) + 'px;" onclick="var _o=window.localSid;window.localSid=\'' + sess.sid + '\';window.history.pushState({},\'\',\'/?' + 'sid=' + sess.sid + '\');window.hasLoadedFullHistory=false;postAction({action:\'switch_session\',sid:\'' + sess.sid + '\',_outgoing_sid:_o});document.getElementById(\'waterfall-overlay\').remove();" title="' + sess.name + ' (' + sess.bubble_count + ' 条)">' + sess.name.substring(0, 14) + '</div>';
                         // 气泡按非线性时间定位
                         sess.bubbles.forEach(function(b) {
                             var y = headerH + timeToY(b.created_at || minTime);
-                            var color = b.role === 'user' ? '#4a90d9' : '#5cb85c';
+                            // fg paired with color: the old code hardcoded white text, which
+                            // fails once the dark scheme lightens both accents.
+                            var color = b.role === 'user' ? 'var(--md-sys-color-primary)' : 'var(--md-sys-color-success)';
+                            var fg = b.role === 'user' ? 'var(--md-sys-color-on-primary)' : 'var(--md-sys-color-on-success)';
                             var timeStr = new Date((b.created_at || 0) * 1000).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
-                            html += '<div style="position:absolute;top:' + y + 'px;left:' + x + 'px;width:' + colW + 'px;height:' + rowH + 'px;background:' + color + ';border-radius:3px;font-size:9px;color:#fff;line-height:' + rowH + 'px;padding:0 4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:default;" title="[ID:' + b.id + '] ' + timeStr + ' ' + (b.summary||'') + ' (' + b.token_k + 'k)">' + timeStr + ' ' + (b.summary || b.role) + '</div>';
+                            html += '<div style="position:absolute;top:' + y + 'px;left:' + x + 'px;width:' + colW + 'px;height:' + rowH + 'px;background:' + color + ';border-radius:var(--md-sys-shape-corner-extra-small);font-size:9px;color:' + fg + ';line-height:' + rowH + 'px;padding:0 4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:default;" title="[ID:' + b.id + '] ' + timeStr + ' ' + (b.summary||'') + ' (' + b.token_k + 'k)">' + timeStr + ' ' + (b.summary || b.role) + '</div>';
                         });
                     });
                     html += '</div></div>';
                     body.innerHTML = html;
-                }).catch(e => { document.getElementById('waterfall-body').innerHTML = '<div style="color:red;">请求失败: ' + e + '</div>'; });
+                }).catch(e => { document.getElementById('waterfall-body').innerHTML = '<div style="color:var(--md-sys-color-error);">请求失败: ' + e + '</div>'; });
         }
 
         document.addEventListener('click', (e) => {
@@ -1594,15 +1618,15 @@ function _doHandleStateUpdate(data) {
                 return sessMap[sid].is_archived && !sessMap[sid].soft_deleted && sid !== 'starred_session_virtual';
             }).sort(function(a, b) { return (sessMap[b].order || 0) - (sessMap[a].order || 0); });
             if (archived.length === 0) {
-                list.innerHTML = '<div style="color:#999; text-align:center; padding:8px;">无归档会话</div>';
+                list.innerHTML = '<div style="color:var(--md-sys-color-on-surface-variant); text-align:center; padding:var(--md-sys-spacing-2);">无归档会话</div>';
                 return;
             }
             list.innerHTML = archived.map(function(sid) {
                 var s = sessMap[sid];
-                return '<div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f0f0f0;">' +
-                    '<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" title="点击恢复">' + (s.name || '未命名') + '</span>' +
-                    '<button onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" style="border:none; background:#28a745; color:#fff; border-radius:3px; padding:2px 6px; font-size:10px; cursor:pointer; margin-left:4px;" title="恢复">恢复</button>' +
-                    '<button onclick="postAction({action:\'delete_session\', sid:\'' + sid + '\'})" style="border:none; background:#dc3545; color:#fff; border-radius:3px; padding:2px 6px; font-size:10px; cursor:pointer; margin-left:2px;" title="永久删除">删</button>' +
+                return '<div style="display:flex; align-items:center; justify-content:space-between; gap:var(--md-sys-spacing-1); padding:var(--md-sys-spacing-1) 0; border-bottom:1px solid var(--md-sys-color-outline-variant);">' +
+                    '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" title="点击恢复">' + (s.name || '未命名') + '</span>' +
+                    '<button class="md-button md-button--tonal md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" title="恢复">恢复</button>' +
+                    '<button class="md-button md-button--danger md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'delete_session\', sid:\'' + sid + '\'})" title="永久删除">删</button>' +
                     '</div>';
             }).join('');
         }

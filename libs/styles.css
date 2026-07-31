@@ -189,6 +189,9 @@
         .tag-omit { background: var(--md-sys-color-warning-container); color: var(--md-sys-color-on-warning-container); }
         .tag-collapse { background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-on-surface-variant); }
         .tag-annotated { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
+        /* Same pair as the hidden bubble's summary-box, so badge and body read as
+           one state rather than two unrelated colours. */
+        .tag-hide { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
         .content ins { color: var(--md-sys-color-on-success-container); text-decoration: none; font-weight: 500; background-color: var(--md-sys-color-success-container); border-radius: var(--md-sys-shape-corner-extra-small); padding: 0 2px; }
         .content del { color: var(--md-sys-color-on-error-container); background-color: var(--md-sys-color-error-container); text-decoration: line-through; border-radius: var(--md-sys-shape-corner-extra-small); padding: 0 2px; }
         .bubble-footer {

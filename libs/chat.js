@@ -236,7 +236,7 @@
                 const tokenK = ((typeof msg._content_len === 'number' ? msg._content_len : (msg.content || "").length) / 3000).toFixed(2);
                 
                 let tags = '';
-                if(msg.is_hidden) tags += `<span class="status-tag tag-hide" style="background:#007bff; color:#fff;">已隐藏</span>`;
+                if(msg.is_hidden) tags += `<span class="status-tag tag-hide">已隐藏</span>`;
                 if(msg.is_omitted) tags += `<span class="status-tag tag-omit">概括模式</span>`;
                 if(msg.is_collapsed) tags += `<span class="status-tag tag-collapse">UI折叠</span>`;
                 if(msg.diff_content) tags += `<span class="status-tag tag-annotated">已批注</span>`;
@@ -423,7 +423,7 @@
                     let unreadBadge = msg.is_unread ? '<span class="status-tag" style="background:var(--md-sys-color-success); color:var(--md-sys-color-on-success);">未读</span>' : '';
                     mainContentContainer.innerHTML = `<div class="summary-box" style="cursor: pointer; ${unreadStyle}" onclick="toggleMode(${index}, '${msg.is_omitted ? 'omit' : 'collapse'}')" title="点击展开">${unreadBadge}<b>概括：</b>${msg.summary || '生成中...'}</div>`;
                 } else if (isWaiting) {
-                    mainContentContainer.innerHTML = `<div class="content"><i>（<span style="color:#007bff;">${msg.model_name || '默认模型'}</span> 等待中... 已用时 <span class="waiting-time" data-start="${msg.start_time || Date.now()/1000}">0.0</span>s）</i></div>`;
+                    mainContentContainer.innerHTML = `<div class="content"><i>（<span style="color:var(--md-sys-color-primary);">${msg.model_name || '默认模型'}</span> 等待中... 已用时 <span class="waiting-time" data-start="${msg.start_time || Date.now()/1000}">0.0</span>s）</i></div>`;
                 } else if (msg.is_terminal) {
                     let safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     mainContentContainer.innerHTML = `<div class="content"><pre style="background:transparent; border:none; padding:0; margin:0; color:inherit; font-family:var(--md-sys-typescale-font-mono); font-size:var(--md-sys-typescale-body-small-size); white-space:pre-wrap; word-wrap:break-word;">${safeContent}</pre></div>`;
@@ -443,7 +443,10 @@
                                     for (let i = pIdx - 1; i >= 0; i--) {
                                         if (renderParts[i].type === 'text') {
                                             if (renderParts[i].content.includes(searchStr)) {
-                                                let diffHtml = `<del style="color:#999;">${searchStr}</del><ins style="color:#28a745; text-decoration:none; font-weight:bold;">${replaceStr}</ins>`;
+                                                // No inline styles: .content del / .content ins already
+                                                // define the diff palette, and an inline rule here made
+                                                // the same markup look different inside a correction block.
+                                                let diffHtml = `<del>${searchStr}</del><ins>${replaceStr}</ins>`;
                                                 renderParts[i].content = renderParts[i].content.replace(searchStr, diffHtml);
                                                 break;
                                             }
@@ -528,7 +531,7 @@
                             let isExpanded = window._lastEditedCorrectionId === part.id;
                             let btnText = isExpanded ? '折叠 ▴' : '展开 ▾';
                             header.innerHTML = `<div style="display:flex; align-items:center;"><span class="cb-label" style="color:var(--md-sys-color-on-surface-variant); font-weight:400; font-size:var(--md-sys-typescale-label-small-size);">${mdIcon('psychology', 12)} 内部反思与修正</span></div>
-                                                <div class="cb-ops"><button class="cb-btn cb-toggle" style="border:none; background:transparent; color:#999; font-size:11px; padding:2px 5px; box-shadow:none;" onclick="toggleCodeBlock(this)">${btnText}</button></div>`;
+                                                <div class="cb-ops"><button class="cb-btn cb-toggle" style="border:none; background:transparent; color:var(--md-sys-color-on-surface-variant); font-size:var(--md-sys-typescale-label-small-size); padding:2px 5px; box-shadow:none;" onclick="toggleCodeBlock(this)">${btnText}</button></div>`;
                             
                             const contentDiv = document.createElement('div');
                             contentDiv.className = 'code-block-content' + (isExpanded ? '' : ' collapsed');
@@ -537,16 +540,20 @@
                             textarea.style.width = '100%';
                             textarea.style.boxSizing = 'border-box';
                             textarea.style.padding = '8px';
-                            textarea.style.border = '1px dashed #ccc';
-                            textarea.style.borderRadius = '4px 4px 0 0';
+                            // Filled text field, matching every other input in the app.
+                            // The old #f8f9fa on #666 rendered as pale-on-pale under the
+                            // dark scheme — bad anywhere, worse on a field meant for typing.
+                            textarea.style.border = 'none';
+                            textarea.style.borderBottom = '1px solid var(--md-sys-color-outline)';
+                            textarea.style.borderRadius = 'var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0';
                             textarea.style.outline = 'none';
                             textarea.style.resize = 'none';
                             textarea.style.overflow = 'hidden';
                             textarea.style.minHeight = '30px';
-                            textarea.style.fontFamily = 'inherit';
-                            textarea.style.fontSize = '12px';
-                            textarea.style.backgroundColor = '#f8f9fa';
-                            textarea.style.color = '#666';
+                            textarea.style.fontFamily = 'var(--md-sys-typescale-font-mono)';
+                            textarea.style.fontSize = 'var(--md-sys-typescale-body-small-size)';
+                            textarea.style.backgroundColor = 'var(--md-sys-color-surface-container-highest)';
+                            textarea.style.color = 'var(--md-sys-color-on-surface)';
                             textarea.value = part.content;
                             
                             textarea.addEventListener('input', function() {
@@ -565,11 +572,13 @@
                             saveBtn.style.padding = '4px 10px';
                             saveBtn.style.fontSize = '11px';
                             saveBtn.style.cursor = 'pointer';
-                            saveBtn.style.border = '1px solid #ccc';
+                            // One step lighter than the textarea above it, otherwise the
+                            // two merge into a single block with no visible seam.
+                            saveBtn.style.border = '1px solid var(--md-sys-color-outline-variant)';
                             saveBtn.style.borderTop = 'none';
-                            saveBtn.style.backgroundColor = '#fff';
-                            saveBtn.style.color = '#666';
-                            saveBtn.style.borderRadius = '0 0 4px 4px';
+                            saveBtn.style.backgroundColor = 'var(--md-sys-color-surface-container-high)';
+                            saveBtn.style.color = 'var(--md-sys-color-on-surface-variant)';
+                            saveBtn.style.borderRadius = '0 0 var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small)';
                             saveBtn.style.width = '100%';
                             saveBtn.onclick = () => {
                                 window._lastEditedCorrectionId = part.id;
@@ -1353,12 +1362,12 @@
                         if (bestCost <= di + 1) break;
                     }
                     if (bestI >= 0) {
-                        if (bestI > i) result += '<del style="color:#dc3545;text-decoration:line-through;background:#fff0f0;">' + _sfEscapeHtml(oldText.substring(i, bestI)) + '</del>';
-                        if (bestJ > j) result += '<ins style="color:#28a745;text-decoration:underline;background:#f0fff0;">' + _sfEscapeHtml(newText.substring(j, bestJ)) + '</ins>';
+                        if (bestI > i) result += '<del style="color:var(--md-sys-color-on-error-container);text-decoration:line-through;background:var(--md-sys-color-error-container);">' + _sfEscapeHtml(oldText.substring(i, bestI)) + '</del>';
+                        if (bestJ > j) result += '<ins style="color:var(--md-sys-color-on-success-container);text-decoration:underline;background:var(--md-sys-color-success-container);">' + _sfEscapeHtml(newText.substring(j, bestJ)) + '</ins>';
                         i = bestI; j = bestJ;
                     } else {
-                        if (i < oldText.length) result += '<del style="color:#dc3545;text-decoration:line-through;background:#fff0f0;">' + _sfEscapeHtml(oldText.substring(i)) + '</del>';
-                        if (j < newText.length) result += '<ins style="color:#28a745;text-decoration:underline;background:#f0fff0;">' + _sfEscapeHtml(newText.substring(j)) + '</ins>';
+                        if (i < oldText.length) result += '<del style="color:var(--md-sys-color-on-error-container);text-decoration:line-through;background:var(--md-sys-color-error-container);">' + _sfEscapeHtml(oldText.substring(i)) + '</del>';
+                        if (j < newText.length) result += '<ins style="color:var(--md-sys-color-on-success-container);text-decoration:underline;background:var(--md-sys-color-success-container);">' + _sfEscapeHtml(newText.substring(j)) + '</ins>';
                         break;
                     }
                 }
