@@ -890,6 +890,67 @@
 }
 
 /* ==========================================================================
+   Thinking chain — a card tucked behind the reply it belongs to, with only its
+   top strip showing above the bubble's edge. The negative bottom margin pulls
+   the bubble up over the card's lower edge, and the matching extra bottom
+   padding guarantees the covered strip is empty space rather than content.
+
+   Expanding must release that overlap: the transcript grows downward, and
+   without th-open it would render behind the bubble and be unreadable.
+
+   The card stays a sibling of the bubble rather than the two sharing a wrapper.
+   renderChat diffs chatContainer.children position by position and minimap.js
+   walks the same list for msg-bubble ids, so a wrapper would break both. Paint
+   order alone puts the card behind: both are position:relative with z-index
+   auto, so the later sibling wins.
+   ========================================================================== */
+.th-card {
+    --th-tuck: 18px;
+    position: relative;
+    box-sizing: border-box;
+    max-width: calc(85% - var(--md-sys-spacing-8));
+    margin: 0 auto calc(var(--th-tuck) * -1) var(--md-sys-spacing-4);
+    padding: var(--md-sys-spacing-2) var(--md-sys-spacing-3)
+             calc(var(--th-tuck) + var(--md-sys-spacing-2));
+    background: var(--md-sys-color-tertiary-container);
+    color: var(--md-sys-color-on-tertiary-container);
+    border: none;
+    border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0;
+    box-shadow: var(--md-sys-elevation-level1);
+    font-size: var(--md-sys-typescale-body-small-size);
+    transition: margin-bottom var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized),
+                padding-bottom var(--md-sys-motion-duration-medium1) var(--md-sys-motion-easing-emphasized),
+                box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.th-card.th-open {
+    margin-bottom: var(--md-sys-spacing-2);
+    padding-bottom: var(--md-sys-spacing-2);
+    border-radius: var(--md-sys-shape-corner-large);
+    box-shadow: var(--md-sys-elevation-level2);
+}
+/* Excluded from context, so a neutral surface rather than the tertiary pair. */
+.th-card--hidden {
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+}
+.th-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: var(--md-sys-spacing-2); cursor: pointer;
+}
+.th-body {
+    margin-top: var(--md-sys-spacing-2);
+    padding: var(--md-sys-spacing-2);
+    background: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    border: none;
+    border-radius: var(--md-sys-shape-corner-small);
+    max-height: 400px; overflow-y: auto;
+    white-space: pre-wrap; word-wrap: break-word;
+    font-size: var(--md-sys-typescale-body-small-size);
+    line-height: 1.5;
+}
+
+/* ==========================================================================
    Composer controls. The bare number inputs and the model popover were the
    last raw-browser widgets left in the input row.
    ========================================================================== */

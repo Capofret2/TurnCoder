@@ -1209,13 +1209,12 @@
                         }
                         let thTokenK = ((typeof thMsg._content_len === 'number' ? thMsg._content_len : (thMsg.content || '').length) / 3000).toFixed(2);
                         let thDiv = document.createElement('div');
-                        thDiv.style.cssText = 'max-width: 85%; margin-right: auto; margin-bottom: 2px; padding: 4px 10px; border-radius: 8px 8px 2px 2px; background: #f3e5f5; border: 1px solid #ce93d8; font-size: 12px;';
+                        thDiv.className = 'th-card' + (thMsg.is_hidden ? ' th-card--hidden' : '');
                         if (thMsg.is_hidden) {
-                            thDiv.style.background = '#e1bee7';
                             thDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center;"><span style="color:var(--md-sys-color-on-tertiary-container); display:inline-flex; align-items:center; gap:4px;">' + mdIcon('visibility_off', 14) + ' 思维链已隐藏 [ID:' + thMsg.id + '] ~' + thTokenK + 'k</span><span style="display:flex; gap:2px;"><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" title="复制">' + mdIcon('content_copy', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + thMsg.id + ', ' + "'content'" + ')" title="编辑">' + mdIcon('edit', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'toggle_mode'" + ',index:' + thIndex + ',mode_type:' + "'hide'" + '})" title="取消隐藏">' + mdIcon('visibility', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button></span></div>';
                         } else {
                             let thContentId = 'th-content-' + thMsg.id;
-                            thDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="var el=document.getElementById(' + "'" + thContentId + "'" + '); if(el){el.style.display=el.style.display===' + "'none'" + '?' + "'block'" + ':' + "'none'" + '; this.querySelector(' + "'.th-arrow'" + ').textContent=el.style.display===' + "'none'" + '?' + "'▶'" + ':' + "'▼'" + ';}">' +
+                            thDiv.innerHTML = '<div class="th-card-header">' +
                                 '<span><span class="th-arrow" style="font-size:10px;">▶</span><span style="color:var(--md-sys-color-on-tertiary-container); font-weight:500; display:inline-flex; align-items:center; gap:4px;">' + mdIcon('psychology', 14) + ' 思维链</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + thMsg.id + '] ~' + thTokenK + 'k</span></span>' +
                                 '<span style="display:flex; gap:2px;">' +
                                     '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + thIndex + ')" title="复制">' + mdIcon('content_copy', 14) + '</button>' +
@@ -1224,7 +1223,25 @@
                                     '<button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:' + "'delete_message'" + ',index:' + thIndex + '})" title="删除">' + mdIcon('delete', 14) + '</button>' +
                                 '</span>' +
                             '</div>' +
-                            '<div id="' + thContentId + '" style="display:none; margin-top:4px; padding:4px; background:#fce4ec; border-radius:4px; border:1px solid #f8bbd0; max-height:400px; overflow-y:auto; white-space:pre-wrap; font-size:12px; line-height:1.5;">' + (thMsg.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+                            '<div id="' + thContentId + '" class="th-body" style="display:none;">' + (thMsg.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+                            // Attached in JS, not inline: the toggle now has to flip the
+                            // card's th-open class as well as the body's display, and the
+                            // inline form already needed quote gymnastics for just one.
+                            // Releasing the overlap is not cosmetic — without th-open the
+                            // expanded transcript renders behind the bubble.
+                            (function(_card, _bodyId) {
+                                var _hdr = _card.querySelector('.th-card-header');
+                                if (!_hdr) return;
+                                _hdr.onclick = function() {
+                                    var _b = document.getElementById(_bodyId);
+                                    if (!_b) return;
+                                    var _open = !_b.style.display || _b.style.display === 'none';
+                                    _b.style.display = _open ? 'block' : 'none';
+                                    _card.classList.toggle('th-open', _open);
+                                    var _a = _hdr.querySelector('.th-arrow');
+                                    if (_a) _a.textContent = _open ? '\u25bc' : '\u25b6';
+                                };
+                            })(thDiv, thContentId);
                 }
                         window._thinkingCache[thMsg.id] = { hash: thElHash, el: thDiv };
                         fragment.appendChild(thDiv);
@@ -1273,6 +1290,10 @@
                         var _st = window._expandStateMap[el.id];
                         if (_st && _st.expanded) {
                             el.style.display = 'block';
+                            // Paired with the toggle handler: the thinking card tucks behind
+                            // the reply when collapsed, so a restored expansion must release
+                            // that overlap or the transcript reappears hidden behind it.
+                            if (_rp === 'th-content-' && el.parentElement) el.parentElement.classList.add('th-open');
                             var _arrow = el.parentElement && el.parentElement.querySelector('.tr-arrow, .th-arrow, .sa-arrow');
                             if (!_arrow && el.previousElementSibling) {
                                 _arrow = el.previousElementSibling.querySelector('.tr-arrow, .th-arrow, .sa-arrow');
