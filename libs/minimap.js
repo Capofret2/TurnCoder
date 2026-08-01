@@ -7,14 +7,14 @@
  *
  * Ticks are evenly spaced, one pitch per bubble, so a wall of short replies is
  * as easy to hit as one long essay. Jump accuracy is unaffected: a click
- * resolves the bubble by id and defers to scrollIntoView, which never consulted
- * the tick's own position.
+ * resolves the bubble by id, so where the tick happens to sit never entered
+ * into it. The scroll itself is animated locally by _mmScrollToEl.
  *
  * Position is marked by a triangle right of the ticks, aligned with the topmost
  * bubble currently on screen. Topmost rather than the centre of the visible
- * range because a tick click scrolls its bubble to block:'start': the marker
- * then lands exactly on the tick that was clicked, which neither a midpoint nor
- * a scroll fraction would do.
+ * range because a jump lands its bubble against the top of the viewport: the
+ * marker then sits exactly on the tick that was clicked, which neither a
+ * midpoint nor a scroll fraction would do.
  *
  * Hovering a tick opens a preview immediately. The native title attribute would
  * have been free but waits about a second, which defeats the point of skimming
@@ -184,6 +184,78 @@ function _mmUpdateCursor() {
         (_mmTickY[first] + _mmTickH / 2 - MM_CURSOR_H / 2).toFixed(1) + 'px';
 }
 
+/* ===== Click-to-jump scroll =============================================
+   scrollIntoView({behavior:'smooth'}) hands the timing to the UA, and Chrome's
+   curve spends the whole duration either accelerating or braking while the
+   duration itself grows with distance — a jump across a long conversation
+   crawls. Animating here puts both the duration and the shape under our
+   control.
+
+   The easing is piecewise, not a cubic: ease in over the first RAMP of the
+   duration, ease out over the last RAMP, constant speed in between. That is
+   precisely what a cubic ease-in-out cannot do, and the long ramps are the
+   drawn-out feel being removed here.
+
+   Given a ramp share R, the three phases cover v*R/2 + v*(1-2R) + v*R/2 = v*(1-R)
+   of the distance, so the constant-phase speed must be v = 1/(1-R) for them to
+   sum to exactly one full distance. At R=0.16 that is v≈1.19, and the derivative
+   equals v on both sides of each seam, so there is no velocity jump.
+   ====================================================================== */
+
+var MM_SCROLL_MIN_MS = 110;   // floor, so short hops still read as motion
+var MM_SCROLL_MAX_MS = 260;   // ceiling, so a jump across 40k px is not a trip
+var MM_SCROLL_PER_PX = 0.09;  // ms per pixel between the two
+var MM_SCROLL_RAMP = 0.16;    // share of the duration spent easing, each end
+var _mmScrollAnim = 0;
+
+function _mmEase(t) {
+    var r = MM_SCROLL_RAMP;
+    var v = 1 / (1 - r);
+    if (t < r) return v * t * t / (2 * r);
+    if (t > 1 - r) {
+        var d = 1 - t;
+        return 1 - v * d * d / (2 * r);
+    }
+    return v * (r / 2 + (t - r));
+}
+
+/** Scroll the chat so el's top meets the container's top, as block:'start' did. */
+function _mmScrollToEl(el) {
+    var chat = document.getElementById('chat-container');
+    if (!chat || !el) return;
+    // Rect delta, not offsetTop: bubbles resolve their offsetParent to
+    // #main-area rather than the scroller, so offsetTop carries the container's
+    // own offset and padding. The delta between the two rects carries neither.
+    var from = chat.scrollTop;
+    var to = from + (el.getBoundingClientRect().top - chat.getBoundingClientRect().top);
+    var max = Math.max(0, chat.scrollHeight - chat.clientHeight);
+    to = Math.max(0, Math.min(max, to));
+    var dist = to - from;
+    if (_mmScrollAnim) { cancelAnimationFrame(_mmScrollAnim); _mmScrollAnim = 0; }
+    if (Math.abs(dist) < 2) { chat.scrollTop = to; return; }
+    // An instant jump is the documented behaviour for reduced motion; animating
+    // anyway would override an accessibility preference set on purpose.
+    if (window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        chat.scrollTop = to;
+        return;
+    }
+    var dur = Math.max(MM_SCROLL_MIN_MS,
+        Math.min(MM_SCROLL_MAX_MS, Math.abs(dist) * MM_SCROLL_PER_PX));
+    var t0 = performance.now();
+    var step = function (now) {
+        var t = (now - t0) / dur;
+        if (t >= 1) {
+            chat.scrollTop = to;
+            _mmScrollAnim = 0;
+            return;
+        }
+        chat.scrollTop = from + dist * _mmEase(t);
+        _mmScrollAnim = requestAnimationFrame(step);
+    };
+    _mmScrollAnim = requestAnimationFrame(step);
+}
+
 /* ===== Hover preview ====================================================
    Parented to #main-area rather than the rail: it must not inherit the rail's
    opacity, and a panel inside the rail would keep firing the rail's own
@@ -310,7 +382,7 @@ function _mmUpdateScrollBtn() {
             if (tick && tick.dataset.mid) {
                 var b = document.getElementById('msg-bubble-' + tick.dataset.mid);
                 if (b) {
-                    b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    _mmScrollToEl(b);
                     return;
                 }
             }
@@ -328,7 +400,7 @@ function _mmUpdateScrollBtn() {
             var tb = rail.querySelectorAll('.mm-tick')[idx];
             var target = tb && tb.dataset.mid
                 ? document.getElementById('msg-bubble-' + tb.dataset.mid) : null;
-            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (target) _mmScrollToEl(target);
         });
 
         // mouseover, not mouseenter: it bubbles, so one delegated listener on
