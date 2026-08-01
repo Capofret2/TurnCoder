@@ -33,6 +33,9 @@ function openSettingsModal() {
     if (document.getElementById('set-billing-sync-button')) document.getElementById('set-billing-sync-button').checked = globalSettings.enable_billing_sync_button;
     if (document.getElementById('set-style-filter')) document.getElementById('set-style-filter').checked = globalSettings.enable_style_filter;
     if (document.getElementById('set-planned-tools')) document.getElementById('set-planned-tools').checked = !!globalSettings.enable_planned_tools;
+    // The rows live inside this dialog, so the applyTheme() call at load time
+    // found nothing to fill. Without this the first open shows two empty rows.
+    if (typeof _renderThemeControls === 'function') _renderThemeControls();
     document.getElementById('settings-modal').style.display = 'flex';
 }
 
@@ -147,6 +150,107 @@ function applySettingsUI() {
     // Force chat re-render to update conditional buttons (annotation etc)
     if (typeof lastChatHash !== 'undefined') lastChatHash = '';
 }
+
+/* ==========================================================================
+   Appearance: colour scheme and accent
+   --------------------------------------------------------------------------
+   Persisted in localStorage, not global_settings. It is a per-device
+   preference — the same conversation should be readable as light on a desktop
+   and dark on a phone — and global_settings round-trips through the server on
+   every change, which a colour swap has no business doing.
+
+   The head of frontend.html contains a synchronous bootstrap that reads the
+   same two keys before first paint. Change one, change both.
+   ========================================================================== */
+
+var THEME_ACCENTS = [
+    { id: 'blue',   name: '蓝',   seed: '#3584e4' },
+    { id: 'teal',   name: '青',   seed: '#2190a4' },
+    { id: 'green',  name: '绿',   seed: '#3a944a' },
+    { id: 'orange', name: '橙',   seed: '#ed5b00' },
+    { id: 'pink',   name: '粉',   seed: '#d56199' },
+    { id: 'purple', name: '紫',   seed: '#9141ac' },
+    { id: 'slate',  name: '灰蓝', seed: '#6f8396' }
+];
+
+function getThemeMode() {
+    return localStorage.getItem('theme_mode') || 'light';
+}
+
+function getThemeAccent() {
+    return localStorage.getItem('theme_accent') || 'blue';
+}
+
+function applyTheme() {
+    var root = document.documentElement;
+    var mode = getThemeMode();
+    var dark = mode === 'dark' || (mode === 'auto' && window.matchMedia
+        && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    // Absent rather than data-theme="light": the light values are the :root
+    // defaults, so there is nothing for a light attribute to select.
+    if (dark) root.setAttribute('data-theme', 'dark');
+    else root.removeAttribute('data-theme');
+    root.setAttribute('data-accent', getThemeAccent());
+    _renderThemeControls();
+    // Rail and floating button sit on primary; nudge them to repaint.
+    if (typeof renderMinimap === 'function') renderMinimap();
+}
+
+function setThemeMode(mode) {
+    localStorage.setItem('theme_mode', mode);
+    applyTheme();
+}
+
+function setThemeAccent(accent) {
+    localStorage.setItem('theme_accent', accent);
+    applyTheme();
+}
+
+/** Rebuild the chips and swatches, if the settings dialog is in the DOM. */
+function _renderThemeControls() {
+    var modeRow = document.getElementById('theme-mode-row');
+    if (modeRow) {
+        var mode = getThemeMode();
+        var modes = [['light', '明亮'], ['dark', '暗色'], ['auto', '跟随系统']];
+        modeRow.innerHTML = '';
+        modes.forEach(function (m) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'md-chip' + (mode === m[0] ? ' md-chip--selected' : '');
+            b.textContent = m[1];
+            b.onclick = function () { setThemeMode(m[0]); };
+            modeRow.appendChild(b);
+        });
+    }
+    var accRow = document.getElementById('theme-accent-row');
+    if (accRow) {
+        var cur = getThemeAccent();
+        accRow.innerHTML = '';
+        THEME_ACCENTS.forEach(function (a) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'theme-swatch' + (cur === a.id ? ' selected' : '');
+            // Inline, and deliberately not a token: the swatch has to show the
+            // colour it selects, which is by definition not the active one.
+            b.style.background = a.seed;
+            b.title = '主题色：' + a.name;
+            b.setAttribute('aria-label', '主题色 ' + a.name);
+            b.onclick = function () { setThemeAccent(a.id); };
+            accRow.appendChild(b);
+        });
+    }
+}
+
+(function () {
+    // The bootstrap in <head> already set the attributes; this re-applies so
+    // the controls render and so a stale attribute cannot survive a key change.
+    applyTheme();
+    if (!window.matchMedia) return;
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    var onChange = function () { if (getThemeMode() === 'auto') applyTheme(); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+})();
 
 function openManualModal() {
     document.getElementById('manual-modal').style.display = 'flex';
