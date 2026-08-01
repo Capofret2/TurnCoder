@@ -1,3 +1,67 @@
+        /* ===== Per-message change fingerprint ================================
+           renderChat used to build a string of roughly two hundred characters for
+           every message on every render, out of a dozen slices and as many
+           concatenations, purely to compare it against the previous one. On a long
+           conversation that is the largest single allocation in the render path,
+           and none of it survives the comparison.
+
+           These fold the same fields into two 32-bit accumulators instead. Two,
+           not one: a single 32-bit digest starts colliding around 80k distinct
+           values by the birthday bound. The comparison here is not a birthday
+           problem at all — each message is only ever checked against its own
+           previous fingerprint — so 64 bits puts a single comparison's collision
+           probability near 2^-64.
+
+           Math.imul is required rather than preferred: a 32-bit multiply overflows
+           the double mantissa and plain * silently drops the low bits, which are
+           exactly the ones a hash carries its information in.
+           ================================================================== */
+        var _fpA = 0, _fpB = 0;
+
+        function _fpReset() { _fpA = 0x811c9dc5 | 0; _fpB = 0x9e3779b9 | 0; }
+
+        /** Fold one integer in. */
+        function _fpNum(n) {
+            n = n | 0;
+            _fpA = Math.imul(_fpA ^ n, 0x01000193);
+            _fpB = Math.imul((_fpB + n) | 0, 0x85ebca6b);
+            _fpB = _fpB ^ (_fpB >>> 13);
+        }
+
+        /** Fold a flag. 1/2 rather than 1/0, so false stays distinct from absent. */
+        function _fpFlag(v) { _fpNum(v ? 1 : 2); }
+
+        /** Fold a short string in full. */
+        function _fpAll(s) {
+            if (!s) { _fpNum(0); return; }
+            _fpNum(s.length);
+            for (var i = 0; i < s.length; i++) _fpNum(s.charCodeAt(i));
+        }
+
+        /**
+         * Fold length plus the leading and trailing 30 code units.
+         *
+         * The same sampling the old concatenated string used, blind spot included:
+         * an edit in the middle of a long body that leaves the length untouched is
+         * not seen. Pre-existing, and streaming appends always move the length, so
+         * it has never surfaced.
+         */
+        function _fpEdges(s) {
+            if (!s) { _fpNum(0); return; }
+            var n = s.length;
+            _fpNum(n);
+            var head = n < 30 ? n : 30;
+            for (var i = 0; i < head; i++) _fpNum(s.charCodeAt(i));
+            if (n > 30) {
+                for (var j = n - 30; j < n; j++) _fpNum(s.charCodeAt(j));
+            }
+        }
+
+        /** The accumulated fingerprint, short enough to keep in bubbleCache. */
+        function _fpValue() {
+            return (_fpA >>> 0).toString(36) + '.' + (_fpB >>> 0).toString(36);
+        }
+
         function renderChat(history) {
             if (!document.getElementById('baton-keyframes')) {
                 var _bkf = document.createElement('style');
@@ -189,17 +253,53 @@
             if (msg.is_outdated_read) {
                 msg = Object.assign({}, msg, {is_collapsed: true, summary: mdIcon('description', 14) + ' ' + (msg.auto_read_file || msg.summary || '') + ' (已有更新的自动读取结果)'});
             }
-            let msgHash = msg.id + '_' + msg.role + '_' + (msg.content||'').length + '_' + (msg.content||'').slice(0,30) + '_' + (msg.content||'').slice(-30) + '_' + (msg.summary||'') + '_' + msg.is_collapsed + '_' + msg.is_omitted + '_' + msg.is_hidden + '_' + msg.is_unread + '_' + (msg.rating||'') + '_' + (msg.model_name||'') + '_' + (msg.timing ? msg.timing.ttfb + '_' + (msg.timing.download||0) : '') + '_' + (msg.content_parts ? msg.content_parts.map(p => p.type + '_' + p.status + '_' + (p.content||'').length + '_' + (p.content||'').slice(0,10) + '_' + (p.content||'').slice(-10)).join(',') : 'none') + '_' + (msg.diff_content ? msg.diff_content.length : 0) + '_' + (msg.term_state||'') + '_mm' + (msg.multimodal_blocks ? msg.multimodal_blocks.length : 0) + '_' + index + '_' + isStarred + '_bt' + (window._autopilotActive && msg._autopilot_gen !== undefined && msg._autopilot_gen === window._autopilotGen ? 1 : 0);
+            // Same fields, same order, no intermediate strings. See _fpReset above.
+            _fpReset();
+            _fpNum(msg.id);
+            _fpNum(index);
+            _fpAll(msg.role);
+            _fpEdges(msg.content);
+            _fpAll(msg.summary);
+            _fpFlag(msg.is_collapsed);
+            _fpFlag(msg.is_omitted);
+            _fpFlag(msg.is_hidden);
+            _fpFlag(msg.is_unread);
+            _fpAll(msg.rating);
+            _fpAll(msg.model_name);
+            if (msg.timing) {
+                // Scaled to ms: the mixer takes int32, so a fractional second
+                // would be truncated away and 1.2s could not be told from 1.9s.
+                _fpNum(Math.round((msg.timing.ttfb || 0) * 1000));
+                _fpNum(Math.round((msg.timing.download || 0) * 1000));
+            } else { _fpNum(0); }
+            if (msg.content_parts) {
+                for (let _hpi = 0; _hpi < msg.content_parts.length; _hpi++) {
+                    let _hp = msg.content_parts[_hpi];
+                    _fpAll(_hp.type);
+                    _fpAll(_hp.status);
+                    _fpEdges(_hp.content);
+                }
+            } else { _fpNum(0); }
+            _fpNum(msg.diff_content ? msg.diff_content.length : 0);
+            _fpAll(msg.term_state);
+            _fpNum(msg.multimodal_blocks ? msg.multimodal_blocks.length : 0);
+            _fpFlag(isStarred);
+            _fpFlag(window._autopilotActive && msg._autopilot_gen !== undefined
+                && msg._autopilot_gen === window._autopilotGen);
             if (msg.content_parts) {
                 msg.content_parts.forEach(p => {
                     if (p.type === 'tool_use_part') {
-                        try { let td = JSON.parse(p.content); let trs = toolResultMap[td.id]; if (trs) trs.forEach(tr => { msgHash += '_tr_' + tr.msg.id + '_' + (tr.msg.content||'').length + '_h' + (tr.msg.is_hidden?1:0) + '_d' + (tr.msg._dehydrated?1:0); }); if (td.id && subagentMap[td.id]) { let _sa = subagentMap[td.id]; if (_sa.request) msgHash += '_sareq_' + _sa.request.msg.id; if (_sa.response) msgHash += '_saresp_' + _sa.response.msg.id + '_' + (_sa.response.msg.content||'').length + '_sse' + (_sa.response.msg.has_subagent_sse?1:0); } } catch(e) {}
+                        try { let td = JSON.parse(p.content); let trs = toolResultMap[td.id]; if (trs) trs.forEach(tr => { _fpNum(tr.msg.id); _fpNum((tr.msg.content||'').length); _fpFlag(tr.msg.is_hidden); _fpFlag(tr.msg._dehydrated); }); if (td.id && subagentMap[td.id]) { let _sa = subagentMap[td.id]; if (_sa.request) _fpNum(_sa.request.msg.id); if (_sa.response) { _fpNum(_sa.response.msg.id); _fpNum((_sa.response.msg.content||'').length); _fpFlag(_sa.response.msg.has_subagent_sse); } } } catch(e) {}
                     }
                 });
             }
-            if (thinkingMap[msg.id]) { thinkingMap[msg.id].forEach(th => { msgHash += '_th_' + th.msg.id + '_' + (th.msg.content||'').length + '_' + th.msg.is_hidden; }); }
+            if (thinkingMap[msg.id]) { thinkingMap[msg.id].forEach(th => { _fpNum(th.msg.id); _fpNum((th.msg.content||'').length); _fpFlag(th.msg.is_hidden); }); }
             // 将 auto-read 结果纳入 hash，否则 auto-read 返回后 chatHash 不变导致不重渲染
-            if (msg.content_parts) { msg.content_parts.forEach(p => { if (p.type === 'tool_use_part') { try { let td = JSON.parse(p.content); let ar = autoReadByTrigger[td.id]; if (ar) msgHash += '_ar_' + ar.msg.id + '_' + (ar.msg.content||'').length; } catch(e) {} } }); }
+            if (msg.content_parts) { msg.content_parts.forEach(p => { if (p.type === 'tool_use_part') { try { let td = JSON.parse(p.content); let ar = autoReadByTrigger[td.id]; if (ar) { _fpNum(ar.msg.id); _fpNum((ar.msg.content||'').length); } } catch(e) {} } }); }
+            // Read out only here: all three append passes above have to be folded
+            // in first. Taking the value a line early is how auto-read results
+            // stopped triggering a re-render, which is what those passes exist for.
+            let msgHash = _fpValue();
             
             // 核心优化：缓存命中或 forceReuse 时直接复用 DOM 节点，避免 replaceChild 闪烁
             if (bubbleCache[msg.id]) {
@@ -249,6 +349,28 @@
             mainContentContainer.className = 'bubble-main-content';
             let hasPendingActions = false;
             let hasFailedOrRejected = false;
+            /* renderMathInElement walks every text node and runs several regexes
+               on each, and it was being called for every bubble whether or not
+               one could possibly contain a formula. Deciding from the data rather
+               than from bubble.textContent: the latter is certainly accurate but
+               allocates a full copy of a long bubble, which spends part of what
+               the skip saves.
+
+               msg.content is tested as well as the parts because content_parts is
+               sometimes derived from it on the spot, by the descriptor pass or the
+               code-fence pass above, so checking the source covers the derivation.
+               Foreign bodies appended later — tool results, subagent transcripts —
+               set this flag at their own append site. */
+            let _hasMath = false;
+            if (!isHidden && !isWaiting) {
+                if (msg.content && msg.content.indexOf('$') >= 0) _hasMath = true;
+                else if (msg.diff_content && msg.diff_content.indexOf('$') >= 0) _hasMath = true;
+                else if (msg.content_parts) {
+                    for (let _mi = 0; _mi < msg.content_parts.length; _mi++) {
+                        if ((msg.content_parts[_mi].content || '').indexOf('$') >= 0) { _hasMath = true; break; }
+                    }
+                }
+            }
 
             // 预处理 Pass 0：描述符格式工具调用解析
             if (!isHidden && !isWaiting && msg.role === 'assistant' && !msg.content_parts && msg.content && globalSettings.enable_tool_inject && !msg.is_terminal) {
@@ -914,6 +1036,11 @@
                                 // "by your Edit" is replaced with "by another session" when rendered inline
                                 // below a non-originating tool (cross-session broadcast absorbed by Read tool).
                                 let _trDisplayContent = trMsg.content || '';
+                                // Comes from another message, so the bubble-level scan
+                                // above never saw it. renderMathInElement descends into
+                                // display:none subtrees, so without this a formula in a
+                                // tool return stays raw once the row is expanded.
+                                if (_trDisplayContent.indexOf('$') >= 0) _hasMath = true;
                                 if (trMsg.is_auto_read) {
                                     _trDisplayContent = _trDisplayContent.replace('This file was modified by your Edit.', 'This file was modified by another session.');
                                     _trDisplayContent = _trDisplayContent.replace('This file was modified.', 'This file was modified by another session.');
@@ -965,6 +1092,11 @@
                             });
                             // 内联渲染关联的 subagent 请求和响应（吸附在 Agent tool_use 块下方）
                             try { if (toolData.id && subagentMap[toolData.id]) {
+                                // Unconditional rather than scanned: subagent bubbles are
+                                // rare enough that skipping KaTeX for them saves nothing,
+                                // while a false negative means a formula never renders at
+                                // all. The two sides are not symmetric, so take the safe one.
+                                _hasMath = true;
                                 let _saEntry = subagentMap[toolData.id];
                                 if (_saEntry.request) {
                                     let saReqMsg = _saEntry.request.msg;
@@ -1197,7 +1329,10 @@
 
 
                 
-                if (!isHidden && !isWaiting) renderMathInElement(bubble, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
+                // _hasMath narrows this further: without a dollar sign anywhere in
+                // the bubble's sources there is nothing for KaTeX to find, and the
+                // scan was previously run on every bubble regardless.
+                if (!isHidden && !isWaiting && _hasMath) renderMathInElement(bubble, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
 
                 // Right-click toggles collapse directly, with no menu in between.
                 //
@@ -1303,6 +1438,10 @@
             }
             updateTokenEst();
             if (typeof renderMinimap === 'function') renderMinimap();
+            // renderChat is the only producer of .waiting-time, so starting the
+            // ticker from here is the one trigger that cannot be missed. Guarded
+            // because the test harness loads five scripts and main.js is not one.
+            if (typeof _startWaitTicker === 'function') _startWaitTicker();
 
             // === Expand state preservation: restore states after rebuild ===
             if (window._expandStateMap && Object.keys(window._expandStateMap).length > 0) {

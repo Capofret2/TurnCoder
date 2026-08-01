@@ -1206,22 +1206,48 @@ function _doHandleStateUpdate(data) {
         // renderChat -> /libs/chat.js
 
 
-        // Panel functions: renderQueue, updateTokenEst, toggleHeavyPanel, renderHeavyPanel, setUIEnabled -> /libs/panels.js
 
+        /* Waiting-bubble ticker: on demand, not always on.
+         *
+         * This used to be an unconditional setInterval(..., 100) running a
+         * document-wide querySelectorAll('.waiting-time') ten times a second with
+         * nothing waiting on screen.
+         *
+         * The heartbeat rides along and must not be switched off with it, but the
+         * two agree by construction: syncCounter only ever advanced while at least
+         * one waiting bubble existed, so the moment the ticker stops is exactly the
+         * moment the heartbeat was already meant to be silent.
+         *
+         * renderChat starts it — the only place .waiting-time elements come from, so
+         * the none-to-some direction is covered by the sole producer — and the tick
+         * stops itself once the last one is gone. */
+        var _waitTimerId = 0;
         let syncCounter = 0;
-        setInterval(() => {
+
+        /** Idempotent, so every render can call it. */
+        function _startWaitTicker() {
+            if (_waitTimerId) return;
+            _waitTimerId = setInterval(_waitTick, 100);
+        }
+
+        function _waitTick() {
             const waitingEls = document.querySelectorAll('.waiting-time');
+            if (waitingEls.length === 0) {
+                clearInterval(_waitTimerId);
+                _waitTimerId = 0;
+                syncCounter = 0;
+                return;
+            }
             waitingEls.forEach(el => {
                 const start = parseFloat(el.dataset.start);
                 if (start) el.innerText = Math.max(0, (Date.now() / 1000) - start).toFixed(1);
             });
-            
-            // 心跳防丢包机制：如果界面上有处于等待中的气泡，每 5 秒主动向后端发起一次心跳，强制唤醒状态广播
-            if (waitingEls.length > 0) {
-                syncCounter++;
-                if (syncCounter >= 50) {
-                    syncCounter = 0;
-                    postAction({action: 'ping'});
+
+            // 心跳防丢包机制：每 5 秒（50 tick）主动发起一次心跳，强制唤醒状态广播
+            syncCounter++;
+            if (syncCounter >= 50) {
+                syncCounter = 0;
+                postAction({action: 'ping'});
                     // 双通道保障：直接通过 HTTP 拉取会话数据，彻底绕过 WebSocket 不可靠性
                     const _pollSid = window.localSid;
                     if (_pollSid && _pollSid !== 'starred_session_virtual') {
@@ -1246,11 +1272,8 @@ function _doHandleStateUpdate(data) {
                             }
                         }).catch(() => {});
                     }
-                }
-            } else {
-                syncCounter = 0;
             }
-        }, 100);
+        }
 
         // Edit ops: copyMsg..saveEdit -> /libs/editops.js
 
