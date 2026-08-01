@@ -183,6 +183,22 @@ function renderKanban() {
     var now = Date.now();
     var pxPerMs = _kanbanPixelsPerHour / 3600000;
 
+    // Grid and label colours, hoisted because the color-mix expressions are long
+    // and appear four times below.
+    //
+    // These were fixed blacks. The columns take their background from the
+    // computed tab colour, which is a dark surface under the dark scheme, so
+    // rgba(0,0,0,...) lines drawn on them are invisible: the hour grid, the
+    // ten-minute sub-grid, both label tiers and the column divider all vanished
+    // at once, leaving the timeline — the entire point of this view — gone.
+    //
+    // on-surface inverts with the scheme, so the state-layer form works in both.
+    var gridColor = 'color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent)';
+    var subGridColor = 'color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent)';
+    var labelColor = 'var(--md-sys-color-on-surface-variant)';
+    // Kept fainter than labelColor, preserving the 0.4 / 0.25 hierarchy.
+    var subLabelColor = 'color-mix(in srgb, var(--md-sys-color-on-surface-variant) 55%, transparent)';
+
     // Get tabs from _openedTabs
     var tabs = [];
     if (typeof window._openedTabs !== 'undefined' && window._openedTabs && window._openedTabs.length > 0) {
@@ -191,7 +207,7 @@ function renderKanban() {
         tabs = _openedTabs.slice();
     }
     if (tabs.length === 0) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#999;">无已打开的标签页</div>';
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--md-sys-color-on-surface-variant);">无已打开的标签页</div>';
         return;
     }
 
@@ -210,9 +226,13 @@ function renderKanban() {
         // Column positioning from actual tab DOM
         var colLeft = tabPositions[i] ? tabPositions[i].left : (i * (container.clientWidth / tabs.length));
         var colW = tabPositions[i] ? tabPositions[i].width : (container.clientWidth / tabs.length);
-        var bgColor = tabColors[i] || 'hsl(' + ((i * 60) % 360) + ', 40%, 83%)';
+        // Fallback uses the same formula as an inactive tab, so the two paths —
+        // computed tab colour available or not — look alike. The old 83%
+        // lightness made a fallback column a bright slab under the dark scheme.
+        var colBg = tabColors[i] || ('color-mix(in srgb, hsl(' + ((i * 60) % 360)
+            + ' 60% 50%) 12%, var(--md-sys-color-surface-container-high))');
 
-        html += '<div class="kanban-col" style="position:absolute;left:' + colLeft + 'px;top:0;width:' + colW + 'px;height:100%;background:' + bgColor + ';border-right:1px solid rgba(0,0,0,0.1);overflow:hidden;">';
+        html += '<div class="kanban-col" style="position:absolute;left:' + colLeft + 'px;top:0;width:' + colW + 'px;height:100%;background:' + colBg + ';border-right:1px solid var(--md-sys-color-outline-variant);overflow:hidden;">';
 
         // Hour lines + sub-hour lines when zoomed in
         var hoursToShow = Math.ceil(viewHeight / _kanbanPixelsPerHour) + 2;
@@ -223,12 +243,12 @@ function renderKanban() {
             var lineAge = now - lineTime;
             var lineY = viewHeight - (lineAge * pxPerMs);
             var hourLineH = _kanbanPixelsPerHour > 500 ? 2 : 1;
-            html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + lineY + 'px;height:' + hourLineH + 'px;background:rgba(0,0,0,0.12);"></div>';
+            html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + lineY + 'px;height:' + hourLineH + 'px;background:' + gridColor + ';"></div>';
             // Time label on first column
             if (i === 0) {
                 var lineDate = new Date(lineTime);
                 var timeLabel = ('0' + lineDate.getHours()).slice(-2) + ':' + ('0' + lineDate.getMinutes()).slice(-2);
-                html += '<div style="position:absolute;left:2px;top:' + (lineY - 14) + 'px;font-size:10px;color:rgba(0,0,0,0.4);pointer-events:none;white-space:nowrap;">' + timeLabel + '</div>';
+                html += '<div style="position:absolute;left:2px;top:' + (lineY - 14) + 'px;font-size:10px;color:' + labelColor + ';pointer-events:none;white-space:nowrap;">' + timeLabel + '</div>';
             }
             // 10-minute sub-lines when zoom is high enough (>120 px/h = each 10min > 20px)
             if (_kanbanPixelsPerHour > 120) {
@@ -237,11 +257,11 @@ function renderKanban() {
                     var subAge = now - subTime;
                     var subY = viewHeight - (subAge * pxPerMs);
                     var subLineH = _kanbanPixelsPerHour > 1000 ? 2 : 1;
-                    html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + subY + 'px;height:' + subLineH + 'px;background:rgba(0,0,0,0.04);"></div>';
+                    html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + subY + 'px;height:' + subLineH + 'px;background:' + subGridColor + ';"></div>';
                     if (i === 0 && _kanbanPixelsPerHour > 300) {
                         var subDate = new Date(subTime);
                         var subLabel = ('0' + subDate.getHours()).slice(-2) + ':' + ('0' + subDate.getMinutes()).slice(-2);
-                        html += '<div style="position:absolute;left:2px;top:' + (subY - 12) + 'px;font-size:9px;color:rgba(0,0,0,0.25);pointer-events:none;">' + subLabel + '</div>';
+                        html += '<div style="position:absolute;left:2px;top:' + (subY - 12) + 'px;font-size:9px;color:' + subLabelColor + ';pointer-events:none;">' + subLabel + '</div>';
                     }
                 }
             }
@@ -256,6 +276,12 @@ function renderKanban() {
         _seenDevices[_kanbanDeviceId] = true;
         var _deviceList = Object.keys(_seenDevices);
         // Color palette for devices: orange=self, purple=other1, teal=other2, pink=other3
+        //
+        // Deliberately not tokens, and the one place in this file that keeps raw
+        // values. These four exist to be told apart from each other, not to match
+        // the theme: mapping them onto semantic roles would collapse four devices
+        // into one colour and delete the feature. All four are mid-tone and read
+        // against either scheme's surfaces.
         var _deviceColors = ['rgba(255,152,0,', 'rgba(156,39,176,', 'rgba(0,150,136,', 'rgba(233,30,99,'];
         for (var p = 0; p < _kanbanPresenceLog.length; p++) {
             var pr = _kanbanPresenceLog[p];
@@ -299,7 +325,7 @@ function renderKanban() {
             var apTop = Math.min(apStartY, apEndY);
             var apH = Math.abs(apEndY - apStartY);
             if (apH < 6) apH = 6;
-            html += '<div style="position:absolute;right:2px;width:6px;top:' + apTop + 'px;height:' + apH + 'px;background:rgba(220,53,69,0.4);border-radius:3px;border:1px solid rgba(220,53,69,0.7);" title="托管 ' + (apH / pxPerMs / 60000).toFixed(0) + '分钟"></div>';
+            html += '<div style="position:absolute;right:2px;width:6px;top:' + apTop + 'px;height:' + apH + 'px;background:color-mix(in srgb, var(--md-sys-color-error) 40%, transparent);border-radius:3px;border:1px solid color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);" title="托管 ' + (apH / pxPerMs / 60000).toFixed(0) + '分钟"></div>';
         }
         // Currently active autopilot: detect transitions
         // autopilot_active flag might stay true even after all work is done (backend bug)
@@ -325,7 +351,11 @@ function renderKanban() {
             var apNowStartAge = now - _apStartedAt * 1000;
             var apNowStartY = viewHeight - (apNowStartAge * pxPerMs);
             var apNowH = Math.max(6, viewHeight - apNowStartY);
-            html += '<div style="position:absolute;right:2px;width:6px;top:' + apNowStartY + 'px;height:' + apNowH + 'px;background:rgba(220,53,69,0.5);border-radius:3px;border:1px solid rgba(220,53,69,0.8);animation:tab-pulse 1s infinite steps(2);" title="托管中..."></div>';
+            // steps(2) is gone: styles.css already replaced the blink with a
+            // breathing keyframe, and passing a step function here re-imposed the
+            // hard switch locally, undoing that fix. Now identical to the tab
+            // status dot's parameters.
+            html += '<div style="position:absolute;right:2px;width:6px;top:' + apNowStartY + 'px;height:' + apNowH + 'px;background:color-mix(in srgb, var(--md-sys-color-error) 50%, transparent);border-radius:3px;border:1px solid color-mix(in srgb, var(--md-sys-color-error) 80%, transparent);animation:tab-pulse var(--md-sys-motion-duration-long2) infinite alternate var(--md-sys-motion-easing-emphasized);" title="托管中..."></div>';
         }
 
         // Bubble bars - duration-based rendering with lifecycle phases
@@ -359,7 +389,7 @@ function renderKanban() {
                 if (toolTs) {
                     var toolAge = now - toolTs * 1000;
                     var toolY = viewHeight - (toolAge * pxPerMs);
-                    html += '<div class="kanban-bubble" title="tool ' + timeStr + '" style="position:absolute;left:50%;top:' + toolY + 'px;width:4px;height:4px;margin-left:-2px;background:rgba(120,120,120,0.5);border-radius:50%;pointer-events:none;"></div>';
+                    html += '<div class="kanban-bubble" title="tool ' + timeStr + '" style="position:absolute;left:50%;top:' + toolY + 'px;width:4px;height:4px;margin-left:-2px;background:var(--md-sys-color-outline);border-radius:50%;pointer-events:none;"></div>';
                 }
                 continue;
             }
@@ -367,7 +397,7 @@ function renderKanban() {
             if (msg.role === 'user') {
                 // User bubbles: thin horizontal LINE marking the exact moment
                 var tooltipText = 'user ' + timeStr + (msg.summary ? ' - ' + msg.summary.substring(0, 40) : '');
-                html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:12px;right:4px;top:' + msgStartY + 'px;height:2px;background:rgba(33,150,243,0.8);cursor:pointer;"></div>';
+                html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:12px;right:4px;top:' + msgStartY + 'px;height:2px;background:var(--md-sys-color-primary);cursor:pointer;"></div>';
             } else {
                 // Assistant bubbles: duration bar extending DOWNWARD from creation point
                 // Try multiple timing field names for phase data
@@ -400,16 +430,22 @@ function renderKanban() {
                     // 3-phase extending DOWNWARD: waiting (red-orange) then streaming (green)
                     var ttfbH = Math.max(3, ttfbMs * pxPerMs);
                     var dlH = Math.max(3, downloadMs * pxPerMs);
-                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:' + ttfbH + 'px;background:rgba(255,87,34,0.7);border-radius:2px 2px 0 0;cursor:pointer;"></div>';
-                    html += '<div class="kanban-bubble" style="position:absolute;left:14px;right:6px;top:' + (msgStartY + ttfbH) + 'px;height:' + dlH + 'px;background:rgba(76,175,80,0.7);border-radius:0 0 2px 2px;cursor:pointer;" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}"></div>';
+                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:' + ttfbH + 'px;background:color-mix(in srgb, var(--md-sys-color-warning) 75%, transparent);border-radius:2px 2px 0 0;cursor:pointer;"></div>';
+                    html += '<div class="kanban-bubble" style="position:absolute;left:14px;right:6px;top:' + (msgStartY + ttfbH) + 'px;height:' + dlH + 'px;background:color-mix(in srgb, var(--md-sys-color-success) 75%, transparent);border-radius:0 0 2px 2px;cursor:pointer;" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}"></div>';
                 } else if (durationMs > 0) {
                     // Estimated or real-time growing duration
                     var bubbleH = Math.max(4, durationMs * pxPerMs);
-                    var bgColor = isLastAndProcessing ? 'rgba(255,193,7,0.6)' : 'rgba(76,175,80,0.5)';
-                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:' + bubbleH + 'px;background:' + bgColor + ';border-radius:2px;cursor:pointer;"></div>';
+                    // _barBg, not bgColor: var is function-scoped and that name is
+                    // already the column background above. The two overwrite each
+                    // other and only work today because the column's html is built
+                    // before this loop runs.
+                    var _barBg = isLastAndProcessing
+                        ? 'color-mix(in srgb, var(--md-sys-color-warning) 60%, transparent)'
+                        : 'color-mix(in srgb, var(--md-sys-color-success) 55%, transparent)';
+                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:' + bubbleH + 'px;background:' + _barBg + ';border-radius:2px;cursor:pointer;"></div>';
                 } else {
                     // Unknown duration: minimal 4px marker, no fake time bar
-                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:4px;background:rgba(76,175,80,0.4);border-radius:2px;cursor:pointer;"></div>';
+                    html += '<div class="kanban-bubble" title="' + tooltipText.replace(/"/g, '&quot;') + '" data-sid="' + sid + '" onclick="if(typeof switchToTab===\'function\'){exitKanban();switchToTab(\'' + sid + '\');}" style="position:absolute;left:14px;right:6px;top:' + msgStartY + 'px;height:4px;background:color-mix(in srgb, var(--md-sys-color-success) 40%, transparent);border-radius:2px;cursor:pointer;"></div>';
                 }
             }
         }
