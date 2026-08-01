@@ -129,7 +129,8 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 - `.status-tag` 加 `.tag-omit` / `-collapse` / `-annotated` / `-hide` — 状态徽章
 - `.th-card` / `-header` / `.th-body` / `.th-open` — 思维链卡片
 - `.inline-thinking-block` / `-header` / `-body` — 内联思维链
-- `.mm-tick` / `.mm-user` / `.mm-assistant` / `.mm-hidden` / `.mm-viewport` — 刻度盘
+- `.mm-tick` / `.mm-user` / `.mm-assistant` / `.mm-hidden` / `.mm-cursor` — 刻度盘，`.mm-cursor` 是位置三角
+- `#mm-preview` / `-head` / `-body` — 刻度悬浮预览，由 minimap.js 建在 `#main-area` 下
 - `.md-num` — 数字输入，filled text field 形制
 - `.ctl-group` — 输入区控件分组
 

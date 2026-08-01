@@ -1035,35 +1035,90 @@
 /* ==========================================================================
    Chat minimap. A vertical rail of horizontal ticks: long for user turns,
    short for assistant turns, error-tinted for bubbles dropped from context.
-   Tick positions map bubble offsetTop onto the rail, so click-to-jump lands
-   exactly and a deleted bubble drops its tick on the next render.
+   Ticks are evenly spaced and sized by minimap.js; a deleted bubble drops its
+   tick on the next render.
    ========================================================================== */
+/* No chrome of its own — no background, border or shadow. The rail is purely a
+   positioning context for the ticks, the cursor and their hit areas, which is
+   why overflow stays visible: each tick extends an invisible ::after past the
+   rail edges and clipping it would undo the larger target. The width is fixed
+   because the ticks are right-aligned, so widening on hover moved nothing and
+   existed only to stretch a backdrop that is now gone. Height comes from
+   minimap.js, capped at 70% of the viewport. */
 #chat-minimap {
-    position: absolute; top: 0; right: 0; width: 14px;
+    position: absolute; right: 18px; top: 50%;
+    transform: translateY(-50%);
+    width: 34px; box-sizing: border-box;
     z-index: var(--md-sys-z-sidebar);
-    border-left: 1px solid var(--md-sys-color-outline-variant);
-    background: transparent; cursor: pointer; overflow: hidden;
-    transition: width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-                background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+    background: none; border: none; box-shadow: none;
+    /* 0.7 rather than 0.55: with no surface behind them the ticks have to carry
+       their own legibility. */
+    cursor: pointer; opacity: 0.7; overflow: visible;
+    transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
-#chat-minimap:hover { width: 22px; background: var(--md-sys-color-surface-container-low); }
-#chat-container { padding-right: calc(var(--md-sys-spacing-6) + 14px); }
+#chat-minimap:hover { opacity: 1; }
+#chat-container { padding-right: calc(var(--md-sys-spacing-6) + 34px); }
+/* 3px is the ceiling and the no-JS fallback: minimap.js writes a smaller
+   inline height once the pitch tightens, so a long conversation's ticks never
+   merge into one solid bar. */
 .mm-tick {
-    position: absolute; right: 2px; height: 2px; border-radius: 1px;
-    transition: width var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    /* spacing-3 leaves the rightmost strip of the rail free for .mm-cursor. */
+    position: absolute; right: var(--md-sys-spacing-3); height: 3px;
+    border-radius: 2px;
+    transition: width var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+                transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
-.mm-tick:hover { outline: 1px solid var(--md-sys-color-on-surface); }
-.mm-user { width: 10px; background: var(--md-sys-color-primary); }
-.mm-assistant { width: 5px; background: var(--md-sys-color-outline); }
-.mm-hidden { width: 7px; background: var(--md-sys-color-error); opacity: 0.8; }
-#chat-minimap:hover .mm-user { width: 16px; }
-#chat-minimap:hover .mm-assistant { width: 8px; }
-#chat-minimap:hover .mm-hidden { width: 11px; }
-.mm-viewport {
-    position: absolute; left: 0; right: 0; pointer-events: none;
-    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
-    border-top: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+/* Vertical extent tracks the pitch: minimap.js sets --mm-hit to half the gap
+   left over after the line, so the targets tile the rail with no overlap and no
+   dead zone. A fixed value overlaps its neighbours on a dense rail, and since
+   the later sibling paints on top, a hover would resolve to the tick below. */
+.mm-tick::after {
+    content: ''; position: absolute;
+    inset: calc(-1 * var(--mm-hit, 4px)) -6px;
+}
+.mm-tick:hover { transform: scaleY(1.8); }
+.mm-user { width: 14px; background: var(--md-sys-color-primary); }
+.mm-assistant { width: 8px; background: var(--md-sys-color-outline); }
+.mm-hidden { width: 10px; background: var(--md-sys-color-error); opacity: 0.85; }
+#chat-minimap:hover .mm-user { width: 22px; }
+#chat-minimap:hover .mm-assistant { width: 13px; }
+#chat-minimap:hover .mm-hidden { width: 16px; }
+/* Position marker: a border-drawn triangle whose apex points left at the ticks.
+   Its box height is exactly the two transparent borders, 10px, and minimap.js
+   centres it on a tick using MM_CURSOR_H — keep the two in step.
+   No transition on top: scrolling rewrites it every frame, and a transition
+   would leave the marker permanently chasing the real position. */
+.mm-cursor {
+    position: absolute; right: 2px;
+    width: 0; height: 0; pointer-events: none;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-right: 7px solid var(--md-sys-color-primary);
+}
+/* Hover preview. inverse-surface is M3's tooltip role, so it reads as an
+   overlay rather than another panel, and it inverts with the theme for free. */
+#mm-preview {
+    position: absolute; display: none;
+    max-width: 340px; box-sizing: border-box;
+    padding: var(--md-sys-spacing-2) var(--md-sys-spacing-3);
+    border-radius: var(--md-sys-shape-corner-small);
+    background: var(--md-sys-color-inverse-surface);
+    color: var(--md-sys-color-inverse-on-surface);
+    box-shadow: var(--md-sys-elevation-level3);
+    z-index: var(--md-sys-z-context-menu);
+    /* none, so the panel cannot take the hover that is keeping it open. */
+    pointer-events: none;
+    font-size: var(--md-sys-typescale-body-small-size);
+    line-height: 1.5;
+}
+#mm-preview-head {
+    font-weight: var(--md-sys-typescale-label-medium-weight);
+    letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+    opacity: 0.75; margin-bottom: var(--md-sys-spacing-1);
+}
+#mm-preview-body {
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 168px; overflow: hidden;
 }
 @media (max-width: 768px) {
     #chat-minimap { display: none; }
@@ -1147,4 +1202,60 @@
 }
 @media (max-width: 768px) {
     .settings-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Scroll-to-bottom affordance. Created by minimap.js and parented to
+   #main-area, never to #chat-container: renderChat diffs that container's
+   children by position and drops the extras, so a button placed inside would
+   be removed on the next render.
+
+   visibility pairs with opacity instead of display, which cannot transition.
+   The bottom offset here is only a fallback; minimap.js measures the real
+   distance to the composer and writes it inline, so the button follows the
+   input area as it grows.
+   ========================================================================== */
+#scroll-bottom-btn {
+    position: absolute; right: 22px; bottom: 16px;
+    width: 40px; height: 40px; padding: 0;
+    border: none; border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+    box-shadow: var(--md-sys-elevation-level2);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: var(--md-sys-z-sidebar-toggle);
+    opacity: 0; visibility: hidden; transform: translateY(8px);
+    transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+                transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-decelerate),
+                background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+                visibility var(--md-sys-motion-duration-short4) linear;
+}
+#scroll-bottom-btn.sb-visible { opacity: 1; visibility: visible; transform: translateY(0); }
+#scroll-bottom-btn:hover {
+    background: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-primary);
+}
+
+/* Appearance controls in the settings dialog. */
+.theme-row {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--md-sys-spacing-2);
+    margin-top: var(--md-sys-spacing-2);
+}
+/* The swatch carries its seed colour as an inline background because it must
+   show the colour it selects, which by definition is not the colour the
+   current theme is using. */
+.theme-swatch {
+    width: 28px; height: 28px; padding: 0; cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-clip: padding-box;
+    box-shadow: var(--md-sys-elevation-level1);
+    transition: transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-emphasized),
+                border-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+.theme-swatch:hover { transform: scale(1.12); }
+.theme-swatch.selected {
+    border-color: var(--md-sys-color-on-surface);
+    transform: scale(1.08);
 }

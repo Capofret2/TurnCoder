@@ -1032,7 +1032,9 @@ function _doHandleStateUpdate(data) {
                 var cur = parseInt(getComputedStyle(document.documentElement)
                     .getPropertyValue('--sidebar-width'), 10);
                 if (cur) localStorage.setItem('sidebar_width', cur);
-                // Chat width changed, so bubble heights reflow and ticks move.
+                // Tick positions no longer depend on bubble heights, but the
+                // rail is sized from the viewport and the scroll button from the
+                // measured composer height, so both still need recomputing.
                 if (typeof renderMinimap === 'function') renderMinimap();
             });
         })();

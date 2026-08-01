@@ -4,8 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" href="/libs/katex.min.css">
-    <link rel="stylesheet" href="/libs/tokens.css?v=2">
-    <link rel="stylesheet" href="/libs/styles.css?v=12">
+    <link rel="stylesheet" href="/libs/tokens.css?v=3">
+    <link rel="stylesheet" href="/libs/styles.css?v=15">
+    <script>
+    /* Theme bootstrap — inline and synchronous on purpose. Every libs/ script
+       loads at the end of <body>, so applying the stored scheme from there
+       paints one light frame first and flashes. Wrapped in try/catch because
+       localStorage throws in some privacy modes and this runs before anything
+       else on the page. Keep the two keys in sync with applyTheme() in
+       libs/settings.js. */
+    (function () {
+        try {
+            var m = localStorage.getItem('theme_mode') || 'light';
+            var a = localStorage.getItem('theme_accent') || 'blue';
+            var dark = m === 'dark' || (m === 'auto' && window.matchMedia
+                && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+            document.documentElement.setAttribute('data-accent', a);
+        } catch (e) {}
+    })();
+    </script>
 </head>
 <body>
     <div id="sidebar">
@@ -152,6 +170,13 @@
                         <span class="settings-title">开发者模式</span>
                     </label>
                     <div class="settings-desc">开启后显示完整的开发者工具和高级设置选项。关闭时隐藏调试、重启、导出等开发功能。</div>
+                </div>
+
+                <div class="settings-item" style="grid-column: 1 / -1;">
+                    <div class="settings-label"><span class="settings-title">外观主题</span></div>
+                    <div class="settings-desc">配色方案与主题色只保存在本机浏览器，不随会话同步，也不影响其他设备。注意：代码块的语法高亮尚未做暗色适配，暗色下代码会明暗混杂，这是已知项。</div>
+                    <div class="theme-row" id="theme-mode-row"></div>
+                    <div class="theme-row" id="theme-accent-row"></div>
                 </div>
     
                 <div class="settings-item">
@@ -463,7 +488,7 @@
     <script src="/libs/icons.js?v=2"></script>
     <script src="/libs/utils.js?v=1"></script>
     <script src="/libs/codeblocks.js?v=1"></script>
-    <script src="/libs/settings.js?v=2"></script>
+    <script src="/libs/settings.js?v=3"></script>
     <script src="/libs/providers.js?v=1"></script>
     <script src="/libs/models.js?v=1"></script>
     <script src="/libs/codemonitor.js?v=1"></script>
@@ -471,8 +496,8 @@
     <script src="/libs/panels.js?v=1"></script>
     <script src="/libs/actions.js?v=1"></script>
     <script src="/libs/kanban.js?v=1"></script>
-    <script src="/libs/minimap.js?v=1"></script>
-    <script src="/libs/chat.js?v=7"></script>
-    <script src="/libs/main.js?v=9"></script>
+    <script src="/libs/minimap.js?v=4"></script>
+    <script src="/libs/chat.js?v=8"></script>
+    <script src="/libs/main.js?v=10"></script>
 </body>
 </html>
