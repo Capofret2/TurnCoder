@@ -86,7 +86,22 @@ function renderHeavyPanel() {
     panel.innerHTML = html;
 }
 
-function setUIEnabled(enabled) {
+/**
+ * Paint the send button for the busy/idle state. Appearance only.
+ *
+ * Renamed from setUIEnabled, which claimed more than it did: this never touches
+ * .disabled, so the button greys out while staying fully clickable. The old name
+ * cost something concrete — a commit message asserted the composer was "locked"
+ * on the strength of it, when the real symptom is a grey button that still works.
+ *
+ * Deliberately still not a real disable. is_processing has a known stuck-true
+ * defect (HANDOVER section four), and a genuine disable would trap the user
+ * outside the composer with no way back. That change belongs after the state
+ * transitions in autopilot.py and tool_accept.py are fixed, not before.
+ *
+ * @param {boolean} enabled false while the session is processing
+ */
+function setComposerTone(enabled) {
     updateSendButtonCount();
     sendButton.style.background = enabled
         ? 'var(--md-sys-color-primary)'

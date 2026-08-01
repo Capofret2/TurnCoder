@@ -1012,6 +1012,13 @@
                                     _dhDiv.style.cssText = 'margin: 2px 0 4px 12px; border-left: 3px solid ' + _dhColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);';
                                     var _dhContentId = 'tr-content-' + trMsg.id;
                                     var _dhMsgId = trMsg.id;
+                                    // Addressable anchor for the async body fetch, so its
+                                    // pending and failure states can be shown on the row
+                                    // the user actually clicked. A data attribute rather
+                                    // than the tr-content- id above: that prefix is scanned
+                                    // by the expand-state restore pass, which would then
+                                    // treat a skeleton as a restorable expansion.
+                                    _dhDiv.dataset.dhRow = trMsg.id;
                                     _dhDiv.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dhColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dhIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + _dhTimeStr + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + trMsg.id + '] ~' + _dhTokenK + 'k</span></span><span style="display:flex; gap:2px;"><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); copyMsg(' + trIndex + ')" title="\u590d\u5236">' + mdIcon('content_copy', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); openEditModal(' + trMsg.id + ', \'content\')" title="\u7f16\u8f91">' + mdIcon('edit', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'toggle_mode\',index:' + trIndex + ',mode_type:\'hide\'})" title="\u9690\u85cf">' + mdIcon('visibility_off', 14) + '</button><button class="md-icon-button md-icon-button--compact" onclick="event.stopPropagation(); postAction({action:\'delete_message\',index:' + trIndex + '})" title="\u5220\u9664">' + mdIcon('delete', 14) + '</button></span></div>';
                                     _dhDiv.querySelector('div').onclick = function(e) { if (e.target.tagName === 'BUTTON') return; _fetchDehydratedContent(_dhMsgId); };
                                     mainContentContainer.appendChild(_dhDiv);
@@ -1149,6 +1156,13 @@
                     var _dsColor = _dsIsErr ? 'var(--md-sys-color-error)' : 'var(--md-sys-color-success)';
                     var _dsMsgId = msg.id;
                     mainContentContainer.innerHTML = '<div style="border-left: 3px solid ' + _dsColor + '; padding: 3px 8px; background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-extra-small); font-size: var(--md-sys-typescale-body-small-size);"><div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;"><span><span class="tr-arrow" style="font-size:10px;">\u25b6</span> <span style="color:' + _dsColor + '; font-weight:500; display:inline-flex; align-items:center; gap:3px;">' + (_dsIsErr ? mdIcon('error', 14) + ' Error' : mdIcon('check_circle', 14) + ' Result') + '</span> <span style="color:var(--md-sys-color-on-surface-variant);">[ID:' + msg.id + '] ~' + _dsTkK + 'k</span></span></div></div>';
+                    // Same anchor as the inline branch, so one query covers both render
+                    // paths. Without it a standalone dehydrated bubble — the largest
+                    // kind, and therefore the likeliest to fail — would have nowhere to
+                    // show that anything went wrong.
+                    if (mainContentContainer.firstElementChild) {
+                        mainContentContainer.firstElementChild.dataset.dhRow = msg.id;
+                    }
                     mainContentContainer.querySelector('div > div').onclick = function() { _fetchDehydratedContent(_dsMsgId); };
                 } else { // Fallback for old messages or pure text
                     let _fbContent = typeof filterProtocolMarkers === 'function' ? filterProtocolMarkers(msg.content) : msg.content;

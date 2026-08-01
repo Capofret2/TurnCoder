@@ -138,6 +138,12 @@ const chatContainer = document.getElementById('chat-container');
 
         socket.on('connect', () => {
             console.log('成功连接到 WebSocket 服务器。');
+            // The other half, and not optional: a banner that outlives the outage
+            // is worse than none, because the user stops trusting it and will not
+            // look at it the next time the connection genuinely drops.
+            // socket.io re-emits connect on every reconnect, so this covers both
+            // the first connection and every recovery without a reconnect listener.
+            if (typeof _connBanner === 'function') _connBanner(false);
         });
 
         document.addEventListener('visibilitychange', () => {
@@ -160,7 +166,7 @@ const chatContainer = document.getElementById('chat-container');
                             window._expandStateMap = {};
                             renderChat(res.session_data.conversation_history);
                             renderQueue(res.session_data.message_queue || [], res.session_data.is_paused);
-                            setUIEnabled(!res.session_data.is_processing);
+                            setComposerTone(!res.session_data.is_processing);
                         }
                     }).catch(function() {});
                 }
@@ -169,8 +175,41 @@ const chatContainer = document.getElementById('chat-container');
             }
         });
 
-        socket.on('disconnect', () => {
-            console.warn('与 WebSocket 服务器断开连接。尝试重新连接...');
+        /* Connection banner.
+         *
+         * This application is entirely server-push driven, which makes a dropped
+         * socket the failure most likely to be misread: what the user sees is a
+         * model that has stopped moving, not a client that has gone offline. Until
+         * now the only signal was a console.warn.
+         *
+         * Built in JS rather than declared in frontend.html for the same reason
+         * #toast-container is — one place owns its markup — and appended to body
+         * rather than #chat-container, whose surplus children renderChat removes
+         * on the next diff. */
+        function _connBanner(show, detail) {
+            var el = document.getElementById('conn-banner');
+            if (!show) { if (el) el.remove(); return; }
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'conn-banner';
+                el.className = 'conn-banner';
+                document.body.appendChild(el);
+            }
+            el.innerHTML = mdIcon('warning', 16)
+                + ' <span>与服务器的连接已断开，正在重连…</span>'
+                + (detail ? '<span class="conn-banner-detail">' + detail + '</span>' : '');
+        }
+
+        socket.on('disconnect', (reason) => {
+            console.warn('与 WebSocket 服务器断开连接。尝试重新连接...', reason);
+            _connBanner(true, reason || '');
+        });
+
+        // connect_error as well as disconnect: a socket that never came up in the
+        // first place does not emit disconnect, and that is exactly the case where
+        // the interface would otherwise look like a model thinking forever.
+        socket.on('connect_error', (err) => {
+            _connBanner(true, (err && err.message) ? err.message : '连接失败');
         });
 
         console.log('[CHATAPP] main.js v1 loaded — optimistic updates active, timing logs enabled');
@@ -383,31 +422,75 @@ var pendingActions = new Set(); // 正在等待服务器确认的操作，render
 window._dehydratedContentCache = {}; // message_id -> full message dict (for lazy-loaded dehydrated bubbles)
 window._dehydratedLoadingSet = new Set(); // message_ids currently being fetched
 
-function _fetchDehydratedContent(msgId) {
+/**
+ * Fetch a dehydrated bubble's body on demand.
+ *
+ * This was a synchronous XHR, justified in a comment as being what let Playwright
+ * read the DOM straight after a click. A synchronous request freezes the main
+ * thread outright — no paint, no input, no timers — and a tool result can be
+ * 300KB while the server is inside save_sessions holding the GIL. That is a
+ * multi-second dead interface with no indication of why, and it traded the shape
+ * of production code for test convenience that wait_for_selector already covers.
+ *
+ * Every failure mode is now locatable, which none of them were:
+ *   - non-200 returned silently, so nothing happened and nothing said why;
+ *   - a backend status of 'error' fell through the `status === 'ok'` test the
+ *     same way;
+ *   - an exception only reached console.error.
+ * All three now land in the row itself and raise a toast, and the dedup lock is
+ * released in `finally` so the row can be clicked again to retry.
+ */
+async function _fetchDehydratedContent(msgId) {
     if (window._dehydratedLoadingSet.has(msgId)) return;
     window._dehydratedLoadingSet.add(msgId);
-    // Use synchronous XHR to ensure content appears before click handler returns
-    // This is critical for test reliability - Playwright checks DOM immediately after click
-    try {
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/action', false); // synchronous
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.send(JSON.stringify({action: 'fetch_bubble_content', message_id: msgId, client_sid: window.localSid}));
-        window._dehydratedLoadingSet.delete(msgId);
-        if (xhr.status === 200) {
-            var data = JSON.parse(xhr.responseText);
-            if (data.status === 'ok' && data.message) {
-                window._dehydratedContentCache[msgId] = data.message;
-                // Trigger full re-render - cache merge at top of renderChat will inject content
-                if (!window._expandStateMap) window._expandStateMap = {};
-                window._expandStateMap['tr-content-' + msgId] = { expanded: true, scrollTop: 0 };
-                lastChatHash = '__force__';
-                if (currentHistory && currentHistory.length > 0) renderChat(currentHistory);
-            }
+    // The row the user clicked, so the wait is shown where they are looking.
+    // Removed for free on success: renderChat rebuilds this subtree.
+    var _row = document.querySelector('[data-dh-row="' + msgId + '"]');
+    var _skel = null;
+    if (_row) {
+        _skel = document.createElement('div');
+        _skel.className = 'dh-skeleton';
+        _skel.textContent = '正在加载正文…';
+        _row.appendChild(_skel);
+    }
+    var _fail = function(reason) {
+        console.error('[dehydrate] message ' + msgId + ' failed: ' + reason);
+        if (_skel) {
+            _skel.className = 'dh-skeleton dh-skeleton--error';
+            _skel.textContent = '加载失败：' + reason + '（再次点击重试）';
         }
-    } catch(e) {
+        if (typeof showToast === 'function') {
+            showToast('气泡 ' + msgId + ' 正文加载失败：' + reason, 'error');
+        }
+    };
+    try {
+        var res = await fetch('/api/action', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'fetch_bubble_content', message_id: msgId, client_sid: window.localSid})
+        });
+        if (!res.ok) {
+            var _body = await res.text().catch(function() { return ''; });
+            _fail('HTTP ' + res.status + (_body ? ' — ' + _body.slice(0, 200) : ''));
+            return;
+        }
+        var data = await res.json();
+        if (data.status !== 'ok' || !data.message) {
+            // data.message carries the reason on the error branch and the payload
+            // on the ok branch, hence reading it either way.
+            _fail(typeof data.message === 'string' ? data.message : ('服务端返回 status=' + data.status));
+            return;
+        }
+        window._dehydratedContentCache[msgId] = data.message;
+        // Trigger full re-render - cache merge at top of renderChat will inject content
+        if (!window._expandStateMap) window._expandStateMap = {};
+        window._expandStateMap['tr-content-' + msgId] = { expanded: true, scrollTop: 0 };
+        lastChatHash = '__force__';
+        if (currentHistory && currentHistory.length > 0) renderChat(currentHistory);
+    } catch (e) {
+        _fail(e && e.message ? e.message : String(e));
+    } finally {
         window._dehydratedLoadingSet.delete(msgId);
-        console.error('Failed to fetch dehydrated content:', e);
     }
 }
 
@@ -770,7 +853,7 @@ function _doHandleStateUpdate(data) {
                         lastQueueHash = queueHash;
                         renderQueue(currentSession.message_queue, currentSession.is_paused);
                     }
-                    setUIEnabled(!currentSession.is_processing);
+                    setComposerTone(!currentSession.is_processing);
                     
                     const apBtn = document.getElementById('autopilot-btn');
                     if (apBtn) {
@@ -1355,7 +1438,7 @@ function _doHandleStateUpdate(data) {
                                     lastChatHash = '__force__';
                                     renderChat(polledHistory);
                                     renderQueue(res.session_data.message_queue || [], res.session_data.is_paused);
-                                    setUIEnabled(!res.session_data.is_processing);
+                                    setComposerTone(!res.session_data.is_processing);
                                 }
                             }
                         }).catch(() => {});
