@@ -8,7 +8,7 @@
 
 ## 一、必须先做的两件事
 
-### 1. 吊销已泄露的 API 密钥
+### 1. 吊销已泄露的 API 密钥（用户批注：已读。现可无视）
 
 `providers.json` 与 `settings.json` 曾被纳入版本控制，其中的凭据**已经进入 git 历史**：
 
@@ -52,11 +52,11 @@ cp settings.example.json settings.json
 
 新增 `libs/icons.js`，提供 `mdIcon(name, size)` 返回内联 SVG。图标为 24dp 网格上的描边式自绘几何体，`stroke="currentColor"` 因此自动继承宿主颜色并跟随主题，零网络请求、零字体加载。命名沿用 Material Symbols，将来若替换为官方 path 数据是纯值改动。
 
-前端 emoji 已清零，后端剩余 79 处（见第三节）。
+前后端 emoji 均已清零。实际处理 91 个**码点**而非本文档原先写的 79 个**视觉字符**：差额是 VS16 变体选择符（`⚠️` 是两个码点）与三种转义写法。唯一保留的是 `libs/chat.js` 注释里作为说明引用的一对符号——那段注释在解释为什么抽象图标承载不了原先那对 emoji 的区别，删掉符号会毁掉注释本身。
 
 ### 新增功能
 
-- **对话刻度盘**（`libs/minimap.js`）：聊天区右缘竖向导轨，横向刻度长短区分用户与助手，被彻底隐藏的气泡用 error 色，另有视口指示框。刻度按 `offsetTop` 比例映射而非按消息序号均分，因此点击跳转落点精确。
+- **对话刻度盘**（`libs/minimap.js`）：聊天区右缘的无边框竖向导轨，横向刻度长短区分用户与助手，被彻底隐藏的气泡用 error 色。刻度**等距**排列，右侧一个三角标记当前位置、对齐视口内最上面一条气泡的刻度；悬浮任一刻度立刻弹出气泡预览。等距不损跳转精度——点击一直是按 id 找元素再滚动，从不参考刻度自身位置。刻度厚度与命中区宽度随间距自适应，否则长对话下轨道会糊成实心条且 hover 会命中下方邻居。滚动由 `_mmScrollToEl` 自绘动画（分段缓动，首尾各 16% 缓冲、中段匀速，110–260ms），不用 `scrollIntoView`：后者时长随距离增长且整段都在加减速。
 - **侧边栏拖拽调宽**：180–520px，落盘 `localStorage`。
 - **会话拖拽排序动画**：FLIP 实现，渲染前记录位置、渲染后用 transform 拉回再过渡到零。
 
@@ -98,48 +98,74 @@ cp settings.example.json settings.json
 
 按可安全独立推进的程度排序。
 
-### 1. 后端 emoji（79 处，最安全）
+### 1. ~~后端 emoji~~（已完成）
 
-全部是日志前缀和返回消息，不涉及 DOM。精确分布：
+已清零，留此条只为记下统计口径这个坑。
 
-- `api/auto_review.py` 41（占一半，且是项目里唯一未被完整读过的大文件）
-- `app.py` 12
-- `api/worker_engine.py` 12（其中 6 处为 `\uXXXX` 转义写法）
-- `libs/chat.js` 5、`libs/main.js` 5（含 2 处转义）
-- `api/state.py` 2、`api/tool_executors.py` 1、`api/arc3.py` 1
+**统计脚本必须同时匹配三种写法**：字面字符、`\uXXXX`、`\UXXXXXXXX`。原文只写了前两种，而 `worker_engine.py` 把 🎨 写成八位大写的 `\U0001f3a8`，只认四位小写会静默漏掉三处——同一个文件先被报为 6 处、再被报为 18 处、实际 21 处，每次都是口径不全。
 
-**注意** `api/state.py` 那 2 处在 `opt_sessions` 的虚拟收藏会话名（`⭐ 全局收藏`）里，它会作为会话标题显示在侧边栏，改动会影响界面文案而非仅日志。
+改动时唯一需要单独判断的是 `api/state.py` 的虚拟收藏会话名：它是会话标题、显示在侧边栏，不是日志。删掉星号是安全的，因为 `main.js` 的该分支已经注入 `mdIcon('push_pin', 14)`，星号其实是第二个图标。
 
-统计脚本必须同时匹配字面字符与代理对转义两种写法。只匹配字面字符会漏掉近三分之一——`worker_engine.py` 曾被报为 6 处而实际有 18 处。
+### 2. 箭头字符迁移（34 个字符，约 10 个站点）
 
-### 2. 箭头字符迁移（6 处）
+`▶`（U+25B6）、`▼`（U+25BC）、`▴`/`▾` 不属 emoji 区段，是单色几何字符，字形随系统字体变化、尺寸不可控。
 
-`▶`（U+25B6）与 `▼`（U+25BC）不属 emoji 区段，是单色几何字符，字形随系统字体变化、尺寸不可控。剩余 6 处切换分布在：工具结果的内联 onclick、subagent 请求与响应的内联 onclick、内联思维链两个处理器、`_expandStateMap` 的恢复逻辑。
+**本文档原先写「6 处」，那是切换站点数而非字符数，且漏了几个文件。** 实测几何图形区（U+25A0–U+25FF）共 34 个字符：`libs/chat.js` 24、`frontend.html` 6、`libs/models.js` 2、`libs/editops.js` 1、`libs/panels.js` 1。`chat.js` 里除了原文列举的五个站点，还有 L536 附近折叠按钮的 `▴`/`▾`。按 6 处估工作量会严重偏低。
 
-改成 SVG 需要把这些位置从 `textContent` 整批迁到 `innerHTML`。**这一批动的是展开态保护机制**，建议单独成一个提交并逐处验证，不要与其他改动混在一起。
+改成 SVG 需要把这些位置从 `textContent` 整批迁到 `innerHTML`。**这一批动的是展开态保护机制**（见 `UI_CONVENTIONS.md` 第五节第 2 条），建议单独成一个提交并逐处验证，不要与其他改动混在一起。`tests/test_dom_render.py` 里的展开态相关用例可以在改动后直接复用来验证。
 
-### 3. 语法高亮的暗色适配
+### 3. ~~语法高亮的暗色适配~~（已完成）
 
-`libs/styles.css` 顶部内联的 highlight.js a11y-light 主题与 `.tool-params-hljs` 三条覆写，是前端最后的硬编码色值。它们属第三方主题范畴，暗色适配需要整套换成 a11y-dark 而非逐个改值——改一半会让代码高亮变成明暗混杂。
+`libs/styles.css` 顶部已追加整套 a11y-dark 覆写，`.tool-params-hljs` 三条也补了 GitHub-dark 对应值。整套换而非逐值调的理由：两套主题各自按自身底色做过 WCAG AA 校验，只换一半会得到唯一一种比两者都糟的状态——部分 token 可读、部分不可读，且无从分辨哪些是哪些。
 
-### 4. 暗色主题入口
+改动这一块时两条约束容易踩：
 
-`tokens.css` 的暗色令牌已全部备齐（Adwaita dark：窗口底 `#1e1e1e`、内容区 `#242424`、主色提亮为 blue-1 `#99c1f1`），但没有切换入口。给 `<html>` 加 `data-theme="dark"` 即可生效，加一个开关是纯前端改动。注意上一项未做完时暗色下代码块高亮会不可读。
+1. **刻意不设 `.hljs{background}`。** 上游 a11y-dark 会设 `#2b2b2b`，但本项目代码块底色来自 `.content pre` 的 `var(--md-sys-color-surface-container)`，写死等于把每个代码块钉在一个固定灰上并忽略令牌。
+2. **两条规则必须带后代选择器。** 亮色主题给 `.hljs-class .hljs-title` 与 `.hljs-tag .hljs-attr` 着色的特异性是 0,2,0，压过单类暗色规则的 0,1,1。缺了它们，类名与标签属性在暗色下仍是亮色值——这是纯特异性问题，看渲染结果很难反推成因。
 
-### 5. 测试
+### 4. ~~暗色主题入口~~（已完成，另附主题色）
 
-`pytest 9.1.1` 已装在 conda 环境 `deep_lea` 中，但**尚无任何用例**。建议的首批覆盖：
+入口在全局设置的「外观主题」：明亮 / 暗色 / 跟随系统三档，另加七个主题色。偏好存 `localStorage` 而非 `global_settings`——配色属设备偏好，同一会话在台式机看亮色、手机看暗色是合理的，而 `global_settings` 每次变更都要往服务端走一趟。
 
-- `config.py` 的配置加载优先级
-- `api/style_filter.py` 的过滤规则
-- `api/message_toggle.py` 的批量筛选逻辑——它与前端 `utils.js` 的 `classifyMessageType` 有代码注释明示的一致性约束（`Must stay consistent with message_toggle.py`），正适合用测试固化
+`frontend.html` 头部有一段**内联且同步**的引导脚本，必须保持在那里：所有 `libs/` 脚本都在 body 末尾加载，从那里应用暗色会先画一帧亮色再翻转，也就是可见的闪白。它包在 `try/catch` 里是因为隐私模式下 `localStorage` 访问会抛异常，而这段位于任何其他脚本之前，抛出会阻断整页解析。两处键名（`theme_mode`、`theme_accent`）与 `settings.js` 的 `applyTheme()` 共用，改一处要改两处。
 
-### 6. 性能优化（4 处，已定位未动手）
+主题色只声明一行种子色，容器色对由 `tokens.css` 末尾的 `color-mix` 规则派生——7 个色 × 2 个方案 × 6 个令牌是 84 个手写色值，必然出错。**混合比例是从既有 Adwaita 蓝反解出来的**：`#3584e4 → #99c1f1` 在 R/G/B 三通道分别得 0.505/0.504/0.52，即均匀 50% 混白。这个比例已被 `tests/test_dom_render.py` 实测确认（暗色绿色种子 `#3a944a` 得 157/202/165，与理论值零误差）。默认蓝仍显式重述手调值，因此既有安装的渲染结果逐像素不变。
 
-建议先有测试再动这几处，它们都在渲染与轮询的核心路径上。
+**一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-- **`libs/codeblocks.js` 末尾的 500ms 轮询**——收益最大的一处。它每半秒对整个 `chat-container` 做 `querySelectorAll('.cb-label')`，再对每个结果做一次 `querySelectorAll('.message-bubble')` 的线性索引查找，复杂度随对话长度平方增长。它的功能（为「申请审批」工具补拒绝按钮）已被 `chat.js` 的渲染时逻辑完整覆盖，**可整段删除**。
-- **`libs/main.js` 的 100ms `setInterval`**——全局 `querySelectorAll('.waiting-time')`，即使没有等待中的气泡也在空转。应改为按需启停。
+### 5. ~~测试~~（骨架已建，84 个用例通过）
+
+```bash
+python -m pytest tests/ -q          # 全部
+python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览器
+```
+
+`pytest 9.1.1` 在 conda 环境 `deep_lea` 中。构成：
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `test_config.py` | 配置加载与静默降级 |
+| `test_style_filter.py` | 过滤规则的确定性与变更记录可回放 |
+| `test_message_toggle.py` | 分类顺序、筛选条件、内联思维链可逆性 |
+| `test_cross_language_consistency.py` | 前后端分类逻辑的一致性 |
+| `test_static_assets.py` | CSS 花括号、令牌引用、缓存版本号 |
+| `test_dom_render.py` | 20 个浏览器内 DOM 用例 |
+
+**四条不写下来就会被「整理」掉的约束：**
+
+1. **`sys.path` 修正必须留在 `tests/conftest.py`，不能搬到根目录 `pytest.ini`。** `app.py` 的 `export_snapshot` 在 `_update_dirs` 里列了 `'tests': {'.py'}`，也就是测试目录会被打进更新包，而 `_root_files` 不含任何 ini 文件。搬走之后部署出去的副本跑不了自己的测试。
+2. **DOM 用例不启动 Flask。** 它们跑 `tests/harness/render.html`，只加载真实的 `libs/` 脚本与样式表。启动真实服务会读写 `data/sessions/`，那是用户的真实对话记录，不是测试夹具。
+3. **harness 的桩必须排在应用脚本之前，且不能与被测代码同名。** `utils.js` 在加载时就执行 marked 配置的 IIFE，`chat.js` 与 `minimap.js` 在文件末尾立即挂事件，晚定义的桩来不及被看到。同名更糟：第一版给 `rejectApproval` 写了桩，而 `codeblocks.js` 也声明了同名全局函数且加载在后——后者胜出，桩**静默失效**，测试看起来在验证审批拒绝，实际验证的是一段从未执行的代码。现在改为断言真实的 `postAction` 载荷，覆盖面反而更大。
+4. **Playwright 属开发期依赖，缺件必须跳过而非失败。** 见第六节。
+
+**一条对项目有用的浏览器事实：** `getComputedStyle` 对普通十六进制值返回 `rgb(r, g, b)`，但对 `color-mix()` 的计算结果返回 `color(srgb 0.61 0.79 0.65)`（CSS Color 4 形式，通道 0–1 浮点）。两种都合法，任何解析计算样式的代码都得同时处理。
+
+### 6. 性能优化（1 处已完成，3 处待办）
+
+三处待办都在渲染核心路径上，现在有 `tests/` 兜底可以放心动。
+
+- **~~`libs/codeblocks.js` 末尾的 500ms 轮询~~（已整段删除）。** 本文档原先说它「功能已被 `chat.js` 的渲染时逻辑完整覆盖，可整段删除」——读完之后结论更强：**它不只是冗余，而是在制造一个点了没反应的假按钮。** 三条证据：（一）它靠 `nextEl.getAttribute('data-approval-reject')` 判重，而 `chat.js` 只在**按钮**上设 `data-testid`、包裹 div 上没有该属性，所以判重永不成立、每半秒插一个；（二）它用 `allBubbles[j] === bubble` 求 DOM 位置当 `history` 数组下标，而 `renderChat` 会跳过被吸附的消息、思维链卡片又是 `.th-card` 不是 `.message-bubble`，两者必然不同；（三）错误下标传到 `app.py` 的 `cc_reject_approval` 后取不到对应 `part_id`，`_rej_tool_use_id` 保持 `None`、整段跳过且不报错。外加它的按钮写死 Bootstrap 红、不跟主题。`tests/test_dom_render.py::test_approval_reject_button_is_never_duplicated` 是对这次删除的直接实证——轮询在场时它会在 500ms 后失败。
+- **`libs/main.js` 的 100ms `setInterval`**——全局 `querySelectorAll('.waiting-time')`，即使没有等待中的气泡也在空转。应改为按需启停。注意它同时承担心跳防丢包（`syncCounter` 满 50 次即 5 秒发一次 ping），改启停时这一路不能一起停掉。
 - **`libs/chat.js` 的 `msgHash`**——每条消息做多次字符串切片与拼接，长对话下是纯 CPU 开销。可改为增量数值指纹。
 - **`libs/chat.js` 的 KaTeX 扫描**——对每个气泡无条件调用 `renderMathInElement`，而绝大多数气泡不含公式。加一个 `$` 存在性预判即可省掉大部分调用。
 
@@ -149,17 +175,27 @@ cp settings.example.json settings.json
 
 以下均为已定位但刻意未动的事项，每项都写明当前行为，请勿当作遗漏随手改动。
 
-### 气泡右键菜单只显示一项
+### ~~气泡右键菜单只显示一项~~（已决策：菜单整个移除）
 
-`libs/chat.js` 的 `contextmenu` 处理器中，前九行用 `items +=` 累加了收藏、重试、评分、隐藏、概括、折叠、复制、编辑、删除共十项，但最后一行是 `items = ...`——**赋值而非累加**，把前面全部丢弃。因此右键菜单实际只显示「折叠/展开」，上方九项是死代码。
+原状况：`contextmenu` 处理器前九行用 `items +=` 累加了十项，最后一行却是 `items = ...`——赋值而非累加，把前面全部丢弃，因此菜单实际只显示「折叠/展开」。
 
-该行内容与其上第五行完全重复，更像调试时临时覆盖后忘记还原，而非有意设计。恢复完整菜单属于功能变更，需要产品判断，因此只在覆盖点加了注释说明，行为保持原样。两种走向都很轻：把 `=` 改回 `+=`，或删掉那九行死代码。
+**决策是第三条路：菜单不要了，右键直接折叠。** 那个菜单在覆盖赋值之后本来就只提供折叠一项，中间隔一层菜单纯属多一次点击；十项操作全部仍在气泡上方的悬停操作栏里，没有丢任何能力。相关死代码已清理：`frontend.html` 的空 `#bubble-context-menu` 容器、`main.js` 里关闭它的处理器、`styles.css` 共用规则里属于 `.bubble-ctx-item` 的那一半（`.tab-ctx-item` 仍在用，只能删逗号后面）。
+
+**处理器里那道选区判断不是多余的防御，删掉是回归。** 气泡正文是 `user-select: text !important`，右键是访问原生复制菜单的唯一途径。原处理器虽然挡住了原生菜单，但至少不破坏选区；改成直接折叠后若不放行，用户选中一段话想复制会得到「气泡折叠 + 选区丢失」，比改动前更差。判断范围限定在本气泡内（`bubble.contains(sel.anchorNode)`），别处的选区不影响本气泡。三个 DOM 用例覆盖了这三种情形。
 
 ### 分组内条目拖到组外不带排序
 
 当前只发出 `remove_session_from_group`，因此移出后条目会按原有 `order` 落在未分组区的某个位置，而不是松手的地方。
 
 要改需要在 `list.ondrop` 里补一次 reorder，但拖到空白区域时没有参照条目可用。倾向的做法是取未分组区最后一个条目的 `order` 加 1，即「移出即置末」，语义清楚。
+
+### 后端 `is_processing` / `autopilot_active` 可能一直为真
+
+**本文档此前没有记录这一项，它只存在于 `libs/kanban.js` 的两处注释里**（缓存填充处与托管区段渲染处）。那两处注释写明这两个字段有「做完之后仍然保持为真」的已知缺陷，因此前端不敢直接读 `autopilot_active`，改用 `autopilot_active && (is_processing || active_threads > 0)` 作为「确实在工作」的真值判断。
+
+**看到那个绕过写法不要当成冗余判断简化掉**——简化之后看板的托管区段会一直显示为进行中，而且这个症状看起来像看板渲染错了、不像后端状态没清。
+
+要真修需要动 `api/autopilot.py` 与 `api/tool_accept.py` 的状态流转，影响面远超前端配色一类的改动，因此本轮没碰。也可能上一位开发者同样判断为不值得动、只是没记录下来。
 
 ### 刻度盘的可选增强
 
@@ -172,7 +208,17 @@ cp settings.example.json settings.json
 
 ## 五、验证方法
 
-这个项目没有构建步骤，因此静态检查是唯一的自动化保障。以下命令可直接执行。
+这个项目没有构建步骤。现在有两层保障：`tests/` 下的 84 个用例，加上下面这些静态检查。
+
+### 测试
+
+```bash
+python -m pytest tests/ -q
+```
+
+第三节第 5 项有构成说明。`test_static_assets.py` 已经把下面的「CSS 花括号收支」与「令牌引用完整性」两项固化成用例，因此那两条现在是自动执行的。
+
+**测试不能替代静态检查，两者覆盖的是不同的东西。** `node --check` 验语法、测试验行为；尤其是**标识符改名**这类错误，解析检查完全无能（函数改名后仍有旧名调用是运行时 `ReferenceError`，解析阶段看不出来），而 DOM 用例只覆盖被它触及的那条路径。本分支两次改名（`_mmUpdateViewport → _mmUpdateCursor`、`bgColor → _barBg`）的安全都来自 grep 交叉验证，不是来自测试。
 
 ### JavaScript 语法
 
@@ -226,6 +272,18 @@ python -m py_compile app.py config.py api/*.py
 ### 索引操作串行
 
 `git` 的索引操作（`add`、`rm --cached`、`commit`）不能并发执行，否则会撞上 `index.lock`。
+
+### Playwright 是开发期依赖
+
+**用户运行 ChatApp 不应依赖它，因此测试套件本身也不能因它缺席而变红。** `tests/test_dom_render.py` 用模块级 `pytest.importorskip('playwright')` 加 `browser` fixture 里对 `launch()` 的异常捕获实现「缺件即跳过」：缺 Python 包、缺 Chromium 二进制、缺 Chromium 所需的系统库三种情形都会跳过并给出原因。这条已被实证——首次跑时 Chromium 尚未下载完，结果是 `64 passed, 20 skipped` 而非二十个红叉。
+
+安装浏览器：
+
+```bash
+python -m playwright install chromium
+```
+
+包约 115MB，下载需要几分钟。**不要加 `--with-deps`**：那会调 apt 安装系统库，属于修改共享环境。如果这台机器缺 Chromium 运行所需的系统库，`launch()` 会失败并被捕获成跳过，届时再单独决定要不要装系统依赖。
 
 ### 数据目录
 
