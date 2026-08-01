@@ -220,6 +220,62 @@ async function reverseCodeBlock(btn, index, partId) {
     }
 }
 
+/**
+ * Abort an in-flight tool call. Stops autopilot and the queue behind it.
+ *
+ * No confirmation dialog. This is the stop-loss action: by the time a user
+ * reaches for it they want it to happen now, and an extra gate works against
+ * the intent. What it does do is disable the accept and retry buttons in the
+ * same row immediately, so the round trip cannot be spent dispatching another
+ * execution of the very being cancelled.
+ *
+ * The backend side is cooperative — Python cannot safely kill a thread, and
+ * local executors run in bare daemon threads — so a step already inside an
+ * executor may still finish. Its result is discarded on arrival. Nothing
+ * further is scheduled either way, which is the part the user asked for.
+ *
+ * @param {HTMLElement} btn the clicked button
+ * @param {number} index history index of the owning message
+ * @param {string} partId content_part id of the tool call
+ */
+async function ccToolAbort(btn, index, partId) {
+    var wrapper = btn.closest('.code-block-wrapper');
+    btn.innerHTML = mdIcon('hourglass', 14) + ' 中止中';
+    btn.disabled = true;
+    if (wrapper) {
+        var _sibs = wrapper.querySelectorAll('.cb-accept, .cb-reject:not(.cb-abort)');
+        for (var i = 0; i < _sibs.length; i++) _sibs[i].disabled = true;
+    }
+    await postAction({action: 'cc_abort_tool', index: index, part_id: partId});
+}
+
+/**
+ * Re-run a tool call that already returned, after an explicit confirmation.
+ *
+ * The dialog is load-bearing rather than polite. accept_tool refuses to queue a
+ * call that already has a tool_result, so a retry has to delete that result
+ * first — the previous return is gone for good — and for Edit, Write or Bash the
+ * side effect runs a second time. The tool name goes into the prompt because
+ * retrying Read and retrying Bash are not remotely the same risk.
+ *
+ * Dispatches through ccToolAccept with is_retry set, which is the parameter that
+ * has been threaded from here to accept_tool all along without being read.
+ *
+ * @param {HTMLElement} btn the clicked button
+ * @param {number} index history index of the owning message
+ * @param {string} partId content_part id of the tool call
+ * @param {string} toolName shown in the confirmation
+ */
+async function ccToolRetry(btn, index, partId, toolName) {
+    var ok = await showConfirmModal(
+        '重新执行「' + (toolName || '该工具') + '」？\n\n'
+        + '本次已有的返回结果会被删除，无法恢复。\n'
+        + '若该工具有副作用（Edit / Write / Bash 等），副作用会再发生一次。',
+        '重新执行');
+    if (!ok) return;
+    ccToolAccept(btn, index, partId, true);
+}
+
 function rejectApproval(btn, index, partId) {
     var reason = prompt('拒绝原因：') || '';
     btn.disabled = true;

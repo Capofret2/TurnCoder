@@ -198,6 +198,56 @@ class ToolAcceptMixin:
             self._update_part_status(session, msg_index, part_id, status)
         self.save_sessions(push_update=True)
 
+    def _resolve_part_tool_id(self, session, msg_index, part_id):
+        """Return (message, part, tool_use_id) for one content_part.
+
+        Two sources for the id and both are genuinely in use. worker_engine writes
+        the flat tool_id/tool_name/tool_input alongside the JSON in content — every
+        one of the 1101 parts in the persisted sessions carries both — while a part
+        synthesised by the frontend descriptor pass has only content. Reading the
+        flat field first and falling back to a parse covers either shape; assuming
+        one of them would make this silently fail on the other.
+        """
+        try:
+            idx = int(msg_index)
+        except (ValueError, TypeError):
+            return None, None, ''
+        history = session.get('conversation_history', [])
+        if not (0 <= idx < len(history)):
+            return None, None, ''
+        msg = history[idx]
+        for p in msg.get('content_parts', []):
+            if p.get('id') != part_id:
+                continue
+            tid = p.get('tool_id') or ''
+            if not tid:
+                try:
+                    tid = (json.loads(p.get('content') or '{}') or {}).get('id') or ''
+                except Exception:
+                    tid = ''
+            return msg, p, tid
+        return msg, None, ''
+
+    def _purge_tool_results(self, session, tool_use_id):
+        """Drop the recorded result for one tool call so it can be run again.
+
+        The autoread an Edit triggered goes too. That bubble is a snapshot of the
+        file as of that run, and keeping a stale copy while the edit re-executes
+        puts two contradictory versions of the same file in the context.
+
+        Sliced in place rather than rebound: a background executor thread holds a
+        reference to the session dict and appends to this list, and keeping one
+        list object means there is never a window where the two disagree.
+        """
+        history = session.get('conversation_history', [])
+        keep = [m for m in history
+                if not (m.get('is_tool_result') and m.get('tool_use_id') == tool_use_id)
+                and m.get('auto_read_trigger_id') != tool_use_id]
+        removed = len(history) - len(keep)
+        if removed:
+            history[:] = keep
+        return removed
+
     def accept_all_tools(self, msg_index, target_sid=None):
         """批量批准一个气泡内的所有待定工具调用。统一入口，一键采纳和自动托管共用。"""
         sid = target_sid or self._active_sid
@@ -240,6 +290,28 @@ class ToolAcceptMixin:
             if self.socketio:
                 self.socketio.emit('show_toast', {'message': '当前会话不支持 CC 工具调用', 'type': 'error'})
             return
+
+        # Retry. is_retry has been on this signature and forwarded from app.py all
+        # along without the body ever reading it; wiring it up here is what makes
+        # the retry button possible at all.
+        #
+        # It has to run before the dedup guard below, which returns immediately on
+        # any call that already has a result — a plain re-dispatch was a silent
+        # no-op that also advanced the queue a second time. The part goes back to
+        # pending too, or the UI keeps reading 已采纳 while the tool re-executes,
+        # and the id comes off the abort list so abort-then-retry works.
+        if is_retry:
+            _rt_id = tool_block.get('id', '')
+            if _rt_id:
+                _rt_removed = self._purge_tool_results(session, _rt_id)
+                _rt_ab = session.get('_aborted_tool_ids')
+                if isinstance(_rt_ab, list) and _rt_id in _rt_ab:
+                    _rt_ab.remove(_rt_id)
+                if msg_index is not None and part_id is not None:
+                    self._update_part_status(session, msg_index, part_id, 'pending')
+                self.save_sessions(push_update=True)
+                print(f'[CC RETRY] {tool_block.get("name", "?")} ({_rt_id[:25]}): '
+                      f'清除 {_rt_removed} 条旧结果后重新执行', flush=True)
 
         # 防重机制：如果对话历史中已存在该 tool_use_id 的 tool_result 气泡，说明工具已执行过，坚决拒绝重复入队。
         _tool_use_id = tool_block.get('id', '')
@@ -523,6 +595,15 @@ class ToolAcceptMixin:
                         try:
                             _t0 = time.time()
                             _res = _exec(_input, _settings, _cd, api=self, target_sid=_sid, tool_use_id=_tuid)
+                            # Aborted while this thread was inside the executor. The
+                            # abort already wrote a synthetic result and settled the
+                            # call, so injecting this one would leave two results under
+                            # one tool_use_id and advance a queue that was emptied on
+                            # purpose. This thread could not be interrupted, but its
+                            # output can be dropped.
+                            if _tuid in (_sess.get('_aborted_tool_ids') or []):
+                                print(f'[CC ABORT] 丢弃迟到的结果: {_tn} ({_tuid[:25]})', flush=True)
+                                return
                             if _res is not None:
                                 _res.execution_time_s = time.time() - _t0
                                 self._create_tool_result_bubble(_sess, _tuid, _res, _mi, _pi)
@@ -755,6 +836,89 @@ class ToolAcceptMixin:
                 self.send_message(_ap_text, [session.get('autopilot_model')], is_early=True, is_deep_think=session.get('_deep_think_active', False), sid=_ap_sid)
         else:
             self.finalize_process(_ap_sid)
+
+    def abort_tool(self, msg_index, part_id, target_sid=None):
+        """Abort one in-flight tool call, stop autopilot, drop the queue behind it.
+
+        Cooperative, and the wording matters because the limit is real: Python
+        cannot safely kill a thread and the local executors run in bare daemon
+        threads, so a step already inside an executor will finish. What is
+        guaranteed is that its result is discarded on arrival and that nothing
+        else gets scheduled.
+
+        Five steps, none of them optional:
+
+        1. Record the id, so a late result from a still-running thread is dropped.
+        2. Write a synthetic tool_result. This is the only way the call becomes
+           settled — _is_tool_settled looks for a result or a rejected status —
+           and an unsettled call blocks every sibling behind it indefinitely.
+        3. Reject and clear _approved_tool_queue. stop_autopilot does not touch
+           it, so anything left there is released by the next
+           _advance_approved_queue: exactly the "stop the tools behind it" this
+           is supposed to prevent.
+        4. Pop _ap_tool_sid. Also untouched by stop_autopilot, and while it
+           survives _continue_autopilot_tool_queue can still claim the right to
+           advance and start another turn.
+        5. finalize_process, which is what clears is_processing. Without it the
+           composer stays disabled by setUIEnabled(!is_processing) and the abort
+           reads as having failed.
+
+        _continue_autopilot_tool_queue is deliberately not called: releasing the
+        next tool is its entire job.
+        """
+        sid = target_sid or self._active_sid
+        session = self.sessions.get(sid)
+        if not session:
+            return {'status': 'error', 'message': '会话不存在'}
+        _msg, part, tool_use_id = self._resolve_part_tool_id(session, msg_index, part_id)
+        if not part:
+            return {'status': 'error', 'message': '找不到该工具调用'}
+        if not tool_use_id:
+            return {'status': 'error', 'message': '该工具调用缺少 tool_id，无法中止'}
+
+        _ab = session.setdefault('_aborted_tool_ids', [])
+        if tool_use_id not in _ab:
+            _ab.append(tool_use_id)
+
+        _was_autopilot = bool(session.get('autopilot_active'))
+        _dropped = 0
+        for _item in (session.get('_approved_tool_queue') or []):
+            _qid = _item.get('tool_use_id')
+            if _qid and _qid not in _ab:
+                _ab.append(_qid)
+            self._update_part_status(session, _item.get('msg_index'),
+                                     _item.get('part_id'), 'rejected')
+            _dropped += 1
+        session['_approved_tool_queue'] = []
+        # Bounded: this field persists on a session that may run for weeks, while
+        # only a result arriving shortly after the abort is ever tested against it.
+        if len(_ab) > 200:
+            del _ab[:-200]
+        session.pop('_ap_tool_sid', None)
+        session.pop('_ap_tool_auto_text', None)
+        # The same field set stop_autopilot writes, so the button, the badge and
+        # the kanban section all agree about the state.
+        session['autopilot_active'] = False
+        session['autopilot_turns_left'] = 0
+        session['_deep_think_active'] = False
+        session['trigger_autopilot'] = False
+
+        from .tool_executors import ToolResult
+        _note = '用户中止了该工具调用。'
+        if _was_autopilot:
+            _note += '托管已停止。'
+        if _dropped:
+            _note += f'另有 {_dropped} 个排队中的工具调用被一并取消。'
+        _note += ('\n<system-reminder>\nThe user aborted this tool call. Do not retry it '
+                  'on your own and do not start the next step; wait for the user to say '
+                  'what to do next.\n</system-reminder>')
+        _res = ToolResult(_note, '工具调用被用户中止', is_error=True, part_status='rejected')
+        self._create_tool_result_bubble(session, tool_use_id, _res, msg_index, part_id)
+        self.finalize_process(sid)
+        print(f'[CC ABORT] {part.get("tool_name") or "?"} ({tool_use_id[:25]}) 已中止；'
+              f'清空队列 {_dropped} 个；托管='
+              f'{"已停止" if _was_autopilot else "本未运行"}', flush=True)
+        return {'status': 'ok', 'dropped': _dropped, 'autopilot_stopped': _was_autopilot}
 
     def _register_file_read(self, file_path, sid):
         """Register that a session holds a read reference to a file. Thread-safe via GIL.

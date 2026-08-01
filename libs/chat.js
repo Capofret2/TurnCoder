@@ -745,18 +745,28 @@
                             switch(part.status) {
                                 case 'executing':
                                     statusLabel = `<span style="color: var(--md-sys-color-primary); font-weight: 500;">${mdIcon('hourglass', 14)} 执行中</span> ${mdIcon('build', 14)}<b>${toolName}</b>`;
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button>`;
+                                    // Abort sits before retry on purpose: it is the
+                                    // only irreversible action in this row, and last
+                                    // position is where a stray click lands.
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="中止本次调用，并停止托管与后续排队的工具">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button>`;
                                     hasPendingActions = true;
                                     break;
                                 case 'adopted':
                                     let _hasToolResult = toolData.id && toolResultMap[toolData.id] && toolResultMap[toolData.id].length > 0;
                                     if (_hasToolResult) {
                                         statusLabel = `<span style="color: var(--md-sys-color-success); font-weight: 500;">已采纳</span>${mdIcon('build', 14)}<b>${toolName}</b>`;
-                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
+                                        // Retry here goes through a confirmation because
+                                        // it destroys the recorded result to get past
+                                        // accept_tool's dedup guard, and for Edit, Write
+                                        // or Bash it genuinely runs the side effect again.
+                                        opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-accept" data-testid="retry-tool" onclick="ccToolRetry(this, ${index}, '${part.id}', '${toolName}')" title="丢弃本次结果并重新执行">${mdIcon('refresh', 14)} 重试</button>`;
                                     } else {
                                         statusLabel = `<span style="color: var(--md-sys-color-warning); font-weight: 500;">已发送，等待返回</span>${mdIcon('build', 14)}<b>${toolName}</b>`;
                                         hasPendingActions = true;
-                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
+                                        // Also in flight, so it gets an abort too. Retry
+                                        // alone cannot express "drop it"; without this the
+                                        // only way out was to wait for a result.
+                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="中止本次调用，并停止托管与后续排队的工具">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
                                     }
                                     break;
                                 case 'rejected':

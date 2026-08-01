@@ -140,6 +140,47 @@ window.__harness = {
         }];
     },
 
+    /** One assistant turn holding a single tool call in a given state.
+     *
+     * approvalHistory only ever produces a pending 申请审批 call, which does not
+     * reach either of the branches the abort and retry buttons live in.
+     *
+     * withResult appends a real tool_result bubble. That is the only way
+     * _hasToolResult becomes true, and therefore the only way the adopted branch
+     * takes the sub-branch that carries a retry button.
+     *
+     * Both the flat tool_id/tool_name and the JSON content are written, because
+     * every persisted part carries both and a fixture with only one of them could
+     * not demonstrate why the backend resolver needs to accept either. */
+    toolHistory: function (status, opts) {
+        opts = opts || {};
+        var tid = 'toolu_harness_tool';
+        var name = opts.name || 'Bash';
+        var out = [{
+            id: 1, role: 'assistant', created_at: 1700000000,
+            content: 'about to run something',
+            content_parts: [{
+                type: 'tool_use_part',
+                id: 'part-tool-1',
+                status: status,
+                tool_id: tid,
+                tool_name: name,
+                content: JSON.stringify({
+                    type: 'tool_use', id: tid, name: name,
+                    input: { command: 'ls -la' }
+                })
+            }]
+        }];
+        if (opts.withResult) {
+            out.push({
+                id: 2, role: 'user', created_at: 1700000001,
+                content: '**Tool Result** (tool: ' + tid + ')\n\nok',
+                summary: 'Result', is_tool_result: true, tool_use_id: tid
+            });
+        }
+        return out;
+    },
+
     /** Select the whole body of one bubble, as a user dragging over it would. */
     selectBubbleText: function (msgId) {
         var el = document.querySelector('#msg-bubble-' + msgId + ' .content');

@@ -70,6 +70,11 @@ class StateMixin:
                     _pr_state_data = sess.get('_partial_read_state', {})
                     _pr_enabled = getattr(self, 'global_settings', {}).get('enable_partial_read', False)
                     _sess_copy.pop('_partial_read_state', None)  # 内部状态，前端不需要
+                    # 同上。中止名单只被 accept_tool 的 is_retry 分支和执行器线程读取，
+                    # 前端无消费者。它与 _approved_tool_queue 不同：后者随工具执行完毕
+                    # 自然收缩，前者单调增长到 200 上限后长期满载（约 5KB），而托管期间
+                    # 状态推送是高频的。pop 而非 del：绝大多数会话没有这个键。
+                    _sess_copy.pop('_aborted_tool_ids', None)
                     _DEHYDRATE_STRIP_KEYS = frozenset(('content', 'content_parts', 'multimodal_blocks', 'thinking', 'diff_content', 'cc_content', '_cached_payload'))
                     _lightweight_hist = []
                     for _m in sess.get('conversation_history', []):

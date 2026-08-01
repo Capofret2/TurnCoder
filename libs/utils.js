@@ -222,3 +222,66 @@ function showPromptModal(message, defaultValue) {
         setTimeout(function() { input.focus(); input.select(); }, 50);
     });
 }
+
+/**
+ * Yes/no dialog for consequential actions. Resolves true only on confirm.
+ *
+ * Shares showPromptModal's chrome on purpose — same scrim, same dialog shape,
+ * same dismissive-left/confirming-right action order — so the two read as one
+ * component family. It differs in three places, all of them because the caller
+ * is about to destroy something:
+ *
+ *   - no input, so nothing can be mistaken for a field to fill in;
+ *   - the confirming action is the error pair rather than primary;
+ *   - focus lands on cancel, so a stray Return dismisses instead of commits.
+ *
+ * @param {string} message body text, rendered as plain text
+ * @param {string} [confirmLabel='确认'] label for the destructive action
+ * @returns {Promise<boolean>}
+ */
+function showConfirmModal(message, confirmLabel) {
+    return new Promise(function(resolve) {
+        var overlay = document.createElement('div');
+        overlay.className = 'md-confirm-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+            + 'background:color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);'
+            + 'display:flex;justify-content:center;align-items:center;z-index:9999;';
+        var box = document.createElement('div');
+        box.style.cssText = 'background:var(--md-sys-color-surface-container-high);'
+            + 'color:var(--md-sys-color-on-surface);'
+            + 'border-radius:var(--md-sys-shape-corner-extra-large);'
+            + 'padding:var(--md-sys-spacing-6);min-width:320px;max-width:450px;'
+            + 'box-shadow:var(--md-sys-elevation-level3);';
+        var msgEl = document.createElement('div');
+        msgEl.style.cssText = 'margin-bottom:var(--md-sys-spacing-6);'
+            + 'font-size:var(--md-sys-typescale-body-large-size);'
+            + 'letter-spacing:var(--md-sys-typescale-body-large-tracking);'
+            + 'color:var(--md-sys-color-on-surface-variant);white-space:pre-wrap;line-height:1.5;';
+        msgEl.textContent = message;
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:var(--md-sys-spacing-2);';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'md-button md-button--text';
+        cancelBtn.dataset.testid = 'confirm-cancel';
+        cancelBtn.textContent = '取消';
+        var okBtn = document.createElement('button');
+        okBtn.className = 'md-button md-button--danger';
+        okBtn.dataset.testid = 'confirm-ok';
+        okBtn.textContent = confirmLabel || '确认';
+        var done = function(v) { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+        var onKey = function(e) {
+            if (e.key === 'Escape') { e.preventDefault(); done(false); }
+        };
+        cancelBtn.onclick = function() { done(false); };
+        okBtn.onclick = function() { done(true); };
+        document.addEventListener('keydown', onKey);
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(okBtn);
+        box.appendChild(msgEl);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        overlay.onclick = function(e) { if (e.target === overlay) done(false); };
+        document.body.appendChild(overlay);
+        setTimeout(function() { cancelBtn.focus(); }, 50);
+    });
+}

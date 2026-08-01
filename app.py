@@ -479,6 +479,17 @@ def handle_action():
                         _rej_result = ToolResult(_rej_content, "审批被拒绝", is_error=True, part_status="rejected")
                         backend._create_tool_result_bubble(_rej_session, _rej_tool_use_id, _rej_result, _rej_idx, _rej_part_id)
                         backend._continue_autopilot_tool_queue(_rej_session, _rej_sid)
+        elif action == 'cc_abort_tool':
+            _abt = backend.abort_tool(data.get('index'), data.get('part_id'),
+                                      target_sid=data.get('client_sid'))
+            if not _abt or _abt.get('status') != 'ok':
+                # 400, not a 200 carrying an error: postAction only raises a toast on a
+                # non-OK response, so a 200 here would swallow the message entirely and
+                # the user would see a greyed-out button and nothing else.
+                return jsonify(_abt or {'status': 'error', 'message': '中止失败'}), 400
+            _abt = dict(_abt)
+            _abt['state'] = backend.get_full_state()
+            return jsonify(_abt)
         elif action == 'cc_edit_message':
             backend.edit_cc_message(data['index'], data['content_json'])
         elif action == 'apply_block':

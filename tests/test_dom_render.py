@@ -421,6 +421,76 @@ def test_scroll_button_shows_only_when_far_from_the_bottom(page):
         page.locator('#scroll-bottom-btn').get_attribute('class') or '')
 
 
+# ------------------------------------------------------- abort and retry
+
+def test_executing_tool_offers_an_abort_carrying_the_part_id(page):
+    """Asserted on the payload rather than on the click: abort_tool resolves the
+    tool_use_id from exactly these two fields, so a button that fires without them
+    would look like it worked and do nothing."""
+    page.evaluate("window.__harness.render(window.__harness.toolHistory('executing'))")
+    assert page.locator('[data-testid="abort-tool"]').count() == 1
+    page.locator('[data-testid="abort-tool"]').click()
+    calls = page.evaluate(
+        "window.__calls.postAction"
+        ".filter(function (c) { return c.action === 'cc_abort_tool'; })")
+    assert len(calls) == 1, 'postAction saw: %s' % page.evaluate(
+        'window.__calls.postAction')
+    assert calls[0]['index'] == 0
+    assert calls[0]['part_id'] == 'part-tool-1'
+
+
+def test_abort_disables_the_retry_beside_it(page):
+    """Abort is the one irreversible action in the row. Leaving accept live during
+    the round trip means the trip can be spent dispatching the very execution being
+    cancelled."""
+    page.evaluate("window.__harness.render(window.__harness.toolHistory('executing'))")
+    page.locator('[data-testid="abort-tool"]').click()
+    states = page.evaluate("""
+        (function () {
+            var w = document.querySelector('#msg-bubble-1 .code-block-wrapper');
+            return Array.prototype.map.call(
+                w.querySelectorAll('.cb-accept'), function (b) { return b.disabled; });
+        })()
+    """)
+    assert states and all(states), 'sibling accept buttons stayed live: %s' % states
+
+
+def test_adopted_tool_retry_waits_for_a_confirmation(page):
+    """The dialog is load-bearing, not polite: the retry deletes the recorded result
+    to get past accept_tool's dedup guard, and for Bash the side effect runs again."""
+    page.evaluate(
+        "window.__harness.render("
+        "window.__harness.toolHistory('adopted', {withResult: true}))")
+    assert page.locator('[data-testid="retry-tool"]').count() == 1
+    page.locator('[data-testid="retry-tool"]').click()
+    assert page.locator('[data-testid="confirm-ok"]').count() == 1, \
+        'no confirmation appeared'
+    assert page.evaluate('window.__calls.postAction') == [], \
+        'the retry was dispatched before the user confirmed'
+    page.locator('[data-testid="confirm-cancel"]').click()
+    assert page.locator('[data-testid="confirm-ok"]').count() == 0
+    assert page.evaluate('window.__calls.postAction') == []
+
+
+def test_confirmed_retry_sets_the_is_retry_flag(page):
+    """The only evidence for wiring up is_retry. It was on accept_tool's signature
+    and forwarded from app.py all along while the body never read it, so a retry
+    that omits the flag hits the dedup guard and returns silently."""
+    page.evaluate(
+        "window.__harness.render("
+        "window.__harness.toolHistory('adopted', {withResult: true}))")
+    page.locator('[data-testid="retry-tool"]').click()
+    page.locator('[data-testid="confirm-ok"]').click()
+    calls = page.evaluate(
+        "window.__calls.postAction"
+        ".filter(function (c) { return c.action === 'cc_accept_tool'; })")
+    assert len(calls) == 1, 'postAction saw: %s' % page.evaluate(
+        'window.__calls.postAction')
+    assert calls[0]['is_retry'] is True
+    assert calls[0]['part_id'] == 'part-tool-1'
+    assert calls[0]['index'] == 0
+
+
 # ------------------------------------------------------------------- theming
 
 def test_dark_scheme_repaints_code_block_foreground(page):

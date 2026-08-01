@@ -60,6 +60,10 @@ var MD_ICON_GLYPHS = {
     /* execution */
     play_arrow: '<path d="M8 5l11 7-11 7z"/>',
     skip_next: '<path d="M6 5l9.5 7L6 19z"/><path d="M18 5v14"/>',
+    /* Deliberately not reusing `block` for aborts: that glyph already labels
+       "被拦截" on failed tool calls, and one shape for two outcomes would make a
+       user read an abort as an interception. */
+    stop: '<rect x="7" y="7" width="10" height="10" rx="1.6"/>',
     refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/>',
     terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 9.5l3 2.5-3 2.5M13 14.5h4"/>',
     settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 4v2.6M12 17.4V20M4 12h2.6M17.4 12H20M6.3 6.3l1.9 1.9M15.8 15.8l1.9 1.9M17.7 6.3l-1.9 1.9M8.2 15.8l-1.9 1.9"/>',
