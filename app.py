@@ -474,7 +474,7 @@ def handle_action():
                                 pass
                             break
                     if _rej_tool_use_id:
-                        from api.cc_executors import ToolResult
+                        from api.tool_executors import ToolResult
                         _rej_content = f"用户拒绝了审批：{_rej_reason}" if _rej_reason else "用户拒绝了审批"
                         _rej_result = ToolResult(_rej_content, "审批被拒绝", is_error=True, part_status="rejected")
                         backend._create_tool_result_bubble(_rej_session, _rej_tool_use_id, _rej_result, _rej_idx, _rej_part_id)

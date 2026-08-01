@@ -43,6 +43,10 @@ var MD_ICON_GLYPHS = {
     drag_indicator: '<circle cx="9.5" cy="6" r="1.3"/><circle cx="14.5" cy="6" r="1.3"/><circle cx="9.5" cy="12" r="1.3"/><circle cx="14.5" cy="12" r="1.3"/><circle cx="9.5" cy="18" r="1.3"/><circle cx="14.5" cy="18" r="1.3"/>',
     more_vert: '<circle cx="12" cy="5.4" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.6" r="1.4"/>',
     open_in_new: '<path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5"/>',
+    /* Three call sites already asked for this name — the release button in
+       main.js and both subagent send buttons in chat.js — and got an empty
+       string plus a console warning each render. */
+    north_east: '<path d="M7 17L17 7"/><path d="M9.8 7H17v7.2"/>',
 
     /* decisions */
     check: '<path d="M5 12.8l4.6 4.6L19 7"/>',
