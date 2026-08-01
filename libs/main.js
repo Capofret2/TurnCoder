@@ -53,15 +53,41 @@ const chatContainer = document.getElementById('chat-container');
         // Model functions: sendWithModel, hideModel, restoreModel, renderModelDropdown, updateSendButtonCount
         // -> Moved to /libs/models.js
 
-        document.getElementById('model-dropdown').addEventListener('change', () => {
-            updateSendButtonCount();
-            const checkedBoxes = Array.from(document.querySelectorAll('.model-cb:checked')).map(cb => cb.value);
-            localStorage.setItem('llm_selected_models', JSON.stringify(checkedBoxes));
-        });
-        document.getElementById('max-steps').addEventListener('input', updateSendButtonCount);
-        document.getElementById('parallel-mode').addEventListener('change', updateSendButtonCount);
+        /* Top-level DOM wiring, gathered into one function.
+         *
+         * The three addEventListener calls below throw a TypeError when their
+         * element is missing, and that was the whole reason this file — the
+         * largest in the project, holding session rendering, drag reordering, the
+         * tab bar and the entire state pipeline — could not be loaded anywhere but
+         * frontend.html, and therefore had zero test coverage.
+         *
+         * Called immediately rather than from DOMContentLoaded on purpose: this
+         * script is the last one in <body>, so the document is already parsed, and
+         * deferring would reorder the first render against the first state push.
+         * The sentinel is #user-input because it is the shortest test for "the
+         * composer markup is present".
+         *
+         * _wireComposer is declared ~1300 lines below; function declarations hoist,
+         * so calling it from here is fine. */
+        function initApp() {
+            document.getElementById('model-dropdown').addEventListener('change', () => {
+                updateSendButtonCount();
+                const checkedBoxes = Array.from(document.querySelectorAll('.model-cb:checked')).map(cb => cb.value);
+                localStorage.setItem('llm_selected_models', JSON.stringify(checkedBoxes));
+            });
+            document.getElementById('max-steps').addEventListener('input', updateSendButtonCount);
+            document.getElementById('parallel-mode').addEventListener('change', updateSendButtonCount);
+            renderModelDropdown(); // 初始化渲染
+            _wireComposer();
+            // Fallback: if no initial state arrived within 2s of load, ask for one.
+            // Fixes a white screen on refresh for long sessions when the first
+            // WebSocket push is missed.
+            setTimeout(function () {
+                if (lastChatHash === '__force__') postAction({action: 'ping'});
+            }, 2000);
+        }
 
-        renderModelDropdown(); // 初始化渲染
+        if (document.getElementById('user-input')) initApp();
 
         // toggleSidebar -> /libs/actions.js
 
@@ -134,7 +160,19 @@ const chatContainer = document.getElementById('chat-container');
             }
         }
 
-        const socket = io();
+        /* var, and reused if something already provided one.
+         *
+         * const here was a hard blocker on loading this file anywhere but
+         * frontend.html: a harness has to declare `var socket` before this script
+         * so the eight top-level socket.on() calls below have something to attach
+         * to, and `var` followed by `const` on the same name across two script
+         * tags is a SyntaxError — the whole file then never evaluates at all.
+         *
+         * In the real page nothing defines socket first, so the hoisted binding
+         * reads as undefined and io() runs exactly as before. */
+        var socket = (typeof socket !== 'undefined' && socket) ? socket
+            : (typeof io === 'function' ? io()
+               : { on: function () {}, emit: function () {} });
 
         socket.on('connect', () => {
             console.log('成功连接到 WebSocket 服务器。');
@@ -902,13 +940,8 @@ function _doHandleStateUpdate(data) {
 
         socket.on('state_update', handleStateUpdate);
 
-        // Fallback: if no initial state received within 2s of page load, request explicitly
-        // Fixes white screen on refresh for long sessions when initial WebSocket push is missed
-        setTimeout(function() {
-            if (lastChatHash === '__force__') {
-                postAction({action: 'ping'});
-            }
-        }, 2000);
+        // The 2s fallback ping moved into initApp — leaving a copy here would send
+        // two full-state requests on every refresh of a long session.
 
         // renameSession -> /libs/actions.js
 
@@ -1360,19 +1393,31 @@ function _doHandleStateUpdate(data) {
 
         // send, addOnly, handleImageUpload, toggleAutopilot -> /libs/actions.js
 
-        userInput.onkeydown = (e) => { 
-            if(e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send(false);
-            }
-        };
-        let tokenEstDebounce;
-        userInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-            clearTimeout(tokenEstDebounce); 
-            tokenEstDebounce = setTimeout(updateTokenEst, 300);
-        });
+        /**
+         * Composer key handling and auto-grow. Called from initApp.
+         *
+         * The debounce handle is a local var rather than the module-level `let` it
+         * used to be, and that is required, not tidying: initApp calls this from
+         * near the top of the file while the old `let` sat 1300 lines below. Function
+         * declarations hoist but let bindings do not, so the reference would land in
+         * the temporal dead zone and throw a ReferenceError — an error node --check
+         * cannot see and only surfaces at runtime.
+         */
+        function _wireComposer() {
+            var _ted;
+            userInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send(false);
+                }
+            };
+            userInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+                clearTimeout(_ted);
+                _ted = setTimeout(updateTokenEst, 300);
+            });
+        }
 
         // renderChat -> /libs/chat.js
 

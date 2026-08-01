@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<title>TurnCoder sidebar harness</title>
+<link rel="stylesheet" href="../../libs/tokens.css">
+<link rel="stylesheet" href="../../libs/styles.css">
+</head>
+<body>
+<!-- A separate page from render.html, deliberately.
+     render.html declares var chatContainer / currentHistory / bubbleCache /
+     globalSettings / socket for chat.js, while main.js declares the same names
+     with const and let. Both in one document is a SyntaxError, so main.js could
+     never be added there — and all 94 existing cases depend on those five
+     declarations, which makes changing them pure risk for no gain. -->
+<div id="sidebar">
+  <div id="session-list"></div>
+  <div id="sidebar-resize"></div>
+</div>
+<div id="main-area">
+  <div id="chat-container"></div>
+</div>
+
+<script>
+/* Stubs for globals main.js does NOT declare itself. These must load first:
+ * main.js reads socket at the top level to attach eight handlers, and a stub
+ * arriving later would be too late to be seen. */
+var socket = { on: function () {}, emit: function () {} };
+
+window.__calls = { postAction: [], rename: [], toast: [] };
+
+function renderChat() {}
+function renderQueue() {}
+function updateTokenEst() {}
+function renderMinimap() {}
+function updateSendButtonCount() {}
+function renderModelDropdown() {}
+function applySettingsUI() {}
+function refreshCodeContextStats() {}
+function send() {}
+function showToast(m, t) { window.__calls.toast.push({ message: m, type: t }); }
+function showPromptModal() { return Promise.resolve(null); }
+/* renameSession lives in actions.js, which this harness does not load. Recording
+ * the arguments is what lets a test prove the rename entry reaches it with the
+ * current name rather than merely that the row was clicked. */
+function renameSession(sid, oldName) { window.__calls.rename.push({ sid: sid, name: oldName }); }
+var deepThinkLevel = 0;
+function stripComposite(m) { return m; }
+/* Required, not optional. main.js has a top-level IIFE that wraps this for the
+ * prefix lock: `var _orig = openEditModal;`. The name comes from editops.js,
+ * which this harness does not load, so without a stub the whole file's
+ * evaluation stops right there — every let/const below it stays uninitialised
+ * while the hoisted function declarations remain visible. The symptom is exactly
+ * that: typeof checks pass and every actual call throws a TDZ ReferenceError. */
+function openEditModal() { return Promise.resolve(); }
+function openSessionManager() {}
+function renderSessionManagerGrid() {}
+function exitKanban() {}
+function enterKanban() {}
+</script>
+
+<script src="../../libs/icons.js"></script>
+<script src="../../libs/main.js"></script>
+
+<script>
+/* postAction has to be stubbed AFTER main.js, because main.js declares it and a
+ * function declaration in a later script wins. render.html's header records the
+ * same trap from the other direction: its rejectApproval stub was shadowed by
+ * codeblocks.js and silently never ran. */
+function postAction(payload) {
+    window.__calls.postAction.push(payload);
+    return Promise.resolve();
+}
+
+window.__sb = {
+    /** Render a session map through the real renderSessions. */
+    render: function (map, currentId) {
+        window.__calls = { postAction: [], rename: [], toast: [] };
+        sessionGroups = {};
+        lastSessionsHash = '';
+        renderSessions(map, currentId || Object.keys(map)[0]);
+    },
+
+    /** n plain ungrouped sessions, ordered. */
+    makeSessions: function (n) {
+        var out = {};
+        for (var i = 1; i <= n; i++) {
+            out['sid' + i] = { name: '会话 ' + i, order: i, soft_deleted: false, is_archived: false };
+        }
+        return out;
+    },
+
+    /* Synthetic dispatch rather than a real button-2 press: the handler is what
+       is under test, and a real right-click also drags the browser's own menu
+       suppression into the assertion. */
+    fireContextMenu: function (sid) {
+        var el = document.querySelector('#session-list .session-item[data-sid="' + sid + '"]');
+        if (!el) return null;
+        var ev = new MouseEvent('contextmenu', {
+            bubbles: true, cancelable: true, clientX: 40, clientY: 60
+        });
+        el.dispatchEvent(ev);
+        return ev.defaultPrevented;
+    },
+
+    /** The entries currently in the session menu, in order. */
+    menuEntries: function () {
+        var m = document.getElementById('session-item-menu');
+        if (!m) return null;
+        return Array.prototype.map.call(m.querySelectorAll('.sm-ctx-item'),
+            function (it) { return it.dataset.act; });
+    },
+
+    clickMenuEntry: function (act) {
+        var m = document.getElementById('session-item-menu');
+        if (!m) return false;
+        var it = m.querySelector('.sm-ctx-item[data-act="' + act + '"]');
+        if (!it) return false;
+        it.click();
+        return true;
+    },
+
+    /** Open via the row's overflow button instead of right-click. */
+    clickOverflow: function (sid) {
+        var b = document.querySelector(
+            '#session-list .session-item[data-sid="' + sid + '"] .session-more');
+        if (!b) return false;
+        b.click();
+        return true;
+    },
+
+    closeMenu: function () {
+        var m = document.getElementById('session-item-menu');
+        if (m) m.remove();
+    }
+};
+</script>
+</body>
+</html>

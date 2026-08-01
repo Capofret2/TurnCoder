@@ -149,7 +149,7 @@ cp settings.example.json settings.json
 
 **一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-### 5. ~~测试~~（骨架已建，84 个用例通过）
+### 5. ~~测试~~（116 个用例通过）
 
 ```bash
 python -m pytest tests/ -q          # 全部
@@ -165,7 +165,19 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 | `test_message_toggle.py` | 分类顺序、筛选条件、内联思维链可逆性 |
 | `test_cross_language_consistency.py` | 前后端分类逻辑的一致性 |
 | `test_static_assets.py` | CSS 花括号、令牌引用、缓存版本号 |
-| `test_dom_render.py` | 20 个浏览器内 DOM 用例 |
+| `test_dom_render.py` | 30 个浏览器内 DOM 用例，跑 `harness/render.html` |
+| `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js` |
+| `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
+
+**后两个文件各自打开了一片此前完全无覆盖的区域，而「此前为什么测不了」是最值得记下的部分。**
+
+`main.js` 是项目最大的文件（2231 行，会话渲染、拖拽排序、标签栏、整条状态更新流水线），此前零覆盖，因为有**两道**障碍而不是一道：三处顶层 `getElementById(...).addEventListener` 对缺失元素抛 TypeError（现已收进 `initApp`）；以及它用 `const chatContainer` / `let currentHistory, bubbleCache, globalSettings` / `const socket` 声明的五个名字，与 `render.html` 为 chat.js 准备的同名 `var` 声明构成 **SyntaxError**，整个文件根本不会被求值。后者是新建 `sidebar.html` 而非扩充既有 harness 的全部理由。
+
+`socket` 的声明因此从 `const io()` 改成了「已有则复用」的 `var`。**不要改回 `const`**：文件里有八处顶层 `socket.on(...)`，harness 必须在 main.js 之前提供一个可挂载的对象。
+
+后端此前零覆盖是因为 `import app` 会在模块作用域构造 `Api`，而 `Api.__init__` 读 `CHATAPP_DATA_DIR`、`makedirs` 并加载该目录下每一个会话文件。`test_action_api.py` 在 `import app` **之前**把该变量指向 `tempfile.mkdtemp()`——**这个顺序不可调换**，否则就是直接读用户的真实对话记录，首次 save 还会写回去。
+
+`-k "not dom"` 的口径仍然成立：`test_dom_sidebar.py` 名字里带 dom 会被排除，`test_action_api.py` 是纯 Python 不需要浏览器。
 
 **四条不写下来就会被「整理」掉的约束：**
 
@@ -176,14 +188,14 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 
 **一条对项目有用的浏览器事实：** `getComputedStyle` 对普通十六进制值返回 `rgb(r, g, b)`，但对 `color-mix()` 的计算结果返回 `color(srgb 0.61 0.79 0.65)`（CSS Color 4 形式，通道 0–1 浮点）。两种都合法，任何解析计算样式的代码都得同时处理。
 
-### 6. 性能优化（1 处已完成，3 处待办）
+### 6. ~~性能优化~~（4 处全部完成）
 
-三处待办都在渲染核心路径上，现在有 `tests/` 兜底可以放心动。
+四处都在渲染核心路径上，改动全程由 `tests/` 兜底——没有那层保障不建议动这一区。
 
 - **~~`libs/codeblocks.js` 末尾的 500ms 轮询~~（已整段删除）。** 本文档原先说它「功能已被 `chat.js` 的渲染时逻辑完整覆盖，可整段删除」——读完之后结论更强：**它不只是冗余，而是在制造一个点了没反应的假按钮。** 三条证据：（一）它靠 `nextEl.getAttribute('data-approval-reject')` 判重，而 `chat.js` 只在**按钮**上设 `data-testid`、包裹 div 上没有该属性，所以判重永不成立、每半秒插一个；（二）它用 `allBubbles[j] === bubble` 求 DOM 位置当 `history` 数组下标，而 `renderChat` 会跳过被吸附的消息、思维链卡片又是 `.th-card` 不是 `.message-bubble`，两者必然不同；（三）错误下标传到 `app.py` 的 `cc_reject_approval` 后取不到对应 `part_id`，`_rej_tool_use_id` 保持 `None`、整段跳过且不报错。外加它的按钮写死 Bootstrap 红、不跟主题。`tests/test_dom_render.py::test_approval_reject_button_is_never_duplicated` 是对这次删除的直接实证——轮询在场时它会在 500ms 后失败。
-- **`libs/main.js` 的 100ms `setInterval`**——全局 `querySelectorAll('.waiting-time')`，即使没有等待中的气泡也在空转。应改为按需启停。注意它同时承担心跳防丢包（`syncCounter` 满 50 次即 5 秒发一次 ping），改启停时这一路不能一起停掉。
-- **`libs/chat.js` 的 `msgHash`**——每条消息做多次字符串切片与拼接，长对话下是纯 CPU 开销。可改为增量数值指纹。
-- **`libs/chat.js` 的 KaTeX 扫描**——对每个气泡无条件调用 `renderMathInElement`，而绝大多数气泡不含公式。加一个 `$` 存在性预判即可省掉大部分调用。
+- **~~`libs/main.js` 的 100ms `setInterval`~~（已改为按需启停）。** 拆成 `_waitTimerId` 状态位、幂等的 `_startWaitTicker` 与自带停机条件的 `_waitTick`；由 `renderChat` 末尾启动，元素归零时自行 `clearInterval`。**心跳防丢包跟着一起停是正确的，不要「修」回常驻**：`syncCounter` 本来就只在有等待气泡时累加，计时器停下的时刻恰好是心跳本该静默的时刻。启动点选 `renderChat` 是因为它是 `.waiting-time` 元素的唯一生产者，「从无到有」这个方向由生产者覆盖才不会漏。
+- **~~`libs/chat.js` 的 `msgHash`~~（已改为双 32 位累加器）。** 字段与采样口径完全不变，因此判定灵敏度不变；省掉的是每条消息每次渲染约两百字符的中间串。**`Math.imul` 是正确性必需而非风格偏好**：32 位乘积会溢出双精度尾数，普通 `*` 静默丢掉的正是低位，也就是哈希唯一依赖的部分——改回 `*` 不会报错，只会让缓存判定偶发失灵。用两个累加器而非一个的理由是单个 32 位摘要按生日界在约 8 万个不同值时开始碰撞；但这里不是生日问题，每条消息只与自己上一次比较，所以 64 位使单次比较的碰撞概率落在 $2^{-64}$ 量级。
+- **~~`libs/chat.js` 的 KaTeX 扫描~~（已加 `_hasMath` 预判）。** 判定读 `msg.content` / `diff_content` / `content_parts` 而非 `bubble.textContent`：后者虽然一定准确，但会为长气泡多分配一份完整副本，把省下的开销又花掉一部分。工具结果与 subagent 正文来自别的消息，主气泡的字段扫描覆盖不到，因此在各自的 append 处单独置标记；subagent 那处取无条件置真，因为它数量极少而漏判的代价是公式永久不渲染，两侧不对称。
 
 ---
 
@@ -199,6 +211,19 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 
 **处理器里那道选区判断不是多余的防御，删掉是回归。** 气泡正文是 `user-select: text !important`，右键是访问原生复制菜单的唯一途径。原处理器虽然挡住了原生菜单，但至少不破坏选区；改成直接折叠后若不放行，用户选中一段话想复制会得到「气泡折叠 + 选区丢失」，比改动前更差。判断范围限定在本气泡内（`bubble.contains(sel.anchorNode)`），别处的选区不影响本气泡。三个 DOM 用例覆盖了这三种情形。
 
+### ~~确认强度与实际后果反相关~~（已决策：改可恢复性，不加确认）
+
+原状况：重试一次 Bash 有二次确认（最严），而**删除一个会话没有任何确认**——后者销毁的是一整份对话记录，也就是本文档末节明确称为「用户资产」的东西。
+
+**决策不是给所有破坏性动作都加确认**，那会训练用户无脑点确认从而让确认整体失效。做法是改变可恢复性：
+
+- 侧边栏新增回收站。`delete_session` 一直是软删除（设 `soft_deleted`，前端到处过滤），但此前**没有任何恢复途径**，所以删掉的会话除了手改 JSON 无法取回。现在 `restore_session` 补齐了这一半，删除因此不再需要确认。
+- 无副作用工具的重试免确认。判据是「重跑一次是否改变本地状态」而非速度：`CC_RETRY_NO_CONFIRM` 收录 Read / Grep / Glob / WebSearch / WebFetch。往这个集合里加名字等于断言重跑它无害，加错了用户会以为有确认而实际没有。
+
+**整个应用现在不存在销毁对话记录的代码路径**，这是刻意的。从 `self.sessions` 移除条目正是让 `save_sessions` 的孤儿清理删掉磁盘文件的动作，所以任何 purge 方法都会是唯一一条毁掉 transcript 的路径。`test_action_api.py::test_there_is_no_purge_endpoint` 就是为了让「后来又加回来」变成一次失败而非一次意外。
+
+**被接受的后果：`data/sessions/` 下的文件只增不减。** 软删的会话始终留在 `self.sessions` 里，孤儿清理因此永远扫不到它的文件。看到目录堆积**不要**当成清理逻辑坏了——回收空间是用户在应用之外自己决定的事。
+
 ### 分组内条目拖到组外不带排序
 
 当前只发出 `remove_session_from_group`，因此移出后条目会按原有 `order` 落在未分组区的某个位置，而不是松手的地方。
@@ -213,12 +238,16 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 
 要真修需要动 `api/autopilot.py` 与 `api/tool_accept.py` 的状态流转，影响面远超前端配色一类的改动，因此本轮没碰。也可能上一位开发者同样判断为不值得动、只是没记录下来。
 
-### 刻度盘的可选增强
+### ~~刻度盘的可选增强~~（两个想法均已采纳）
 
-目前只区分用户、助手、彻底隐藏三类。两个尚未采纳的想法：
+原先记的两条都已落地：`mm-pending` 用刻度左侧的圆点标记仍有 `pending` 或 `executing` 工具的气泡，`mm-omit` / `mm-collapse` 用两档透明度（0.5 / 0.7）区分概括模式与折叠。
 
-- 在刻度上叠加「有待处理工具调用」的标记——托管模式下那是最需要快速定位的位置
-- 用不同透明度区分概括模式与折叠状态
+**三个视觉维度现已全部占用**：宽度与填色表达角色或排除、透明度表达上下文削减程度、圆点表达未确定工具。想表达第四种状态必须另找维度，复用这三者中的任何一个都会产生无法分辨的组合。
+
+两处不要「简化」：
+
+- **圆点必须是 `::before`，不能是子节点。** `minimap.js` 对裸轨道点击按 `querySelectorAll('.mm-tick')` 的扁平位置取下标，多一个兄弟节点会让每一次跳转都偏移；`::after` 已被命中区占用。它还锚在刻度而非轨道固定偏移，这样 hover 改变宽度时间距不变。
+- **两条透明度规则只发给未隐藏的行。** `mm-hidden` 自身已经设了 opacity，两者并存时胜负由源码顺序决定，属于不可靠的隐式依赖。
 
 ---
 

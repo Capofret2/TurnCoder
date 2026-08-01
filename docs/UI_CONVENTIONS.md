@@ -130,7 +130,10 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 - `.status-tag` 加 `.tag-omit` / `-collapse` / `-annotated` / `-hide` — 状态徽章
 - `.th-card` / `-header` / `.th-body` / `.th-open` — 思维链卡片
 - `.inline-thinking-block` / `-header` / `-body` — 内联思维链
-- `.mm-tick` / `.mm-user` / `.mm-assistant` / `.mm-hidden` / `.mm-cursor` — 刻度盘，`.mm-cursor` 是位置三角
+- `.mm-tick` / `.mm-user` / `.mm-assistant` / `.mm-hidden` / `.mm-cursor` — 刻度盘，`.mm-cursor` 是位置三角；修饰类 `.mm-omit` / `.mm-collapse`（两档透明度）与 `.mm-pending`（`::before` 圆点）叠加在同一刻度上
+- `.conn-banner` / `-detail` — 断线横幅，由 `main.js` 的 `_connBanner` 建在 `<body>` 下。**不能建在 `#chat-container` 里**，`renderChat` 会按位置 diff 并移除多余子节点
+- `.dh-skeleton` / `--error` — 脱水工具结果的加载中与加载失败态，挂在带 `data-dh-row` 的那一行上
+- `.cb-abort` — 只做选择器标记，不提供任何外观。中止按钮同时带 `.cb-reject`，而同行的批量禁用用 `.cb-reject:not(.cb-abort)` 把它自己排除出去；**看起来冗余，删掉会让中止按钮在点击后把自己也禁用掉**
 - `#mm-preview` / `-head` / `-body` — 刻度悬浮预览，由 minimap.js 建在 `#main-area` 下
 - `.md-num` — 数字输入，filled text field 形制
 - `.ctl-group` — 输入区控件分组
@@ -228,6 +231,21 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 - 拒绝审批按钮 — 块头部与块下方独立按钮**两份**
 
 改动前先 grep 确认有几处。补水前后会互相替换的那几对尤其明显，配色不一致会造成可见跳变。
+
+### 13. 覆盖层的 Escape 由一个 document 级监听器统管
+
+`utils.js` 末尾有一个 keydown 监听器负责全部覆盖层的 Escape 与 Tab 焦点循环，选择器是 `MD_OVERLAY_SELECTOR`。新增覆盖层只要带上其中任一 class 或 id 就自动获得这两个行为，不需要在 open 函数里接线。
+
+**Escape 的实现是「点击该层自己的关闭控件」而非移除节点**（找 `.md-modal-close` / `.sm-close` / `[data-overlay-close]`）。这样 `closeSettingsModal` 之类既有的清理逻辑照原样执行，不会产生第二条会与它分叉的关闭路径。给自建覆盖层加一个带 `data-overlay-close` 的元素就够了。
+
+**`showPromptModal` 与 `showConfirmModal` 刻意不在选择器里。** 它们的 Escape 必须 resolve 各自的 Promise，而这个监听器注册在前——抢先移除它们的节点会让 `await` 永远不返回。两者各自处理 Escape 并调 `preventDefault()`，而监听器开头检查 `e.defaultPrevented`，这是两侧唯一的协调机制。`showPromptModal` 原先不调 `preventDefault`，症状是一次按键关掉两层弹窗。
+
+### 14. 跨 script 标签的 `var` 与 `let`/`const` 同名是 SyntaxError
+
+**症状**：整个文件像是没加载，但 `typeof someFunction` 却返回 `'function'`。
+**根因**：这个组合本身是解析期错误，文件不会被求值；而函数声明的提升发生在解析期，所以 `typeof` 仍然看得见它们。一旦真的调用，函数体里引用的任何 `let`/`const` 都还在 TDZ，抛 `ReferenceError`。
+**诊断线索**：「只有 `typeof` 检查通过、所有实际调用失败」这个分布几乎只由这一种原因产生。同类的另一个成因是顶层求值在中途抛错（例如引用一个未加载文件里的标识符），两者症状完全相同。
+**做法**：`main.js` 的 `socket` 因此是 `var` 加复用表达式而不是 `const io()`。给 harness 写桩时，main.js **自己声明**的名字（`postAction`）必须排在它之后，它**不声明**的名字（`socket`、`openEditModal`、`renameSession`）必须排在之前。
 
 ---
 
