@@ -65,11 +65,10 @@ def page(browser):
     pg = ctx.new_page()
     errors = []
     pg.on('pageerror', lambda e: errors.append(str(e)))
-    # A backstop, not a dependency. No native dialog is left in the project —
-    # rejectApproval was the last one and now uses showPromptModal — but keeping
-    # this costs nothing and means any native dialog introduced later fails on an
-    # assertion instead of hanging the run into a timeout, which is far harder to
-    # trace back to its cause.
+    # Explicit, though dismissing is already the default: the real
+    # rejectApproval in codeblocks.js opens a prompt(), and relying on a default
+    # to keep the run from hanging would surface as a timeout rather than an
+    # assertion if that default ever changed.
     pg.on('dialog', lambda d: d.dismiss())
     pg.goto(HARNESS.as_uri())
     pg.wait_for_function('typeof window.__harness === "object"')
@@ -143,8 +142,8 @@ def test_approval_reject_passes_the_history_index_not_the_dom_index(page):
 
 
 def test_cancelling_the_reason_dialog_aborts_the_rejection(page):
-    """The deliberate behaviour change. The old form wrote prompt(...) || '', so a
-    cancel — or a dialog the browser had suppressed — rejected the tool with an
+    """The deliberate behaviour change. The old form wrote `prompt(...) || ''`, so
+    a cancel — or a dialog the browser had suppressed — rejected the tool with an
     empty reason and the user never got to type anything."""
     page.evaluate('window.__harness.render(window.__harness.approvalHistory())')
     page.locator('[data-testid="reject-approval"]').click()
@@ -456,6 +455,28 @@ def test_executing_tool_offers_an_abort_carrying_the_part_id(page):
         'window.__calls.postAction')
     assert calls[0]['index'] == 0
     assert calls[0]['part_id'] == 'part-tool-1'
+    # The only thing separating a single abort from a batch one. Omitting it makes
+    # the backend fall back to 'all', so pressing one row's abort would stop
+    # autopilot — precisely the granularity lie this scope removes.
+    assert calls[0]['scope'] == 'one'
+
+
+def test_bubble_level_abort_asks_and_then_sends_scope_all(page):
+    """The batch control is bubble-level because its reach is: it clears the queue
+    and halts autopilot. A row-level button claiming that was the mismatch."""
+    page.evaluate("window.__harness.render(window.__harness.toolHistory('executing'))")
+    assert page.locator('[data-testid="abort-all"]').count() == 1
+    page.locator('[data-testid="abort-all"]').click()
+    assert page.locator('[data-testid="confirm-ok"]').count() == 1, \
+        'no confirmation appeared for the batch abort'
+    page.locator('[data-testid="confirm-ok"]').click()
+
+
+def test_no_bubble_level_abort_without_anything_in_flight(page):
+    """hasPendingActions is also true for a call merely awaiting a decision, so a
+    bubble with nothing running must not offer to stop autopilot."""
+    page.evaluate("window.__harness.render(window.__harness.toolHistory('pending'))")
+    assert page.locator('[data-testid="abort-all"]').count() == 0
 
 
 def test_abort_disables_the_retry_beside_it(page):

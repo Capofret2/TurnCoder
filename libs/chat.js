@@ -350,6 +350,10 @@
             mainContentContainer.className = 'bubble-main-content';
             let hasPendingActions = false;
             let hasFailedOrRejected = false;
+            /* Narrower than hasPendingActions, which is also true for calls merely
+               awaiting a decision. A bubble holding only pending tools has nothing
+               running, so offering to stop autopilot there would be meaningless. */
+            let hasInFlight = false;
             /* renderMathInElement walks every text node and runs several regexes
                on each, and it was being called for every bubble whether or not
                one could possibly contain a formula. Deciding from the data rather
@@ -871,8 +875,9 @@
                                     // Abort sits before retry on purpose: it is the
                                     // only irreversible action in this row, and last
                                     // position is where a stray click lands.
-                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="中止本次调用，并停止托管与后续排队的工具">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button>`;
+                                    opsHtml = `<button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="仅中止本次调用，其余工具与托管继续">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button>`;
                                     hasPendingActions = true;
+                                    hasInFlight = true;
                                     break;
                                 case 'adopted':
                                     let _hasToolResult = toolData.id && toolResultMap[toolData.id] && toolResultMap[toolData.id].length > 0;
@@ -889,7 +894,8 @@
                                         // Also in flight, so it gets an abort too. Retry
                                         // alone cannot express "drop it"; without this the
                                         // only way out was to wait for a result.
-                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="中止本次调用，并停止托管与后续排队的工具">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
+                                        hasInFlight = true;
+                                        opsHtml = `<button class="cb-btn cb-accept" onclick="ccToolAccept(this, ${index}, '${part.id}')">${mdIcon('refresh', 14)} 重试</button><button class="cb-btn cb-reject cb-abort" data-testid="abort-tool" onclick="ccToolAbort(this, ${index}, '${part.id}')" title="仅中止本次调用，其余工具与托管继续">${mdIcon('stop', 14)} 中止</button><button class="cb-btn cb-copy" onclick="copyCodeBlock(this)" title="复制">${mdIcon('content_copy', 14)}</button>`;
                                     }
                                     break;
                                 case 'rejected':
@@ -1312,6 +1318,13 @@
 
                 if (hasPendingActions && !hasFailedOrRejected) {
                     footer = `<div style="text-align: right; margin-top: var(--md-sys-spacing-3); display: flex; justify-content: flex-end; gap: var(--md-sys-spacing-2);"><button class="cb-reject-all" onclick="rejectAllInBubble(this, ${index})">${mdIcon('close', 16)} 一键拒绝</button><button class="cb-accept-all" onclick="acceptAllInBubble(this, ${index})">${mdIcon('check', 16)} 一键采用</button></div>` + footer;
+                }
+                // Bubble-level, because that is the scope of the effect: the queue is
+                // cleared and autopilot stops. Prepended after the batch row so it
+                // renders above it — stopping is the more urgent action, and it also
+                // keeps it from sitting next to 一键采用.
+                if (hasInFlight) {
+                    footer = `<div style="text-align: right; margin-top: var(--md-sys-spacing-3); display: flex; justify-content: flex-end;"><button class="cb-reject-all" data-testid="abort-all" onclick="ccAbortAll(this, ${index})" title="中止本气泡内全部未完成的工具调用，并停止托管">${mdIcon('stop', 16)} 中止全部并停止托管</button></div>` + footer;
                 }
                 
                 // Selection is a tonal fill rather than a swapped glyph: abstract

@@ -837,8 +837,18 @@ class ToolAcceptMixin:
         else:
             self.finalize_process(_ap_sid)
 
-    def abort_tool(self, msg_index, part_id, target_sid=None):
-        """Abort one in-flight tool call, stop autopilot, drop the queue behind it.
+    def abort_tool(self, msg_index, part_id, target_sid=None, scope='all'):
+        """Abort a tool call. scope='one' settles just that one; 'all' also stops
+        autopilot and drops the queue behind it.
+
+        scope='one' is genuinely per-tool, not a cosmetic distinction. Recording
+        the id and writing a rejected synthetic result makes _is_tool_settled
+        accept the call as decided, which lets _continue_autopilot_tool_queue
+        release the siblings behind it — calling it here is correct, and exactly
+        the opposite of the 'all' path below.
+
+        What neither scope can do is isolate a thread already inside an executor,
+        so that limit is shared and the granularity difference is real.
 
         Cooperative, and the wording matters because the limit is real: Python
         cannot safely kill a thread and the local executors run in bare daemon
@@ -879,6 +889,30 @@ class ToolAcceptMixin:
         _ab = session.setdefault('_aborted_tool_ids', [])
         if tool_use_id not in _ab:
             _ab.append(tool_use_id)
+        # Bounded: this field persists on a session that may run for weeks, while
+        # only a result arriving shortly after the abort is ever tested against it.
+        if len(_ab) > 200:
+            del _ab[:-200]
+
+        from .tool_executors import ToolResult
+
+        if scope == 'one':
+            # Autopilot, the approved queue and _ap_tool_sid are all left alone.
+            # Those belong to "stop the batch", and folding them in here would mean
+            # aborting one tool silently halted everything — the granularity lie
+            # this scope exists to remove.
+            _one = ('用户中止了该工具调用。同一回复中的其他工具调用不受影响。'
+                    '\n<system-reminder>\nThe user aborted this single tool call. The other '
+                    'tool calls in this turn are unaffected and will proceed. Do not retry '
+                    'this one on your own.\n</system-reminder>')
+            _res1 = ToolResult(_one, '工具调用被用户中止', is_error=True, part_status='rejected')
+            self._create_tool_result_bubble(session, tool_use_id, _res1, msg_index, part_id)
+            # Settled as rejected, so releasing the siblings is the right move —
+            # the opposite of the 'all' path, which must not advance anything.
+            self._continue_autopilot_tool_queue(session, sid)
+            print(f'[CC ABORT ONE] {part.get("tool_name") or "?"} ({tool_use_id[:25]}) 已中止，'
+                  f'其余工具继续', flush=True)
+            return {'status': 'ok', 'scope': 'one', 'dropped': 0, 'autopilot_stopped': False}
 
         _was_autopilot = bool(session.get('autopilot_active'))
         _dropped = 0
@@ -890,10 +924,6 @@ class ToolAcceptMixin:
                                      _item.get('part_id'), 'rejected')
             _dropped += 1
         session['_approved_tool_queue'] = []
-        # Bounded: this field persists on a session that may run for weeks, while
-        # only a result arriving shortly after the abort is ever tested against it.
-        if len(_ab) > 200:
-            del _ab[:-200]
         session.pop('_ap_tool_sid', None)
         session.pop('_ap_tool_auto_text', None)
         # The same field set stop_autopilot writes, so the button, the badge and
@@ -903,7 +933,6 @@ class ToolAcceptMixin:
         session['_deep_think_active'] = False
         session['trigger_autopilot'] = False
 
-        from .tool_executors import ToolResult
         _note = '用户中止了该工具调用。'
         if _was_autopilot:
             _note += '托管已停止。'
@@ -918,7 +947,8 @@ class ToolAcceptMixin:
         print(f'[CC ABORT] {part.get("tool_name") or "?"} ({tool_use_id[:25]}) 已中止；'
               f'清空队列 {_dropped} 个；托管='
               f'{"已停止" if _was_autopilot else "本未运行"}', flush=True)
-        return {'status': 'ok', 'dropped': _dropped, 'autopilot_stopped': _was_autopilot}
+        return {'status': 'ok', 'scope': 'all', 'dropped': _dropped,
+                'autopilot_stopped': _was_autopilot}
 
     def _register_file_read(self, file_path, sid):
         """Register that a session holds a read reference to a file. Thread-safe via GIL.

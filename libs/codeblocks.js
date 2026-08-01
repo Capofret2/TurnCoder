@@ -246,7 +246,65 @@ async function ccToolAbort(btn, index, partId) {
         var _sibs = wrapper.querySelectorAll('.cb-accept, .cb-reject:not(.cb-abort)');
         for (var i = 0; i < _sibs.length; i++) _sibs[i].disabled = true;
     }
-    await postAction({action: 'cc_abort_tool', index: index, part_id: partId});
+    // scope 'one': this settles only this call. The siblings behind it are
+    // released as normal and autopilot keeps running, which is what a button
+    // sitting on a single row should mean.
+    await postAction({action: 'cc_abort_tool', index: index, part_id: partId, scope: 'one'});
+}
+
+/**
+ * Abort every unsettled tool call in one bubble, and stop autopilot with them.
+ *
+ * Separate from the per-row button because the effect is categorically larger:
+ * it clears the approved queue and halts the autopilot loop. A per-row control
+ * claiming that reach was the granularity lie this pair replaces — the button's
+ * position said "this one" while the backend stopped everything.
+ *
+ * Confirmed for the same reason. The counts come back from the server because
+ * "how many queued calls went with it" is the one part of the outcome that is
+ * not visible on screen.
+ *
+ * @param {HTMLElement} btn the clicked button
+ * @param {number} index history index of the owning message
+ */
+async function ccAbortAll(btn, index) {
+    var ok = await showConfirmModal(
+        '中止本气泡内全部未完成的工具调用？\n\n'
+        + '托管会一并停止，排队中的工具调用会被取消。\n'
+        + '已经进入执行器的那一步可能仍会跑完，但结果会被丢弃。',
+        '中止全部');
+    if (!ok) return;
+    var _part = null;
+    var _bubble = btn.closest('.message-bubble');
+    if (_bubble) {
+        var _ab = _bubble.querySelector('[data-testid="abort-tool"]');
+        // The backend resolves the session from any one part in the bubble; the
+        // first in-flight row is the natural choice and always exists when this
+        // button is rendered.
+        if (_ab) {
+            var _m = /ccToolAbort\(this,\s*\d+,\s*'([^']+)'/.exec(_ab.getAttribute('onclick') || '');
+            if (_m) _part = _m[1];
+        }
+    }
+    if (!_part) { showToast('找不到可中止的工具调用', 'error'); return; }
+    btn.innerHTML = mdIcon('hourglass', 16) + ' 中止中';
+    btn.disabled = true;
+    try {
+        var res = await fetch('/api/action', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'cc_abort_tool', index: index, part_id: _part,
+                                  scope: 'all', client_sid: window.localSid})
+        });
+        var d = await res.json();
+        if (!res.ok) { showToast('中止失败: ' + (d.message || res.status), 'error'); return; }
+        if (d.state) { clientLastStateVersion = 0; handleStateUpdate(d.state); }
+        var msg = '已中止当前工具调用';
+        if (d.dropped) msg += '，另取消 ' + d.dropped + ' 个排队中的调用';
+        if (d.autopilot_stopped) msg += '，托管已停止';
+        showToast(msg, 'success');
+    } catch (e) {
+        showToast('中止异常: ' + e, 'error');
+    }
 }
 
 /**
@@ -303,7 +361,7 @@ async function ccToolRetry(btn, index, partId, toolName) {
  * returns null with no interaction at all.
  *
  * One deliberate behaviour change: cancelling now aborts the rejection. The old
- * form wrote prompt(...) || '', so a cancel — or a suppressed dialog — rejected
+ * form wrote `prompt(...) || ''`, so a cancel — or a suppressed dialog — rejected
  * the tool with an empty reason and the user never got to type anything. Do not
  * "restore" the || '': an empty reason is a valid answer, but only when the user
  * chose to give one.
