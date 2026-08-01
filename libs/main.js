@@ -857,6 +857,12 @@ function _doHandleStateUpdate(data) {
             div.draggable = true;
             div.dataset.sid = sid;
             div.dataset.order = s.order || 0;
+            // Right-click opens the same menu the overflow button does, by calling
+            // the same function rather than declaring a second copy of the entries.
+            // openSessionMenu opens with preventDefault/stopPropagation and locates
+            // itself from clientX/clientY, all of which a contextmenu event carries,
+            // so the two entry points cannot drift apart.
+            div.oncontextmenu = (e) => { openSessionMenu(e, sid); };
             div.ondragstart = (e) => {
                 e.dataTransfer.setData('text/plain', JSON.stringify({type: 'session', sid: sid}));
                 e.dataTransfer.effectAllowed = 'move';
