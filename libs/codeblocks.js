@@ -294,8 +294,23 @@ async function ccToolRetry(btn, index, partId, toolName) {
     ccToolAccept(btn, index, partId, true);
 }
 
-function rejectApproval(btn, index, partId) {
-    var reason = prompt('拒绝原因：') || '';
+/**
+ * Reject an approval request, with the reason collected in-app.
+ *
+ * This was a native prompt(), the last one in the project. That dialog blocks the
+ * render thread, cannot follow the theme, and — the part that actually mattered —
+ * can be permanently suppressed by the user in several browsers, after which it
+ * returns null with no interaction at all.
+ *
+ * One deliberate behaviour change: cancelling now aborts the rejection. The old
+ * form wrote prompt(...) || '', so a cancel — or a suppressed dialog — rejected
+ * the tool with an empty reason and the user never got to type anything. Do not
+ * "restore" the || '': an empty reason is a valid answer, but only when the user
+ * chose to give one.
+ */
+async function rejectApproval(btn, index, partId) {
+    var reason = await showPromptModal('拒绝原因（可留空）：', '');
+    if (reason === null) return;
     btn.disabled = true;
     postAction({action: 'cc_reject_approval', index: index, part_id: partId, reason: reason});
 }

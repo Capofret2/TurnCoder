@@ -53,8 +53,13 @@ function postAction(payload) {
  *
  * Letting the real implementation through is the better test anyway: it proves
  * the action name and the part id reach the payload that would go to the
- * backend, where a stub only proved the button had been clicked. Its prompt()
- * is auto-dismissed by the page fixture. */
+ * backend, where a stub only proved the button had been clicked.
+ *
+ * It used to open a native prompt() that the page fixture auto-dismissed; it now
+ * uses showPromptModal, so the cases drive the dialog directly and can assert the
+ * reason text as well. The fixture's dialog handler stays as a backstop — it
+ * costs nothing, and without it any native dialog introduced later would hang the
+ * run into a timeout instead of failing an assertion. */
 function copyMsg() {}
 function copyPayload() {}
 function openEditModal() { return Promise.resolve(); }

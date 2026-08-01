@@ -65,10 +65,11 @@ def page(browser):
     pg = ctx.new_page()
     errors = []
     pg.on('pageerror', lambda e: errors.append(str(e)))
-    # Explicit, though dismissing is already the default: the real
-    # rejectApproval in codeblocks.js opens a prompt(), and relying on a default
-    # to keep the run from hanging would surface as a timeout rather than an
-    # assertion if that default ever changed.
+    # A backstop, not a dependency. No native dialog is left in the project —
+    # rejectApproval was the last one and now uses showPromptModal — but keeping
+    # this costs nothing and means any native dialog introduced later fails on an
+    # assertion instead of hanging the run into a timeout, which is far harder to
+    # trace back to its cause.
     pg.on('dialog', lambda d: d.dismiss())
     pg.goto(HARNESS.as_uri())
     pg.wait_for_function('typeof window.__harness === "object"')
@@ -124,6 +125,12 @@ def test_approval_reject_passes_the_history_index_not_the_dom_index(page):
         window.__harness.render(hist);
     """)
     page.locator('[data-testid="reject-approval"]').click()
+    # The reason now comes from showPromptModal, so the dispatch waits for the
+    # dialog. This widens the case rather than complicating it: the reason text
+    # reaching the payload was never checked before, because the native prompt()
+    # was auto-dismissed by the fixture and the field was always ''.
+    page.locator('[data-testid="prompt-input"]').fill('不需要这一步')
+    page.locator('[data-testid="prompt-ok"]').click()
     calls = page.evaluate(
         "window.__calls.postAction"
         ".filter(function (c) { return c.action === 'cc_reject_approval'; })")
@@ -132,6 +139,18 @@ def test_approval_reject_passes_the_history_index_not_the_dom_index(page):
     assert calls[0]['index'] == 2, \
         'index %r is a DOM position, not a history index' % calls[0]['index']
     assert calls[0]['part_id'] == 'part-approval-1'
+    assert calls[0]['reason'] == '不需要这一步'
+
+
+def test_cancelling_the_reason_dialog_aborts_the_rejection(page):
+    """The deliberate behaviour change. The old form wrote prompt(...) || '', so a
+    cancel — or a dialog the browser had suppressed — rejected the tool with an
+    empty reason and the user never got to type anything."""
+    page.evaluate('window.__harness.render(window.__harness.approvalHistory())')
+    page.locator('[data-testid="reject-approval"]').click()
+    page.locator('[data-testid="prompt-cancel"]').click()
+    assert page.evaluate('window.__calls.postAction') == [], \
+        'the rejection was dispatched even though the dialog was cancelled'
 
 
 # ------------------------------------------------------ right-click collapse

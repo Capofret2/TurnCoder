@@ -163,6 +163,94 @@ function showToast(message, type) {
     setTimeout(function() { if (toast.parentNode) { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 300); } }, 8000);
 }
 
+/* ===== Overlay keyboard behaviour, defined once for every overlay ==========
+ *
+ * Six of the eight overlays in this app had no Escape handling and none had a
+ * focus trap, so Tab walked out of a modal into the page it was covering — which
+ * is visually obscured, making the focus ring impossible to follow.
+ *
+ * One document-level listener plus a topmost-overlay test, rather than wiring
+ * each open function: that would mean editing settings.js, providers.js,
+ * codemonitor.js and three sites in main.js, and every future overlay would
+ * have to remember to opt in.
+ *
+ * Escape clicks the overlay's own close control instead of removing the node.
+ * That runs whatever cleanup the close button already performs (closeSettingsModal
+ * persists, closeSessionManager tears down its grid) rather than establishing a
+ * second, divergent close path.
+ *
+ * showPromptModal and showConfirmModal are deliberately absent from the
+ * selector. Their Escape has to resolve a Promise, and this handler is
+ * registered first — removing their node here would leave the caller awaiting
+ * forever.
+ * ======================================================================== */
+var MD_OVERLAY_SELECTOR = [
+    '.md-modal-overlay', '.sm-overlay', '#edit-modal', '#code-monitor-modal',
+    '#ctx-mgr-overlay', '#waterfall-overlay'
+].join(',');
+
+/** The visible overlay stacked highest, or null. */
+function _mdTopmostOverlay() {
+    var open = [];
+    document.querySelectorAll(MD_OVERLAY_SELECTOR).forEach(function(el) {
+        var cs = getComputedStyle(el);
+        if (cs.display !== 'none' && cs.visibility !== 'hidden') open.push(el);
+    });
+    if (!open.length) return null;
+    // z-index first, DOM order as the tiebreak, which puts a dynamically
+    // appended overlay above a declared one sharing the same level.
+    var best = open[0], bestZ = -Infinity;
+    open.forEach(function(el) {
+        var z = parseInt(getComputedStyle(el).zIndex, 10);
+        if (isNaN(z)) z = 0;
+        if (z >= bestZ) { bestZ = z; best = el; }
+    });
+    return best;
+}
+
+/** Tabbable descendants, in document order. offsetParent filters hidden ones. */
+function _mdOverlayFocusables(root) {
+    var sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    return Array.prototype.filter.call(root.querySelectorAll(sel), function(el) {
+        return !el.disabled && el.offsetParent !== null;
+    });
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.defaultPrevented) return;
+    if (e.key !== 'Escape' && e.key !== 'Tab') return;
+    var ov = _mdTopmostOverlay();
+    if (!ov) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        var closer = ov.querySelector('.md-modal-close, .sm-close, [data-overlay-close]');
+        if (closer) { closer.click(); return; }
+        // No close control: the two declared modals are toggled by display and
+        // the rest are built and thrown away by their opener.
+        if (ov.id === 'edit-modal' || ov.id === 'code-monitor-modal') {
+            ov.style.display = 'none';
+        } else {
+            ov.remove();
+        }
+        return;
+    }
+    var f = _mdOverlayFocusables(ov);
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    // Focus outside the overlay entirely: pull it back in rather than letting
+    // the page behind receive the tab.
+    if (!ov.contains(document.activeElement)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+    }
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus();
+    }
+});
+
 // Non-blocking prompt modal (replaces native window.prompt)
 function showPromptModal(message, defaultValue) {
     return new Promise(function(resolve) {
@@ -186,6 +274,12 @@ function showPromptModal(message, defaultValue) {
         msgEl.textContent = message;
         var input = document.createElement('input');
         input.type = 'text';
+        // Mirrors showConfirmModal's confirm-cancel / confirm-ok. Without these
+        // nothing that routes through this dialog can be covered by a DOM case:
+        // the elements were unaddressable, which is why the existing
+        // reject-approval assertion depended on a native prompt() being
+        // synchronous.
+        input.dataset.testid = 'prompt-input';
         input.value = defaultValue || '';
         input.style.cssText = 'width:100%;padding:var(--md-sys-spacing-2) var(--md-sys-spacing-3);'
             + 'border:none;border-bottom:1px solid var(--md-sys-color-outline);'
@@ -201,16 +295,26 @@ function showPromptModal(message, defaultValue) {
             + 'font-weight:var(--md-sys-typescale-label-large-weight);'
             + 'letter-spacing:var(--md-sys-typescale-label-large-tracking);';
         var cancelBtn = document.createElement('button');
+        cancelBtn.dataset.testid = 'prompt-cancel';
         cancelBtn.textContent = '取消';
         cancelBtn.style.cssText = _mdBtnBase + 'padding:0 var(--md-sys-spacing-3);border:none;'
             + 'background:transparent;color:var(--md-sys-color-primary);';
         var okBtn = document.createElement('button');
+        okBtn.dataset.testid = 'prompt-ok';
         okBtn.textContent = '确认';
         okBtn.style.cssText = _mdBtnBase + 'padding:0 var(--md-sys-spacing-6);border:none;'
             + 'background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);';
         cancelBtn.onclick = function() { overlay.remove(); resolve(null); };
         okBtn.onclick = function() { overlay.remove(); resolve(input.value); };
-        input.onkeydown = function(e) { if (e.key === 'Enter') { overlay.remove(); resolve(input.value); } if (e.key === 'Escape') { overlay.remove(); resolve(null); } };
+        // preventDefault on both: this key press continues bubbling to the
+        // document-level overlay handler above, which would then find this
+        // overlay already gone and close whatever is stacked beneath it —
+        // one press dismissing two dialogs. defaultPrevented is the only
+        // coordination between the two handlers.
+        input.onkeydown = function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); overlay.remove(); resolve(input.value); }
+            if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); resolve(null); }
+        };
         btnRow.appendChild(cancelBtn);
         btnRow.appendChild(okBtn);
         box.appendChild(msgEl);

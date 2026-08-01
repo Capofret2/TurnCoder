@@ -118,9 +118,22 @@ function addProvider() {
     container.scrollTop = container.scrollHeight;
 }
 
-function removeProvider(idx) {
+/**
+ * Drop a provider from the editing buffer. The last native confirm() in the app.
+ *
+ * Worth knowing before touching the wording: this only mutates _providerData in
+ * memory. Nothing reaches disk until 保存 is pressed, so closing the dialog
+ * discards it. The gate therefore does not guard against data loss — it guards
+ * against a mis-click in a dense list being carried into a later save, which is
+ * why the message says so rather than implying finality.
+ */
+async function removeProvider(idx) {
     var name = _providerData[idx].name || '未命名';
-    if (!confirm('确定删除供应商「' + name + '」？')) return;
+    var ok = await showConfirmModal(
+        '从列表中移除供应商「' + name + '」？\n\n'
+        + '点击「保存」后生效；直接关闭本窗口则本次改动全部作废。',
+        '移除');
+    if (!ok) return;
     _providerData.splice(idx, 1);
     delete _providerTestResults[idx];
     renderProviderList();
