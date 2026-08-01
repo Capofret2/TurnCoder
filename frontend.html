@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" href="/libs/katex.min.css">
     <link rel="stylesheet" href="/libs/tokens.css?v=3">
-    <link rel="stylesheet" href="/libs/styles.css?v=16">
+    <link rel="stylesheet" href="/libs/styles.css?v=17">
     <script>
     /* Theme bootstrap — inline and synchronous on purpose. Every libs/ script
        loads at the end of <body>, so applying the stored scheme from there
@@ -64,7 +64,6 @@
         <div id="chat-minimap" aria-hidden="true"></div>
         <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;overflow:hidden;background:var(--md-sys-color-surface-container-low);z-index:var(--md-sys-z-kanban);"></div>
         <div id="queue-area"></div>
-        <div id="bubble-context-menu" style="display:none; position:fixed; background:var(--md-sys-color-surface-container); border:none; border-radius:var(--md-sys-shape-corner-extra-small); box-shadow:var(--md-sys-elevation-level2); z-index:var(--md-sys-z-context-menu); padding:var(--md-sys-spacing-1) 0; min-width:180px;"></div>
         <div id="tab-context-menu" style="display:none; position:fixed; background:var(--md-sys-color-surface-container); border:none; border-radius:var(--md-sys-shape-corner-extra-small); box-shadow:var(--md-sys-elevation-level2); z-index:var(--md-sys-z-context-menu); padding:var(--md-sys-spacing-1) 0; min-width:180px;">
             <div class="tab-ctx-item" onclick="tabCtxRename()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l4 4"/></svg> 重命名</div>
             <div class="tab-ctx-item" onclick="tabCtxClone()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V5.5A1.5 1.5 0 0 0 13.5 4h-8A1.5 1.5 0 0 0 4 5.5v8A1.5 1.5 0 0 0 5.5 15H9"/></svg> 克隆会话</div>
@@ -487,7 +486,7 @@
     <script src="/libs/socket.io.min.js"></script>
     <script src="/libs/icons.js?v=2"></script>
     <script src="/libs/utils.js?v=1"></script>
-    <script src="/libs/codeblocks.js?v=1"></script>
+    <script src="/libs/codeblocks.js?v=2"></script>
     <script src="/libs/settings.js?v=3"></script>
     <script src="/libs/providers.js?v=1"></script>
     <script src="/libs/models.js?v=1"></script>
@@ -496,8 +495,8 @@
     <script src="/libs/panels.js?v=1"></script>
     <script src="/libs/actions.js?v=1"></script>
     <script src="/libs/kanban.js?v=2"></script>
-    <script src="/libs/minimap.js?v=4"></script>
-    <script src="/libs/chat.js?v=8"></script>
-    <script src="/libs/main.js?v=11"></script>
+    <script src="/libs/minimap.js?v=5"></script>
+    <script src="/libs/chat.js?v=9"></script>
+    <script src="/libs/main.js?v=12"></script>
 </body>
 </html>

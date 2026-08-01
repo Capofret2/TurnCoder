@@ -1452,11 +1452,7 @@ function _doHandleStateUpdate(data) {
             if (tabCtx && tabCtx.style.display !== 'none' && !tabCtx.contains(e.target)) {
                 tabCtx.style.display = 'none';
             }
-            // Hide bubble context menu on any click outside
-            var bubbleCtx = document.getElementById('bubble-context-menu');
-            if (bubbleCtx && bubbleCtx.style.display !== 'none' && !bubbleCtx.contains(e.target)) {
-                bubbleCtx.style.display = 'none';
-            }
+
         });
 
         // ========== Bottom Tab Bar ==========

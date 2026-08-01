@@ -468,7 +468,7 @@
 /* Breathing, not blinking: steps(2) hard-switched opacity, which read as flicker. */
 @keyframes tab-pulse { from { opacity: 1; transform: scale(1); } to { opacity: 0.35; transform: scale(0.72); } }
 /* Menu items: 48dp target, full-bleed state layer. */
-.tab-ctx-item, .bubble-ctx-item {
+.tab-ctx-item {
     padding: var(--md-sys-spacing-3) var(--md-sys-spacing-4);
     font-size: var(--md-sys-typescale-label-large-size);
     letter-spacing: var(--md-sys-typescale-label-large-tracking);
@@ -477,7 +477,7 @@
     display: flex; align-items: center; gap: var(--md-sys-spacing-3);
     transition: background var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
 }
-.tab-ctx-item:hover, .bubble-ctx-item:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.tab-ctx-item:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .bottom-tab-add {
     display: flex; align-items: center; justify-content: center;
     padding: 0 var(--md-sys-spacing-3); font-size: var(--md-sys-typescale-title-medium-size);

@@ -1189,32 +1189,25 @@
                 
                 if (!isHidden && !isWaiting) renderMathInElement(bubble, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
 
-                // 气泡右键菜单
+                // Right-click toggles collapse directly, with no menu in between.
+                //
+                // The handler that lived here accumulated ten entries and then
+                // overwrote the variable with one, so the menu never offered
+                // anything except this action. Going straight to it removes a click
+                // without removing a capability; the ten operations are all still
+                // available on the hover ops bar above the bubble.
                 bubble.addEventListener('contextmenu', function(e) {
+                    // A selection inside this bubble wins. Bubble text is
+                    // user-select:text on purpose and right-click is how the native
+                    // copy menu is reached; the old handler blocked that menu but at
+                    // least left the selection alone, whereas collapsing would throw
+                    // the selection away along with the passage the user was aiming
+                    // at. Anything outside this bubble is not our business.
+                    var _sel = window.getSelection();
+                    if (_sel && !_sel.isCollapsed && _sel.anchorNode
+                        && bubble.contains(_sel.anchorNode)) return;
                     e.preventDefault();
-                    var menu = document.getElementById('bubble-context-menu');
-                    if (!menu) return;
-                    var items = '';
-                    if (globalSettings.enable_starred) items += '<div class="bubble-ctx-item" onclick="postAction({action:\'toggle_star\',index:' + index + '})">' + mdIcon('star', 16) + (isStarred ? ' 取消收藏' : ' 收藏') + '</div>';
-                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="postAction({action:\'retry_message\',index:' + index + '})">' + mdIcon('refresh', 16) + ' 重试</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'up\'})">' + mdIcon('thumb_up', 16) + ' 好评</div><div class="bubble-ctx-item" onclick="postAction({action:\'rate_message\',index:' + index + ',rating:\'down\'})">' + mdIcon('thumb_down', 16) + ' 差评</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'hide\')">' + mdIcon('visibility_off', 16) + (msg.is_hidden ? ' 取消隐藏' : ' 隐藏') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'omit\')">' + (msg.is_omitted ? mdIcon('book', 16) + ' 全文' : mdIcon('inventory', 16) + ' 概括') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? mdIcon('folder_open', 16) + ' 展开' : mdIcon('folder', 16) + ' 折叠') + '</div>';
-                    items += '<div class="bubble-ctx-item" onclick="copyMsg(' + index + ')">' + mdIcon('content_copy', 16) + ' 复制</div>';
-                    if (msg.role === 'assistant') items += '<div class="bubble-ctx-item" onclick="copyPayload(' + index + ')">' + mdIcon('inventory', 16) + ' 复制上下文</div>';
-                    items += '<div class="bubble-ctx-item" onclick="openEditModal(' + msg.id + ',\'content\')">' + mdIcon('edit', 16) + ' 编辑</div>';
-                    items += '<div class="bubble-ctx-item" onclick="deleteMessageOptimistic(' + index + ')">' + mdIcon('delete', 16) + ' 删除</div>';
-                    // NOTE: plain assignment, not +=. Everything accumulated above is
-                    // discarded and the menu only ever shows the collapse entry. Behaviour
-                    // left as-is pending a decision on whether that was intentional.
-                    items = '<div class="bubble-ctx-item" onclick="toggleMode(' + index + ',\'collapse\')">' + (msg.is_collapsed ? mdIcon('folder_open', 16) + ' 展开' : mdIcon('folder', 16) + ' 折叠') + '</div>';
-                    menu.innerHTML = items;
-                    menu.style.display = 'block';
-                    menu.style.left = e.clientX + 'px';
-                    menu.style.top = e.clientY + 'px';
-                    var rect = menu.getBoundingClientRect();
-                    if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + 'px';
-                    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + 'px';
+                    toggleMode(index, 'collapse');
                 });
 
                 if (thinkingMap[msg.id]){
