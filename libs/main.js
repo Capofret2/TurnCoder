@@ -543,7 +543,14 @@ function _doHandleStateUpdate(data) {
                     // now-white chat area and would read as a glaring white block
                     // once the dark scheme is active.
                     if (currentSession._theme_hue != null) {
-                        chatContainer.style.background = 'hsl(' + currentSession._theme_hue + ', 22%, 97%)';
+                        // A tint of the surface token, not a fixed lightness. The
+                        // old 97% was a light-scheme constant and rendered a
+                        // near-white chat area under the dark scheme — worse than
+                        // no tint, because it hits only the sessions that have a
+                        // hue and reads as those sessions being broken.
+                        chatContainer.style.background = 'color-mix(in srgb, hsl('
+                            + currentSession._theme_hue
+                            + ' 60% 50%) 7%, var(--md-sys-color-surface))';
                     } else {
                         chatContainer.style.background = 'var(--md-sys-color-surface)';
                     }
@@ -1539,8 +1546,18 @@ function _doHandleStateUpdate(data) {
                 tab.className = 'bottom-tab' + (!isKanbanMode && sid === activeSid ? ' active' : '');
                 tab.dataset.sid = sid;
                 if (sess._theme_hue != null) {
+                    // Tint whichever surface the untinted branch below would have
+                    // used, so the two branches differ by exactly one tint and the
+                    // active/inactive step stays identical either way. The old
+                    // 92%/95% pair computed its own values and gave hued sessions
+                    // a different active contrast from plain ones — and both were
+                    // light-scheme constants.
                     var _tabHue = sess._theme_hue;
-                    tab.style.background = (sid === activeSid) ? 'hsl(' + _tabHue + ', 32%, 92%)' : 'hsl(' + _tabHue + ', 26%, 95%)';
+                    var _tabBase = (sid === activeSid)
+                        ? 'var(--md-sys-color-surface)'
+                        : 'var(--md-sys-color-surface-container-high)';
+                    tab.style.background = 'color-mix(in srgb, hsl(' + _tabHue
+                        + ' 60% 50%) 12%, ' + _tabBase + ')';
                 } else {
                     // The active tab takes the content-area surface so it visually
                     // joins the panel above it, which is the point of an M3 tab.
