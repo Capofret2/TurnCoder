@@ -110,7 +110,23 @@ cp settings.example.json settings.json
 
 `▶`（U+25B6）、`▼`（U+25BC）、`▴`/`▾` 不属 emoji 区段，是单色几何字符，字形随系统字体变化、尺寸不可控。
 
-**本文档原先写「6 处」，那是切换站点数而非字符数，且漏了几个文件。** 实测几何图形区（U+25A0–U+25FF）共 34 个字符：`libs/chat.js` 24、`frontend.html` 6、`libs/models.js` 2、`libs/editops.js` 1、`libs/panels.js` 1。`chat.js` 里除了原文列举的五个站点，还有 L536 附近折叠按钮的 `▴`/`▾`。按 6 处估工作量会严重偏低。
+**本文档原先写「6 处」，那是切换站点数而非字符数。** 两个量都要看，但用途不同：**站点数决定工作量**（每个站点是一次 `textContent` 到 `innerHTML` 的迁移，也是一次需要单独验证的行为改动），**字符数只决定要改多少个字面量**。
+
+实测箭头共 **33 个**：
+
+| 文件 | 字面 | `\uXXXX` 转义 | 合计 |
+| --- | --- | --- | --- |
+| `libs/chat.js` | 18 | 6 | 24 |
+| `frontend.html` | 6 | 0 | 6 |
+| `libs/models.js` | 2 | 0 | 2 |
+| `libs/panels.js` | 1 | 0 | 1 |
+
+`chat.js` 里除了原文列举的五个站点，还有 L536 附近折叠按钮的 `▴`/`▾`。按码点分布是 `▶` 14、`▼` 8、`▾` 8、`▴` 3。
+
+**两处容易误判：**
+
+1. **`libs/editops.js` 里那个几何字符不算。** 它是 `U+25A0 ■`，在 L161 的上下文构成头部当图例色块用（`<span style="color:...">■</span>` 后接分类名与占比），与展开折叠无关。按几何图形区（U+25A0–U+25FF）机械扫描会得到 34 个，减掉它才是箭头的 33 个。
+2. **统计必须同时数字面字符与 `\uXXXX` 转义。** `chat.js` 的 6 个转义分布在脱水气泡、独立 tool_result 与 `_expandStateMap` 恢复逻辑那几处，只搜字面符号会漏掉、只按字面数会得到 28。这条与第 1 项的口径教训是同一个，而本轮在**校验它的时候又踩了一次**——先用 `grep -c` 数了匹配行数（19），再用只认字面字符的脚本数了 28，两次都以为文档写错了。
 
 改成 SVG 需要把这些位置从 `textContent` 整批迁到 `innerHTML`。**这一批动的是展开态保护机制**（见 `UI_CONVENTIONS.md` 第五节第 2 条），建议单独成一个提交并逐处验证，不要与其他改动混在一起。`tests/test_dom_render.py` 里的展开态相关用例可以在改动后直接复用来验证。
 
@@ -153,7 +169,7 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 
 **四条不写下来就会被「整理」掉的约束：**
 
-1. **`sys.path` 修正必须留在 `tests/conftest.py`，不能搬到根目录 `pytest.ini`。** `app.py` 的 `export_snapshot` 在 `_update_dirs` 里列了 `'tests': {'.py'}`，也就是测试目录会被打进更新包，而 `_root_files` 不含任何 ini 文件。搬走之后部署出去的副本跑不了自己的测试。
+1. **`sys.path` 修正留在 `tests/conftest.py`，不要搬到根目录 `pytest.ini`。** 仓库根必须先进 `sys.path`，`import api.*` 才解析得到；pytest 默认的 prepend 模式插入的是**测试文件所在目录**，也就是 `tests/`，深了一层。放在 `conftest.py` 里让测试目录自成一体——复制它、或从别处只跑这个目录，都不需要外部文件配合；根目录 ini 会把这份依赖藏在目录之外。
 2. **DOM 用例不启动 Flask。** 它们跑 `tests/harness/render.html`，只加载真实的 `libs/` 脚本与样式表。启动真实服务会读写 `data/sessions/`，那是用户的真实对话记录，不是测试夹具。
 3. **harness 的桩必须排在应用脚本之前，且不能与被测代码同名。** `utils.js` 在加载时就执行 marked 配置的 IIFE，`chat.js` 与 `minimap.js` 在文件末尾立即挂事件，晚定义的桩来不及被看到。同名更糟：第一版给 `rejectApproval` 写了桩，而 `codeblocks.js` 也声明了同名全局函数且加载在后——后者胜出，桩**静默失效**，测试看起来在验证审批拒绝，实际验证的是一段从未执行的代码。现在改为断言真实的 `postAction` 载荷，覆盖面反而更大。
 4. **Playwright 属开发期依赖，缺件必须跳过而非失败。** 见第六节。
