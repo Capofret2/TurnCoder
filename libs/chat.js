@@ -31,30 +31,31 @@
         /** Fold a flag. 1/2 rather than 1/0, so false stays distinct from absent. */
         function _fpFlag(v) { _fpNum(v ? 1 : 2); }
 
-        /** Fold a short string in full. */
-        function _fpAll(s) {
-            if (!s) { _fpNum(0); return; }
-            _fpNum(s.length);
-            for (var i = 0; i < s.length; i++) _fpNum(s.charCodeAt(i));
-        }
-
         /**
-         * Fold length plus the leading and trailing 30 code units.
+         * Fold a string in full — every code unit, no sampling.
          *
-         * The same sampling the old concatenated string used, blind spot included:
-         * an edit in the middle of a long body that leaves the length untouched is
-         * not seen. Pre-existing, and streaming appends always move the length, so
-         * it has never surfaced.
+         * This replaced a length-plus-first-and-last-30 sample, and the sample had
+         * a blind spot that sampling makes unavoidable: an edit in the middle of a
+         * long body that leaves the length unchanged produced an identical
+         * fingerprint, so the cached DOM was reused and the edit never appeared at
+         * all. Streaming appends always move the length, which is the only reason
+         * it stayed hidden. Do not reintroduce sampling here — an edit anywhere in
+         * the context has to reach the screen, and that is the whole guarantee.
+         *
+         * The inner loop is a 31-multiplier fold rather than one _fpNum per
+         * character: three operations instead of seven, mixed once through _fpNum
+         * at the end. Math.imul for the same reason as there — a plain multiply
+         * loses exactly the low bits the fold carries its information in.
+         *
+         * Cost in practice is far below what character counts suggest: in a long
+         * conversation most messages are dehydrated tool results whose content has
+         * been stripped, so there is nothing to walk.
          */
-        function _fpEdges(s) {
+        function _fpText(s) {
             if (!s) { _fpNum(0); return; }
-            var n = s.length;
-            _fpNum(n);
-            var head = n < 30 ? n : 30;
-            for (var i = 0; i < head; i++) _fpNum(s.charCodeAt(i));
-            if (n > 30) {
-                for (var j = n - 30; j < n; j++) _fpNum(s.charCodeAt(j));
-            }
+            var h = s.length | 0;
+            for (var i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+            _fpNum(h);
         }
 
         /** The accumulated fingerprint, short enough to keep in bubbleCache. */
@@ -257,15 +258,15 @@
             _fpReset();
             _fpNum(msg.id);
             _fpNum(index);
-            _fpAll(msg.role);
-            _fpEdges(msg.content);
-            _fpAll(msg.summary);
+            _fpText(msg.role);
+            _fpText(msg.content);
+            _fpText(msg.summary);
             _fpFlag(msg.is_collapsed);
             _fpFlag(msg.is_omitted);
             _fpFlag(msg.is_hidden);
             _fpFlag(msg.is_unread);
-            _fpAll(msg.rating);
-            _fpAll(msg.model_name);
+            _fpText(msg.rating);
+            _fpText(msg.model_name);
             if (msg.timing) {
                 // Scaled to ms: the mixer takes int32, so a fractional second
                 // would be truncated away and 1.2s could not be told from 1.9s.
@@ -275,13 +276,13 @@
             if (msg.content_parts) {
                 for (let _hpi = 0; _hpi < msg.content_parts.length; _hpi++) {
                     let _hp = msg.content_parts[_hpi];
-                    _fpAll(_hp.type);
-                    _fpAll(_hp.status);
-                    _fpEdges(_hp.content);
+                    _fpText(_hp.type);
+                    _fpText(_hp.status);
+                    _fpText(_hp.content);
                 }
             } else { _fpNum(0); }
             _fpNum(msg.diff_content ? msg.diff_content.length : 0);
-            _fpAll(msg.term_state);
+            _fpText(msg.term_state);
             _fpNum(msg.multimodal_blocks ? msg.multimodal_blocks.length : 0);
             _fpFlag(isStarred);
             _fpFlag(window._autopilotActive && msg._autopilot_gen !== undefined
@@ -1427,7 +1428,36 @@
             });
 
             const dom1 = performance.now();
-            socket.emit('perf_log', {label: 'DOM Injection', duration: dom1 - dom0});
+            // Gated: this fires a WebSocket message on every render, and the server
+            // handler answers it with a synchronous print() that holds the GIL. At
+            // streaming rates that is several needless round trips per second.
+            if (globalSettings.developer_mode) {
+                socket.emit('perf_log', {label: 'DOM Injection', duration: dom1 - dom0});
+            }
+
+            /* Prune the id-keyed caches. Without this, every message deleted or
+               retried away during a session leaves its entry behind — and in
+               bubbleCache's case that entry holds a whole detached DOM tree, so a
+               long-lived session leaks steadily.
+
+               After the diff, not before: the loop above still reads bubbleCache.
+               _expandStateMap keys carry a prefix (tr-content-123, it-123-1), hence
+               the digit match rather than a direct lookup. */
+            var _live = {};
+            for (var _lvi = 0; _lvi < history.length; _lvi++) _live[history[_lvi].id] = 1;
+            for (var _bk in bubbleCache) { if (!_live[_bk]) delete bubbleCache[_bk]; }
+            if (window._thinkingCache) {
+                for (var _tk in window._thinkingCache) { if (!_live[_tk]) delete window._thinkingCache[_tk]; }
+            }
+            if (window._dehydratedContentCache) {
+                for (var _dk in window._dehydratedContentCache) { if (!_live[_dk]) delete window._dehydratedContentCache[_dk]; }
+            }
+            if (window._expandStateMap) {
+                for (var _ek in window._expandStateMap) {
+                    var _em = _ek.match(/(\d+)/);
+                    if (_em && !_live[_em[1]]) delete window._expandStateMap[_ek];
+                }
+            }
 
             // 滚动策略：同步执行，不能用requestAnimationFrame（RAF优先级低于socket macrotask，
             // 流式更新时下一次renderChat会在RAF执行前被调用，导致isScrolledToBottom误判产生跳动）

@@ -196,8 +196,55 @@ const chatContainer = document.getElementById('chat-container');
         var _lastStreamingContent = '';
         var _streamingWatchdog = null;
 
+        /* Streaming paint, coalesced into one frame.
+         *
+         * data.content is the accumulated body, not a delta, so each event used to
+         * reparse the whole thing through marked and highlight.js and then let
+         * KaTeX walk every text node again. A ten-thousand-character reply arriving
+         * in two hundred pushes meant two hundred full parses of an average of five
+         * thousand characters — quadratic in the length of a single reply.
+         *
+         * Coalescing per bubble_id keeps simultaneous streams independent and never
+         * drops the final state: rAF always fires, and the map holds the latest
+         * payload per bubble. Frames are skipped while the tab is hidden, which is
+         * the desired behaviour — the visibilitychange handler force-renders on the
+         * way back.
+         *
+         * Deliberately NOT reparsing only the trailing unclosed segment, even
+         * though that would be the larger win: an edit to an earlier part of the
+         * body would then never be re-rendered, and an edit anywhere in the context
+         * has to reach the screen. */
+        var _streamPending = {};
+        var _streamRaf = 0;
+
+        function _flushStreaming() {
+            _streamRaf = 0;
+            var batch = _streamPending;
+            _streamPending = {};
+            for (var _bid in batch) _paintStreaming(batch[_bid]);
+        }
+
+        function _paintStreaming(data) {
+            const bubble = document.getElementById('msg-bubble-' + data.bubble_id);
+            if (!bubble) return;
+            const summaryBox = bubble.querySelector('.summary-box');
+            if (summaryBox) {
+                summaryBox.innerHTML = '<b>概括：</b>' + (data.summary || '生成中...');
+                return;
+            }
+            const contentDiv = bubble.querySelector('.content');
+            if (!contentDiv || !data.content) return;
+            contentDiv.innerHTML = renderMarkdownProtected(filterProtocolMarkers(data.content));
+            // No dollar sign anywhere in the accumulated body means there is nothing
+            // for KaTeX to find, and this ran unconditionally on every push.
+            if (data.content.indexOf('$') >= 0) {
+                try { renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] }); } catch(e) {}
+            }
+        }
+
         socket.on('streaming_content', (data) => {
-            // Track streaming state and set watchdog
+            // Tracking stays synchronous: the watchdog and the restore path in
+            // _doHandleStateUpdate both read these, and they are cheap.
             _lastStreamingBubbleId = data.bubble_id;
             _lastStreamingTime = Date.now();
             _lastStreamingContent = data.content || '';
@@ -209,18 +256,9 @@ const chatContainer = document.getElementById('chat-container');
                 postAction({action: 'ping'});
             }, 3000);
 
-            const bubble = document.getElementById('msg-bubble-' + data.bubble_id);
-            if (!bubble) return;
-            const summaryBox = bubble.querySelector('.summary-box');
-            if (summaryBox) {
-                summaryBox.innerHTML = '<b>概括：</b>' + (data.summary || '生成中...');
-            } else {
-                const contentDiv = bubble.querySelector('.content');
-                if (contentDiv && data.content) {
-                    contentDiv.innerHTML = renderMarkdownProtected(filterProtocolMarkers(data.content));
-                    try { renderMathInElement(contentDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] }); } catch(e) {}
-                }
-            }
+            _streamPending[data.bubble_id] = data;
+            if (_streamRaf) return;
+            _streamRaf = requestAnimationFrame(_flushStreaming);
         });
 
         socket.on('cache_prediction', (data) => {
@@ -634,7 +672,48 @@ function _doHandleStateUpdate(data) {
                         }
                     }
                     
-                    const chatHash = currentSession.conversation_history.map(m => m.id + '_' + (m.content||'').length + '_' + (m.content||'').slice(0,30) + '_' + m.summary + '_' + m.is_omitted + '_' + m.is_collapsed + '_' + m.is_hidden + '_' + m.is_unread + '_' + m.rating + '_' + (m.term_state||'') + '_' + (m.diff_content ? m.diff_content.length : 0) + '_' + (m.content_parts ? m.content_parts.map(p=>p.status + '_' + (p.content||'').length + '_' + (p.content||'').slice(0,10) + '_' + (p.content||'').slice(-10)).join(',') : 'none') + '_mm' + (m.multimodal_blocks ? m.multimodal_blocks.length : 0)).join('|') + '|apg' + (currentSession._autopilot_gen || 0) + '_' + (currentSession.autopilot_active ? '1' : '0');
+                    /* Folded rather than joined. The old form built one string over
+                       the entire history — two 30-character slices per message plus a
+                       join that reaches hundreds of kilobytes on a long conversation —
+                       purely to compare it against the previous value, and it ran on
+                       every state push whether or not renderChat followed.
+                       
+                       Reuses the accumulators chat.js defines; chat.js loads first and
+                       they are plain globals. Field coverage is a strict superset of
+                       the old expression, and content is folded in full rather than
+                       sampled at the edges — sampling here would undo the guarantee
+                       the per-message fingerprint now provides, since a mid-body edit
+                       would leave this hash unchanged and renderChat would never run. */
+                    _fpReset();
+                    var _chHist = currentSession.conversation_history;
+                    for (var _chi = 0; _chi < _chHist.length; _chi++) {
+                        var _chm = _chHist[_chi];
+                        _fpNum(_chm.id);
+                        _fpText(_chm.role);
+                        _fpText(_chm.content);
+                        _fpText(_chm.summary);
+                        _fpFlag(_chm.is_omitted);
+                        _fpFlag(_chm.is_collapsed);
+                        _fpFlag(_chm.is_hidden);
+                        _fpFlag(_chm.is_unread);
+                        _fpText(_chm.rating);
+                        _fpText(_chm.model_name);
+                        _fpText(_chm.term_state);
+                        _fpNum(_chm.diff_content ? _chm.diff_content.length : 0);
+                        if (_chm.content_parts) {
+                            for (var _chp = 0; _chp < _chm.content_parts.length; _chp++) {
+                                var _chpp = _chm.content_parts[_chp];
+                                _fpText(_chpp.type);
+                                _fpText(_chpp.status);
+                                _fpText(_chpp.content);
+                            }
+                        } else { _fpNum(0); }
+                        _fpNum(_chm.multimodal_blocks ? _chm.multimodal_blocks.length : 0);
+                        _fpFlag(_chm._dehydrated);
+                    }
+                    _fpNum(currentSession._autopilot_gen || 0);
+                    _fpFlag(currentSession.autopilot_active);
+                    const chatHash = _fpValue();
         if (chatHash !== lastChatHash) {
                 console.time('Total Render Cycle');
                 lastChatHash = chatHash;
@@ -655,7 +734,11 @@ function _doHandleStateUpdate(data) {
                         var _srDiv = _srBubble.querySelector('.content');
                         if (_srDiv) {
                             _srDiv.innerHTML = renderMarkdownProtected(filterProtocolMarkers(_lastStreamingContent));
-                            try { renderMathInElement(_srDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] }); } catch(e) {}
+                            // Same guard as _paintStreaming: this branch fires once per
+                            // renderChat during a stream and had the same unconditional scan.
+                            if (_lastStreamingContent.indexOf('$') >= 0) {
+                                try { renderMathInElement(_srDiv, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] }); } catch(e) {}
+                            }
                         }
                     }
                 }
