@@ -72,7 +72,7 @@ class Arc3Mixin:
                                 img_content_parts.append(f"可用动作：{actions_str} | 当前状态：{frame.get('state')} | 步数：{step_val}")
                         
                         if frame.get('label'):
-                            img_content_parts.append(f"📷 {frame.get('label')}")
+                            img_content_parts.append(f"{frame.get('label')}")
                             
                         img_msg = self._make_msg("assistant",
                             "\n\n".join(img_content_parts),

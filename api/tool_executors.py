@@ -764,7 +764,7 @@ def execute_single_checkpoint(tool_input, settings, cache_dir, **kwargs):
         try:
             return idx, run_single_checkpoint(idx, api=_api, target_sid=_sid, tool_use_id=_tuid, workspace_dir=_ws_dir)
         except Exception as e:
-            return idx, f'❌ 关卡 #{idx} 失败: {e}'
+            return idx, f'关卡 #{idx} 失败: {e}'
 
     with ThreadPoolExecutor(max_workers=min(len(indices), 20)) as pool:
         futures = {pool.submit(_run_one, i): i for i in indices}

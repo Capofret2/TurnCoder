@@ -262,7 +262,7 @@ const chatContainer = document.getElementById('chat-container');
             }
             // textContent, so no inline SVG here; the format is self-describing.
             if (maxId > 0) {
-                el.textContent = prefixK + 'k\u2713 | ' + suffixK + 'k\u2717 | ' + segments + '\u6BB5';
+                el.textContent = prefixK + 'k\u7F13\u5B58 | ' + suffixK + 'k\u65B0\u589E | ' + segments + '\u6BB5';
                 el.style.color = suffixChars > 0 ? 'var(--md-sys-color-success)' : 'var(--md-sys-color-on-surface-variant)';
             } else {
                 el.textContent = '\u9996\u6B21\u53D1\u9001 | ' + ((prefixChars + suffixChars) / 3000).toFixed(1) + 'k';
@@ -419,7 +419,7 @@ function handleStateUpdate(data) {
     // 幽灵防退防护
     if (data.state_version !== undefined) {
         if (data.state_version < clientLastStateVersion) {
-            console.log("👻 [防退截获] 收到滞后版本的状态，已丢弃");
+            console.log("[防退截获] 收到滞后版本的状态，已丢弃");
             return;
         }
         clientLastStateVersion = data.state_version;
@@ -629,10 +629,10 @@ function _doHandleStateUpdate(data) {
                     
                     const chatHash = currentSession.conversation_history.map(m => m.id + '_' + (m.content||'').length + '_' + (m.content||'').slice(0,30) + '_' + m.summary + '_' + m.is_omitted + '_' + m.is_collapsed + '_' + m.is_hidden + '_' + m.is_unread + '_' + m.rating + '_' + (m.term_state||'') + '_' + (m.diff_content ? m.diff_content.length : 0) + '_' + (m.content_parts ? m.content_parts.map(p=>p.status + '_' + (p.content||'').length + '_' + (p.content||'').slice(0,10) + '_' + (p.content||'').slice(-10)).join(',') : 'none') + '_mm' + (m.multimodal_blocks ? m.multimodal_blocks.length : 0)).join('|') + '|apg' + (currentSession._autopilot_gen || 0) + '_' + (currentSession.autopilot_active ? '1' : '0');
         if (chatHash !== lastChatHash) {
-                console.time('🚀 Total Render Cycle');
+                console.time('Total Render Cycle');
                 lastChatHash = chatHash;
                 renderChat(currentSession.conversation_history);
-                console.timeEnd('🚀 Total Render Cycle');
+                console.timeEnd('Total Render Cycle');
                 // 渲染后恢复 pending 状态：被无关推送触发的 renderChat 会替换 DOM，需要重新标记
                 if (pendingActions.size > 0) {
                     pendingActions.forEach(function(msgId) {

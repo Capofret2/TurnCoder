@@ -777,7 +777,7 @@ def handle_action():
                                 if _param.startswith('token='):
                                     _gitee_token = _param[6:]
                         if not _gitee_token:
-                            _upload_msg = '\n⚠️ Gitee token 未配置'
+                            _upload_msg = '\nGitee token 未配置'
                         else:
                             # 创建 Release
                             _release_resp = _up_req.post(
@@ -804,11 +804,11 @@ def handle_action():
                                         proxies={'http': None, 'https': None}
                                     )
                                 if _asset_resp.status_code in (200, 201):
-                                    _upload_msg = f'\n✅ 已上传到 Gitee Releases (tag: {ts})'
+                                    _upload_msg = f'\n已上传到 Gitee Releases (tag: {ts})'
                                 else:
-                                    _upload_msg = f'\n⚠️ Asset 上传失败: HTTP {_asset_resp.status_code} {_asset_resp.text[:200]}'
+                                    _upload_msg = f'\nAsset 上传失败: HTTP {_asset_resp.status_code} {_asset_resp.text[:200]}'
                             else:
-                                _upload_msg = f'\n⚠️ Release 创建失败: HTTP {_release_resp.status_code} {_release_resp.text[:200]}'
+                                _upload_msg = f'\nRelease 创建失败: HTTP {_release_resp.status_code} {_release_resp.text[:200]}'
                     elif _upload_url:
                         # 自建服务器上传
                         import requests as _up_req
@@ -826,13 +826,13 @@ def handle_action():
                                 proxies={'http': None, 'https': None}
                             )
                         if _up_resp.status_code == 200:
-                            _upload_msg = f'\n✅ 已自动上传到更新服务器'
+                            _upload_msg = f'\n已自动上传到更新服务器'
                         else:
-                            _upload_msg = f'\n⚠️ 上传失败: HTTP {_up_resp.status_code}'
+                            _upload_msg = f'\n上传失败: HTTP {_up_resp.status_code}'
                     else:
                         _upload_msg = '\n（未配置 update_url，跳过自动上传）'
                 except Exception as _ue:
-                    _upload_msg = f'\n⚠️ 上传异常: {_ue}'
+                    _upload_msg = f'\n上传异常: {_ue}'
                 return jsonify({"status": "ok", "message": f"更新包已导出: data/snapshots/{zip_name}\n包含 {_file_count} 个文件，{_size_kb:.1f} KB{_upload_msg}", "file": zip_name})
             except Exception as e:
                 return jsonify({"status": "error", "message": f"导出失败: {e}"})

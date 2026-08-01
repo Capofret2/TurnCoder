@@ -312,7 +312,7 @@ def _make_api_call(model_name, messages, include_thinking=True,
                     pass
                 if _http_attempt < _http_retries - 1:
                     _wait = min(_http_base_delay * (2 ** min(_http_attempt, 6)), 120)
-                    print(f'[AUTO-REVIEW API] 🔁 429 限流重试 {_http_attempt+1}/{_http_retries} (model={clean_model}), 等待 {_wait}s', flush=True)
+                    print(f'[AUTO-REVIEW API] 429 限流重试 {_http_attempt+1}/{_http_retries} (model={clean_model}), 等待 {_wait}s', flush=True)
                     time.sleep(_wait)
                     continue
                 else:
@@ -410,10 +410,10 @@ def _make_api_call(model_name, messages, include_thinking=True,
                 pass
             if _http_attempt < _http_retries - 1:
                 _wait = _http_base_delay * (2 ** _http_attempt)
-                print(f'[AUTO-REVIEW API] 🔁 网络错误重试 {_http_attempt+1}/{_http_retries} (model={clean_model}): {type(_he).__name__}: {str(_he)[:120]}, 等待 {_wait}s', flush=True)
+                print(f'[AUTO-REVIEW API] 网络错误重试 {_http_attempt+1}/{_http_retries} (model={clean_model}): {type(_he).__name__}: {str(_he)[:120]}, 等待 {_wait}s', flush=True)
                 time.sleep(_wait)
             else:
-                print(f'[AUTO-REVIEW API] ❌ 网络错误重试 {_http_retries} 次全部失败 (model={clean_model}): {type(_he).__name__}: {str(_he)[:120]}', flush=True)
+                print(f'[AUTO-REVIEW API] 网络错误重试 {_http_retries} 次全部失败 (model={clean_model}): {type(_he).__name__}: {str(_he)[:120]}', flush=True)
                 raise
         except Exception:
             try:
@@ -440,15 +440,15 @@ def _make_api_call(model_name, messages, include_thinking=True,
     _content_k = len(content) / 3000
     _total_k = _think_k + _content_k
     if not _stream_completed:
-        print(f'[AUTO-REVIEW API] ⚠️ 流未正常结束（连接中断）！thinking={_think_k:.1f}k, content={_content_k:.1f}k, total={_total_k:.1f}k, stop_reason={stop_reason or "无"}, model={clean_model}', flush=True)
+        print(f'[AUTO-REVIEW API] 流未正常结束（连接中断）！thinking={_think_k:.1f}k, content={_content_k:.1f}k, total={_total_k:.1f}k, stop_reason={stop_reason or "无"}, model={clean_model}', flush=True)
     if stop_reason == 'max_tokens':
-        print(f'[AUTO-REVIEW API] ⚠️ 输出被 max_tokens 截断！thinking={_think_k:.1f}k, content={_content_k:.1f}k, model={clean_model}', flush=True)
+        print(f'[AUTO-REVIEW API] 输出被 max_tokens 截断！thinking={_think_k:.1f}k, content={_content_k:.1f}k, model={clean_model}', flush=True)
     # 独立的空内容检测：不依赖 stop_reason 和 _stream_completed
     if not content.strip():
-        print(f'[AUTO-REVIEW API] ⚠️ 正文为空！stream_completed={_stream_completed}, stop_reason={stop_reason or "无"}, thinking={_think_k:.1f}k, model={clean_model}', flush=True)
+        print(f'[AUTO-REVIEW API] 正文为空！stream_completed={_stream_completed}, stop_reason={stop_reason or "无"}, thinking={_think_k:.1f}k, model={clean_model}', flush=True)
     # 内容级截断检测：判断标签开始但未闭合
     elif '最终判断开始' in content and '最终判断结束' not in content:
-        print(f'[AUTO-REVIEW API] ⚠️ 正文被截断（判断标签未闭合）！stream_completed={_stream_completed}, stop_reason={stop_reason or "无"}, content_tail={content[-100:]!r}, model={clean_model}', flush=True)
+        print(f'[AUTO-REVIEW API] 正文被截断（判断标签未闭合）！stream_completed={_stream_completed}, stop_reason={stop_reason or "无"}, content_tail={content[-100:]!r}, model={clean_model}', flush=True)
 
     return content, thinking, model_name, payload_snapshot
 
@@ -554,9 +554,9 @@ def run_single_checkpoint(checkpoint_index, api=None, target_sid=None, tool_use_
     judgment = _parse_judgment(content)
     if judgment:
         we_won = (judgment != my_pos)
-        win_label = '✅ 我方胜' if we_won else '❌ 我方负'
+        win_label = '我方胜' if we_won else '我方负'
     else:
-        win_label = '⚠️ 解析失败'
+        win_label = '解析失败'
 
     # Emit result bubble if in stream mode
     if api and target_sid and tool_use_id and target_sid in api.sessions:
@@ -565,7 +565,7 @@ def run_single_checkpoint(checkpoint_index, api=None, target_sid=None, tool_use_
         _th_preview = ''
         if thinking:
             _th_trunc = thinking[:8000] if len(thinking) > 8000 else thinking
-            _th_preview = f"\n💭 思维链:\n{_th_trunc}\n\n---\n"
+            _th_preview = f"\n思维链:\n{_th_trunc}\n\n---\n"
         bubble = api._make_msg("user",
             f"**单关卡审稿 #{checkpoint_index} ({model_used}) {win_label}**\n\n{bt}\n"
             f"参考分数: [{scores_str}] | 我方位置: 论文{my_pos} | 判断: {judgment or '?'}\n"
@@ -864,7 +864,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                     'review_model': _srm, 'my_position': '?',
                 }
                 _skip_mask[_si] = _swr
-                _emit(f"审稿 [{_si+1}/{n}] ⏭️ 跳过 ({_srm})",
+                _emit(f"审稿 [{_si+1}/{n}] 跳过 ({_srm})",
                       f"该关卡胜率稳定高（{_swr:.0%}），跳过审稿")
                 print(f"[AUTO-REVIEW] 跳过关卡 {_si+1} (胜率 {_swr:.0%})", flush=True)
     _levels_to_review = [i for i in range(n) if i not in review_results]
@@ -940,7 +940,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                 we_won = (judgment != my_pos)
                 result_data['judgment'] = judgment
                 result_data['we_won'] = we_won
-                _win_label = '✅ 我方胜' if we_won else '❌ 我方负'
+                _win_label = '我方胜' if we_won else '我方负'
                 _save_json(os.path.join(review_dir, f'{i+1}_result.json'), result_data)
                 readable = (
                     f"审稿模型: {model_used}\n"
@@ -953,15 +953,15 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                 )
                 _save_text(os.path.join(review_dir, f'{i+1}_result.txt'), readable)
             else:
-                _win_label = '⚠️ 解析失败（不保存，将重试）'
+                _win_label = '解析失败（不保存，将重试）'
                 _last_lines = content.strip().split('\n')[-5:]
-                print(f"[AUTO-REVIEW] ⚠️ 关卡 {i+1} 判断解析失败！最后5行:\n" + '\n'.join(_last_lines), flush=True)
+                print(f"[AUTO-REVIEW] 关卡 {i+1} 判断解析失败！最后5行:\n" + '\n'.join(_last_lines), flush=True)
 
             # Emit individual result bubble for real-time visibility
             _th_preview = ''
             if thinking:
                 _th_trunc = thinking[:8000] if len(thinking) > 8000 else thinking
-                _th_preview = f"\n💭 思维链:\n{_th_trunc}\n\n---\n"
+                _th_preview = f"\n思维链:\n{_th_trunc}\n\n---\n"
             _baseline_tag = ' [Baseline]' if _is_baseline else ''
             _emit(f"审稿 [{i+1}/{n}]{_baseline_tag} {ref_file[:30]}... ({model_used}) {_win_label}",
                   f"参考分数: [{scores_str}] | 我方位置: 论文{my_pos} | 判断: {judgment or '?'}\n{_th_preview}\n{content}")
@@ -972,7 +972,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
         except Exception as e:
             traceback.print_exc()
             err = {'index': i + 1, 'error': str(e), 'model': model, 'reference_file': ref_file}
-            _emit(f"审稿 [{i+1}/{n}] ❌ 失败 ({model})", str(e))
+            _emit(f"审稿 [{i+1}/{n}] 失败 ({model})", str(e))
             print(f"[AUTO-REVIEW] 审稿 {i+1}/{n} 失败: {e}", flush=True)
             return i, err
 
@@ -998,7 +998,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
             if not _unparsed_indices:
                 break
             print(f"\n[AUTO-REVIEW] 解析失败串行重试 第{_retry_round}轮: {len(_unparsed_indices)} 个关卡待重试: {[i+1 for i in _unparsed_indices]}", flush=True)
-            _emit(f"🔄 解析重试 第{_retry_round}轮 ({len(_unparsed_indices)}个)",
+            _emit(f"解析重试 第{_retry_round}轮 ({len(_unparsed_indices)}个)",
                   f"以下关卡判断解析失败，将逐个串行重试: {[i+1 for i in _unparsed_indices]}")
             _retry_success = 0
             for _ri in _unparsed_indices:
@@ -1044,14 +1044,14 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
         if 'error' in r:
             output_parts.append(
                 f"\n--- [{i+1}/{n}] {r.get('reference_file', '?')} ---\n"
-                f"❌ 审稿失败: {r['error']}\n"
+                f"审稿失败: {r['error']}\n"
 )
         else:
             _wl_display = ''
             if r.get('skipped'):
-                _wl_display = f" | ⏭️ 跳过 (胜率{r.get('skip_win_rate', 0):.0%})"
+                _wl_display = f" | 跳过 (胜率{r.get('skip_win_rate', 0):.0%})"
             elif r.get('we_won') is not None:
-                _wl_display = ' | ✅ 我方胜' if r['we_won'] else ' | ❌ 我方负'
+                _wl_display = ' | 我方胜' if r['we_won'] else ' | 我方负'
             output_parts.append(
                 f"\n--- [{i+1}/{n}] {r['reference_file']} (模型: {r['model']}) ---\n"
                 f"我的论文位置: 论文{r['my_position']} | 参考分数: {r['reference_scores']}{_wl_display}\n"
@@ -1060,13 +1060,13 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                 _th = r['thinking']
                 if len(_th) > 15000:  # ~5k tokens max
                     _th = _th[:15000] + f"\n\n... [思维链已截断至5k tokens，完整版本见 第{run_num}次审稿/{i+1}_result.txt]"
-                output_parts.append(f"\n💭 思维链:\n{_th}\n")
-            output_parts.append(f"\n📝 审稿正文:\n{r['content']}\n")
+                output_parts.append(f"\n思维链:\n{_th}\n")
+            output_parts.append(f"\n审稿正文:\n{r['content']}\n")
 
     # ────────────────── Phase 2: Planning ──────────────────
     if not planning_models:
         output_parts.append(
-            "\n⚠️ 未配置规划模型 (planning_models 为空)，跳过规划阶段。"
+            "\n未配置规划模型 (planning_models 为空)，跳过规划阶段。"
             "请在 index.json 中配置 planning_models 列表后重新运行。\n"
         )
     else:
@@ -1125,7 +1125,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                 )
                 if not _has_result:
                     _skip_labels = ', '.join(str(a+1) for a in assigned)
-                    _emit(f"聚合规划 [{model_idx+1}/3] ⏭️ 跳过 ({pm['model']})",
+                    _emit(f"聚合规划 [{model_idx+1}/3] 跳过 ({pm['model']})",
                           f"分配关卡 [{_skip_labels}] 无成功返回的审稿结果")
                     print(f"[AUTO-REVIEW] 聚合规划 {model_idx+1}/3 跳过（无成功结果）", flush=True)
                     return model_idx, {'skipped': True, 'model': pm['model']}
@@ -1187,7 +1187,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                     traceback.print_exc()
                     err = {'error': str(e), 'model': pm['model']}
                     _save_json(os.path.join(planning_dir, f'agg_{model_idx+1}_error.json'), err)
-                    _emit(f"聚合规划 [{model_idx+1}/3] ❌ ({pm['model']})", str(e))
+                    _emit(f"聚合规划 [{model_idx+1}/3] 失败 ({pm['model']})", str(e))
                     print(f"[AUTO-REVIEW] 聚合规划 {model_idx+1}/3 失败: {e}", flush=True)
                     return model_idx, err
 
@@ -1200,7 +1200,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
             for mi in range(len(planning_models)):
                 r = planning_results.get(mi, {})
                 if 'error' in r:
-                    output_parts.append(f"\n--- [Model {mi+1}] ❌ {r['error']}\n")
+                    output_parts.append(f"\n--- [Model {mi+1}] 失败: {r['error']}\n")
                 else:
                     output_parts.append(f"\n--- [Model {mi+1}] {r.get('model', '?')} ---\n{r.get('content', '')}\n")
 
@@ -1258,7 +1258,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                         _hp.append(f"\n--- 第{_h['run_num']}轮审稿反馈 (我方位置: 论文{_h['my_position']}) ---")
                         if _h.get('review_thinking'):
                             _th_h = _h['review_thinking'][:8000]
-                            _hp.append(f"💭 审稿思维链:\n{_th_h}\n")
+                            _hp.append(f"审稿思维链:\n{_th_h}\n")
                         _hp.append(_h['review_content'])
                         _hp.append("")
                     _hp.append(f"--- 当前版本（第{run_num}轮，即上方论文{my_label}）---")
@@ -1319,7 +1319,7 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
                 traceback.print_exc()
                 err = {'index': i + 1, 'error': str(e), 'model': pm['model']}
                 _save_json(os.path.join(planning_dir, f'{i+1}_error.json'), err)
-                _emit(f"规划 [{i+1}/{n}] ❌ 失败 ({pm['model']})", str(e))
+                _emit(f"规划 [{i+1}/{n}] 失败 ({pm['model']})", str(e))
                 print(f"[AUTO-REVIEW] 规划 {i+1}/{n} 失败: {e}", flush=True)
                 return i, err
 
@@ -1334,11 +1334,11 @@ def run_auto_review(api=None, target_sid=None, tool_use_id=None, force_full=Fals
             for i in range(n):
                 r = planning_results.get(i, {})
                 if 'error' in r:
-                    output_parts.append(f"\n--- [{i+1}/{n}] ---\n❌ {r['error']}\n")
+                    output_parts.append(f"\n--- [{i+1}/{n}] ---\n失败: {r['error']}\n")
                 else:
                     output_parts.append(
                         f"\n--- [{i+1}/{n}] {r.get('reference_file', '?')} (模型: {r['model']}) ---\n"
-                        f"\n📝 规划正文:\n{r['content']}\n"
+                        f"\n规划正文:\n{r['content']}\n"
                     )
 
     # Compute summary statistics

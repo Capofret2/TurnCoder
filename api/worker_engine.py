@@ -1104,7 +1104,7 @@ class WorkerEngineMixin:
                                             # 完整渲染模式：实时更新气泡内容（打字机效果）
                                             temp_content = ""
                                             if thought_content:
-                                                temp_content += f"> **💭 思考过程：**\n{thought_content}\n\n---\n\n"
+                                                temp_content += f"> **思考过程：**\n{thought_content}\n\n---\n\n"
                                             temp_content += raw_content
                                             temp_content = temp_content.replace('<turn|>', '').replace('<end_of_turn>', '')
                                             display_content = temp_content
@@ -1153,7 +1153,7 @@ class WorkerEngineMixin:
                                                 received_chars = len(raw_content) + len(thought_content)
                                                 elapsed = current_time - (target_msg_for_stream.get('start_time') or current_time)
                                                 token_k = received_chars / 3000
-                                                thinking_hint = " 💭" if thought_content else ""
+                                                thinking_hint = " [思维链]" if thought_content else ""
                                                 target_msg_for_stream['summary'] = f"生成中{thinking_hint}: 已收到 {token_k:.1f}k tokens ({elapsed:.0f}s)"
                                                 if self.socketio:
                                                     self.socketio.emit('streaming_content', {
@@ -1272,7 +1272,7 @@ class WorkerEngineMixin:
                         print(f'[DEEP THINK 3] All 3 retries exhausted, returning error', flush=True)
                         _target_bubble = next((m for m in session['conversation_history'] if m['id'] == target_id), None)
                         if _target_bubble:
-                            _target_bubble['content'] = '**\u26a0\ufe0f \u601d\u8003\u91cd\u8bd5\u5931\u8d25\uff1a**\n\n\u6df1\u5ea6\u601d\u8003\u6a21\u5f0f\u4e0b\u6a21\u578b\u8fde\u7eed 3 \u6b21\u672a\u8fd4\u56de\u601d\u7ef4\u94fe\u3002\n\n\u8bf7\u624b\u52a8\u91cd\u8bd5\u6216\u5173\u95ed\u6df1\u5ea6\u601d\u8003\u6a21\u5f0f\u3002'
+                            _target_bubble['content'] = '**\u601d\u8003\u91cd\u8bd5\u5931\u8d25\uff1a**\n\n\u6df1\u5ea6\u601d\u8003\u6a21\u5f0f\u4e0b\u6a21\u578b\u8fde\u7eed 3 \u6b21\u672a\u8fd4\u56de\u601d\u7ef4\u94fe\u3002\n\n\u8bf7\u624b\u52a8\u91cd\u8bd5\u6216\u5173\u95ed\u6df1\u5ea6\u601d\u8003\u6a21\u5f0f\u3002'
                             _target_bubble['is_error'] = True
                             _target_bubble['summary'] = '\u601d\u8003\u91cd\u8bd5\u5931\u8d25'
                             _target_bubble.pop('content_parts', None)
@@ -1612,7 +1612,7 @@ class WorkerEngineMixin:
                 self.socketio.emit('show_toast', {'message': f"请求失败: {str(e)}", 'type': 'error'})
             target_msg = next((m for m in session['conversation_history'] if m['id'] == target_id), None)
             if target_msg and not target_msg.get('content'):
-                target_msg['content'] = f"**⚠️ 请求发生异常：**\n\n{'`'*3}text\n{str(e)}\n{'`'*3}"
+                target_msg['content'] = f"**请求发生异常：**\n\n{'`'*3}text\n{str(e)}\n{'`'*3}"
                 target_msg['summary'] = "请求失败"
                 target_msg['is_error'] = True
                 
@@ -1667,7 +1667,7 @@ class WorkerEngineMixin:
         if not prompt:
             target_msg = next((m for m in session['conversation_history'] if m['id'] == target_id), None)
             if target_msg:
-                target_msg['content'] = '**⚠️ 生图失败：** 未找到有效的用户消息作为提示词。'
+                target_msg['content'] = '**生图失败：** 未找到有效的用户消息作为提示词。'
                 target_msg['summary'] = '生图失败: 无提示词'
                 target_msg['is_error'] = True
             self.save_sessions(push_update=True)
@@ -1728,7 +1728,7 @@ class WorkerEngineMixin:
         # 更新气泡状态为生成中
         target_msg = next((m for m in session['conversation_history'] if m['id'] == target_id), None)
         if target_msg:
-            target_msg['summary'] = f'\U0001f3a8 生图中: {prompt[:30]}...'
+            target_msg['summary'] = f'生图中: {prompt[:30]}...'
             target_msg['model_name'] = model_name
             self.save_sessions(push_update=True)
 
@@ -1750,7 +1750,7 @@ class WorkerEngineMixin:
                 error_body = resp.text[:2000]
                 print(f'[IMAGE GEN] Error {resp.status_code}: {error_body}', flush=True)
                 if target_msg:
-                    target_msg['content'] = f'**\u26a0\ufe0f 生图失败 (HTTP {resp.status_code})：**\n\n{chr(96)*3}\n{error_body}\n{chr(96)*3}'
+                    target_msg['content'] = f'**生图失败 (HTTP {resp.status_code})：**\n\n{chr(96)*3}\n{error_body}\n{chr(96)*3}'
                     target_msg['summary'] = f'生图失败: HTTP {resp.status_code}'
                     target_msg['is_error'] = True
                     target_msg['timing'] = {'ttfb': elapsed, 'download': 0, 'stream': False}
@@ -1783,7 +1783,7 @@ class WorkerEngineMixin:
                             raise Exception(f'Image download failed: HTTP {_dl_resp.status_code}')
                     except Exception as _dl_e:
                         if target_msg:
-                            target_msg['content'] = f'**\u26a0\ufe0f 图片下载失败：** {str(_dl_e)}'
+                            target_msg['content'] = f'**图片下载失败：** {str(_dl_e)}'
                             target_msg['summary'] = '生图失败: 下载错误'
                             target_msg['is_error'] = True
                             target_msg['timing'] = {'ttfb': elapsed, 'download': 0, 'stream': False}
@@ -1792,7 +1792,7 @@ class WorkerEngineMixin:
                         return
                 else:
                     if target_msg:
-                        target_msg['content'] = f'**\u26a0\ufe0f 生图失败：** 响应格式未知\n\n{chr(96)*3}json\n{json.dumps(item, ensure_ascii=False, indent=2)[:1000]}\n{chr(96)*3}'
+                        target_msg['content'] = f'**生图失败：** 响应格式未知\n\n{chr(96)*3}json\n{json.dumps(item, ensure_ascii=False, indent=2)[:1000]}\n{chr(96)*3}'
                         target_msg['summary'] = '生图失败: 未知格式'
                         target_msg['is_error'] = True
                     self.save_sessions(push_update=True)
@@ -1801,8 +1801,8 @@ class WorkerEngineMixin:
 
                 # 成功：创建带 multimodal_blocks 的气泡
                 if target_msg:
-                    target_msg['content'] = f'\U0001f3a8 **生成完成** ({_size}, {_img_size/1024:.1f} KB)\n\n提示词: {prompt[:200]}'
-                    target_msg['summary'] = f'\U0001f3a8 生图完成: {prompt[:30]}...'
+                    target_msg['content'] = f'**生成完成** ({_size}, {_img_size/1024:.1f} KB)\n\n提示词: {prompt[:200]}'
+                    target_msg['summary'] = f'生图完成: {prompt[:30]}...'
                     target_msg['is_collapsed'] = True
                     target_msg['timing'] = {'ttfb': elapsed, 'download': 0, 'stream': False}
                     target_msg['multimodal_blocks'] = [{
@@ -1812,7 +1812,7 @@ class WorkerEngineMixin:
                 print(f'[IMAGE GEN] Success: {_img_fname} ({_img_size/1024:.1f} KB, {elapsed:.1f}s)', flush=True)
             else:
                 if target_msg:
-                    target_msg['content'] = f'**\u26a0\ufe0f 生图失败：** 响应中无图片数据\n\n{chr(96)*3}json\n{json.dumps(data, ensure_ascii=False, indent=2)[:1000]}\n{chr(96)*3}'
+                    target_msg['content'] = f'**生图失败：** 响应中无图片数据\n\n{chr(96)*3}json\n{json.dumps(data, ensure_ascii=False, indent=2)[:1000]}\n{chr(96)*3}'
                     target_msg['summary'] = '生图失败: 无数据'
                     target_msg['is_error'] = True
 
@@ -1824,7 +1824,7 @@ class WorkerEngineMixin:
             import traceback
             traceback.print_exc()
             if target_msg:
-                target_msg['content'] = f'**\u26a0\ufe0f 生图异常：**\n\n{chr(96)*3}\n{str(e)}\n{chr(96)*3}'
+                target_msg['content'] = f'**生图异常：**\n\n{chr(96)*3}\n{str(e)}\n{chr(96)*3}'
                 target_msg['summary'] = f'生图异常: {str(e)[:30]}'
                 target_msg['is_error'] = True
             self.save_sessions(push_update=True)

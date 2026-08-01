@@ -180,7 +180,7 @@
             }
         }
 
-        console.time('📦 Message Loop & Hashing');
+        console.time('Message Loop & Hashing');
         history.forEach((msg, index) => {
             const isStarred = globalSettings.enable_starred && globalSettings.starred_messages && globalSettings.starred_messages.some(m => m.content === msg.content && m.role === msg.role);
             if (toolResultSkipSet.has(msg.id) || thinkingSkipSet.has(msg.id) || _inlineRenderedTRs.has(msg.id) || autoReadSkipSet.has(msg.id) || subagentSkipSet.has(msg.id)) return;
@@ -201,7 +201,7 @@
             // 将 auto-read 结果纳入 hash，否则 auto-read 返回后 chatHash 不变导致不重渲染
             if (msg.content_parts) { msg.content_parts.forEach(p => { if (p.type === 'tool_use_part') { try { let td = JSON.parse(p.content); let ar = autoReadByTrigger[td.id]; if (ar) msgHash += '_ar_' + ar.msg.id + '_' + (ar.msg.content||'').length; } catch(e) {} } }); }
             
-            // 🚀 核心优化：缓存命中或 forceReuse 时直接复用 DOM 节点，避免 replaceChild 闪烁
+            // 核心优化：缓存命中或 forceReuse 时直接复用 DOM 节点，避免 replaceChild 闪烁
             if (bubbleCache[msg.id]) {
                 const cached = bubbleCache[msg.id];
                 const canReuse = cached.hash === msgHash || (cached.forceReuse && performance.now() < cached.forceReuse);
@@ -1268,7 +1268,7 @@
                 bubbleCache[msg.id] = { hash: msgHash, el: bubble, msg: msg };
                 fragment.appendChild(bubble);
             });
-            console.timeEnd('📦 Message Loop & Hashing');
+            console.timeEnd('Message Loop & Hashing');
 
             const dom0 = performance.now();
 
