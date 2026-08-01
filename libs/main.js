@@ -1172,6 +1172,11 @@ function _doHandleStateUpdate(data) {
             if (document.getElementById('archived-shelf') && document.getElementById('archived-shelf').style.display !== 'none') {
                 renderArchivedList();
             }
+            // Same treatment: deleting a session is exactly the moment a user is
+            // most likely to be looking at the bin, and a stale list there would
+            // suggest the delete did not take.
+            var _tsh = document.getElementById('trash-shelf');
+            if (_tsh && _tsh.style.display !== 'none') renderTrashList();
 
             // 构建组内会话集合
             const groupedSids = new Set();
@@ -1765,6 +1770,59 @@ function _doHandleStateUpdate(data) {
             renameSession(_tabCtxSid, oldName);
         }
 
+        /* Recycle bin. delete_session has always been a soft delete — it sets
+         * soft_deleted and the frontend filters those rows out everywhere — but
+         * nothing could bring one back, so a deleted session was unreachable
+         * without editing JSON by hand.
+         *
+         * Restore is the only action, and that is deliberate: there is no hard
+         * delete anywhere in the application, so nothing here needs a
+         * confirmation either. Deleting a session is always recoverable.
+         *
+         * The accepted consequence is that session files under data/sessions/ only
+         * ever accumulate — save_sessions' orphan sweep unlinks files with no entry
+         * in self.sessions, and a soft-deleted session keeps its entry forever. Do
+         * not "fix" that by adding a purge: transcripts are user assets and the
+         * program does not destroy them. Reclaiming the space is the user's call,
+         * made outside the app. */
+        function toggleTrashShelf() {
+            var shelf = document.getElementById('trash-shelf');
+            if (shelf.style.display === 'none') {
+                shelf.style.display = '';
+                renderTrashList();
+            } else {
+                shelf.style.display = 'none';
+            }
+        }
+
+        function renderTrashList() {
+            var list = document.getElementById('trash-list');
+            if (!list) return;
+            var sessMap = window._lastSessionsMap || {};
+            // Newest first: the entry a user is most likely reaching for is the one
+            // they deleted by mistake a moment ago.
+            var deleted = Object.keys(sessMap).filter(function(sid) {
+                return sessMap[sid].soft_deleted && sid !== 'starred_session_virtual';
+            }).sort(function(a, b) { return (sessMap[b].deleted_at || 0) - (sessMap[a].deleted_at || 0); });
+            var countEl = document.getElementById('trash-count');
+            if (countEl) countEl.textContent = deleted.length ? '(' + deleted.length + ')' : '';
+            if (deleted.length === 0) {
+                list.innerHTML = '<div style="color:var(--md-sys-color-on-surface-variant); text-align:center; padding:var(--md-sys-spacing-2);">回收站为空</div>';
+                return;
+            }
+            list.innerHTML = deleted.map(function(sid) {
+                var s = sessMap[sid];
+                var when = s.deleted_at
+                    ? new Date(s.deleted_at * 1000).toLocaleString('zh-CN', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})
+                    : '时间未知';
+                return '<div style="display:flex; align-items:center; justify-content:space-between; gap:var(--md-sys-spacing-1); padding:var(--md-sys-spacing-1) 0; border-bottom:1px solid var(--md-sys-color-outline-variant);">' +
+                    '<span style="flex:1; min-width:0; overflow:hidden;"><span style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + (s.name || '未命名') + '</span>' +
+                    '<span style="color:var(--md-sys-color-on-surface-variant); font-size:var(--md-sys-typescale-label-small-size);">' + when + '</span></span>' +
+                    '<button class="md-button md-button--tonal md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'restore_session\', sid:\'' + sid + '\'})" title="恢复到对话列表">恢复</button>' +
+                    '</div>';
+            }).join('');
+        }
+
         function toggleArchivedShelf() {
             var shelf = document.getElementById('archived-shelf');
             if (shelf.style.display === 'none') {
@@ -1791,7 +1849,7 @@ function _doHandleStateUpdate(data) {
                 return '<div style="display:flex; align-items:center; justify-content:space-between; gap:var(--md-sys-spacing-1); padding:var(--md-sys-spacing-1) 0; border-bottom:1px solid var(--md-sys-color-outline-variant);">' +
                     '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" title="点击恢复">' + (s.name || '未命名') + '</span>' +
                     '<button class="md-button md-button--tonal md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'unarchive_session\', sid:\'' + sid + '\'})" title="恢复">恢复</button>' +
-                    '<button class="md-button md-button--danger md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'delete_session\', sid:\'' + sid + '\'})" title="永久删除">删</button>' +
+                    '<button class="md-button md-button--outlined md-button--compact" style="min-height:24px; padding:0 var(--md-sys-spacing-2);" onclick="postAction({action:\'delete_session\', sid:\'' + sid + '\'})" title="移到回收站（可恢复）">删</button>' +
                     '</div>';
             }).join('');
         }

@@ -266,7 +266,25 @@ async function ccToolAbort(btn, index, partId) {
  * @param {string} partId content_part id of the tool call
  * @param {string} toolName shown in the confirmation
  */
+/* Tools whose re-execution changes nothing locally, so a retry needs no gate.
+ *
+ * The criterion is side effects, not speed. Read, Grep and Glob only read;
+ * WebSearch and WebFetch only issue a request. The worst outcome of running any
+ * of them twice is a fresher result.
+ *
+ * Everything absent from this set is assumed to have effects, which is the safe
+ * default: Bash, Edit and Write genuinely repeat theirs, 创建子会话 starts a
+ * second session, and the review tools spend another API call.
+ *
+ * Adding a name here is an assertion that re-running it is harmless. Get that
+ * wrong and the user believes there is a confirmation where there is none. */
+var CC_RETRY_NO_CONFIRM = {Read: 1, Grep: 1, Glob: 1, WebSearch: 1, WebFetch: 1};
+
 async function ccToolRetry(btn, index, partId, toolName) {
+    if (CC_RETRY_NO_CONFIRM[toolName]) {
+        ccToolAccept(btn, index, partId, true);
+        return;
+    }
     var ok = await showConfirmModal(
         '重新执行「' + (toolName || '该工具') + '」？\n\n'
         + '本次已有的返回结果会被删除，无法恢复。\n'

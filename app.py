@@ -265,6 +265,8 @@ def handle_action():
             backend.archive_session(data['sid'])
         elif action == 'unarchive_session':
             backend.unarchive_session(data['sid'])
+        elif action == 'restore_session':
+            backend.restore_session(data['sid'])
         elif action == 'reorder_session':
             backend.reorder_session(data['sid'], data.get('direction'), data.get('new_order'))
         elif action == 'add_image':

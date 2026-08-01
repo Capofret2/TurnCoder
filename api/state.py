@@ -22,7 +22,7 @@ class StateMixin:
     def get_full_state(self):
         """组装并返回当前对前端有用的完整状态（含多模态脱水）。"""
         version_stamp = getattr(self, 'state_version', time.time())
-        opt_sessions = {sid: {"name": s["name"], "order": s.get("order", 0), "soft_deleted": s.get("soft_deleted", False), "is_archived": s.get("is_archived", False), "_theme_hue": s.get("_theme_hue")} for sid, s in self.sessions.items()}
+        opt_sessions = {sid: {"name": s["name"], "order": s.get("order", 0), "soft_deleted": s.get("soft_deleted", False), "deleted_at": s.get("deleted_at"), "is_archived": s.get("is_archived", False), "_theme_hue": s.get("_theme_hue")} for sid, s in self.sessions.items()}
         opt_sessions["starred_session_virtual"] = {"name": "全局收藏", "order": float('-999999')}
         
         if self._active_sid == "starred_session_virtual":

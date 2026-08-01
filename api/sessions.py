@@ -262,8 +262,31 @@ class SessionMixin:
                     _g['session_ids'].remove(sid)
             # Soft delete: mark as hidden in frontend, session stays fully functional in backend
             self.sessions[sid]['soft_deleted'] = True
+            # Timestamped so the recycle bin can order by recency. A bin sorted any
+            # other way buries the one entry the user is most likely reaching for —
+            # the session they deleted by mistake a moment ago.
+            self.sessions[sid]['deleted_at'] = time.time()
             self.save_sessions(push_update=True)
 
+
+    def restore_session(self, sid):
+        """Bring a session back out of the recycle bin.
+
+        Group membership is deliberately not restored: delete_session strips the
+        sid from every group and records nothing about which one it came from, so
+        any guess here would be wrong some of the time. Dragging it back is one
+        gesture, and a wrong guess costs two.
+        """
+        if sid == "starred_session_virtual" or sid not in self.sessions:
+            return
+        self.sessions[sid].pop('soft_deleted', None)
+        self.sessions[sid].pop('deleted_at', None)
+        self.save_sessions(push_update=True)
+
+    # No purge counterpart, by design. Dropping a sid from self.sessions is what
+    # makes save_sessions' orphan sweep unlink the file, so such a method would be
+    # the only path in the application that destroys a transcript. Those are user
+    # assets; reclaiming the space is done outside the app.
 
     def rename_session(self, sid, new_name):
         if sid == "starred_session_virtual":
