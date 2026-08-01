@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<title>TurnCoder render harness</title>
+<!-- Real stylesheets, in the real order, so the dark tokens and the a11y-dark
+     overrides are genuinely in the cascade. -->
+<link rel="stylesheet" href="../../libs/tokens.css">
+<link rel="stylesheet" href="../../libs/styles.css">
+<style>
+  /* The only layout the harness adds: a composer stand-in so that
+     _mmPlaceScrollBtn has a real gap below the chat area to measure. */
+  #input-area { height: 56px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div id="main-area">
+  <div id="chat-container"></div>
+  <div id="chat-minimap" aria-hidden="true"></div>
+  <div id="input-area"></div>
+</div>
+
+<!-- Vendored copies from the repository, not a CDN. -->
+<script src="../../libs/marked.min.js"></script>
+<script src="../../libs/highlight.min.js"></script>
+
+<script>
+/* Boundary stubs only — nothing under test is replaced.
+ *
+ * These must be defined before the app scripts load: utils.js runs its marked
+ * configuration IIFE at load time, and chat.js and minimap.js wire their
+ * listeners at the end of their own files, so a stub declared afterwards would
+ * arrive too late to be seen.
+ *
+ * The three action exits record their arguments instead of hitting the network.
+ * That is what lets a test assert "right-click actually requested a collapse"
+ * rather than merely observing that nothing crashed. */
+var socket = { emit: function () {} };
+function renderMathInElement() {}
+function updateTokenEst() {}
+
+window.__calls = { toggleMode: [], postAction: [] };
+function toggleMode(index, modeType) {
+    window.__calls.toggleMode.push({ index: index, mode: modeType });
+}
+function postAction(payload) {
+    window.__calls.postAction.push(payload);
+    return Promise.resolve();
+}
+/* No rejectApproval stub. codeblocks.js declares one further down and a global
+ * function declaration loaded later wins, so a stub here never ran — the first
+ * version of this file had one and it was silently dead.
+ *
+ * Letting the real implementation through is the better test anyway: it proves
+ * the action name and the part id reach the payload that would go to the
+ * backend, where a stub only proved the button had been clicked. Its prompt()
+ * is auto-dismissed by the page fixture. */
+function copyMsg() {}
+function copyPayload() {}
+function openEditModal() { return Promise.resolve(); }
+function deleteMessageOptimistic() {}
+function _fetchDehydratedContent() {}
+
+/* Globals main.js owns. var, not let: these are read by name from chat.js and
+   reassigned from the harness API below. */
+var chatContainer = document.getElementById('chat-container');
+var currentHistory = [];
+var bubbleCache = {};
+var globalSettings = {
+    enable_starred: false,
+    enable_tool_inject: true,
+    enable_descriptor_tool_calls: true,
+    enable_show_all_autoread: false,
+    developer_mode: false,
+    starred_messages: []
+};
+window.currentSessionId = 'harness';
+</script>
+
+<script src="../../libs/icons.js"></script>
+<script src="../../libs/utils.js"></script>
+<script src="../../libs/codeblocks.js"></script>
+<script src="../../libs/minimap.js"></script>
+<script src="../../libs/chat.js"></script>
+
+<script>
+window.__harness = {
+    /** Render a synthetic history through the real renderChat. */
+    render: function (history, settings) {
+        if (settings) {
+            for (var k in settings) globalSettings[k] = settings[k];
+        }
+        // Cleared per render so a case never inherits the previous one's cache.
+        bubbleCache = {};
+        window._expandStateMap = {};
+        window._dehydratedContentCache = {};
+        window._thinkingCache = {};
+        window.lastRenderedSessionId = null;
+        window.__calls = { toggleMode: [], postAction: [] };
+        renderChat(history);
+        if (typeof renderMinimap === 'function') renderMinimap();
+    },
+
+    /** A run of alternating turns, each tall enough to force real scrolling. */
+    makeHistory: function (n, opts) {
+        opts = opts || {};
+        var out = [];
+        for (var i = 0; i < n; i++) {
+            out.push({
+                id: i + 1,
+                role: i % 2 === 0 ? 'user' : 'assistant',
+                content: 'bubble ' + (i + 1) + '\n'
+                    + new Array(opts.lines || 6).join('filler line\n'),
+                summary: 'summary ' + (i + 1),
+                created_at: 1700000000 + i,
+                is_hidden: !!(opts.hideEvery && (i + 1) % opts.hideEvery === 0)
+            });
+        }
+        return out;
+    },
+
+    /** One assistant turn holding a pending 申请审批 tool call. */
+    approvalHistory: function () {
+        return [{
+            id: 1,
+            role: 'assistant',
+            content: 'requesting approval',
+            created_at: 1700000000,
+            content_parts: [{
+                type: 'tool_use_part',
+                id: 'part-approval-1',
+                status: 'pending',
+                content: JSON.stringify({
+                    type: 'tool_use',
+                    id: 'toolu_harness_approval',
+                    name: '\u7533\u8bf7\u5ba1\u6279',
+                    input: { description: 'harness approval request' }
+                })
+            }]
+        }];
+    },
+
+    /** Select the whole body of one bubble, as a user dragging over it would. */
+    selectBubbleText: function (msgId) {
+        var el = document.querySelector('#msg-bubble-' + msgId + ' .content');
+        if (!el) return false;
+        var range = document.createRange();
+        range.selectNodeContents(el);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return !window.getSelection().isCollapsed;
+    },
+
+    clearSelection: function () {
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+    },
+
+    /* Synthetic dispatch rather than a real right-click: the handler is what is
+       under test, and a real button-2 press also drags the browser's own
+       selection semantics into the assertion. */
+    fireContextMenu: function (msgId) {
+        var el = document.getElementById('msg-bubble-' + msgId);
+        if (!el) return false;
+        var ev = new MouseEvent('contextmenu', {
+            bubbles: true, cancelable: true, clientX: 10, clientY: 10
+        });
+        el.dispatchEvent(ev);
+        return ev.defaultPrevented;
+    },
+
+    tickGeometry: function () {
+        var rail = document.getElementById('chat-minimap');
+        var ticks = Array.prototype.slice.call(rail.querySelectorAll('.mm-tick'));
+        return {
+            railHeight: rail.getBoundingClientRect().height,
+            hit: rail.style.getPropertyValue('--mm-hit'),
+            ticks: ticks.map(function (t) {
+                return {
+                    top: parseFloat(t.style.top),
+                    height: parseFloat(t.style.height),
+                    mid: t.dataset.mid,
+                    cls: t.className
+                };
+            })
+        };
+    },
+
+    cursorTop: function () {
+        var c = document.querySelector('#chat-minimap .mm-cursor');
+        return c ? parseFloat(c.style.top) : null;
+    },
+
+    setTheme: function (mode, accent) {
+        var root = document.documentElement;
+        if (mode === 'dark') root.setAttribute('data-theme', 'dark');
+        else root.removeAttribute('data-theme');
+        if (accent) root.setAttribute('data-accent', accent);
+    }
+};
+</script>
+</body>
+</html>
