@@ -1150,6 +1150,38 @@
 #chat-minimap:hover .mm-user { width: 22px; }
 #chat-minimap:hover .mm-assistant { width: 13px; }
 #chat-minimap:hover .mm-hidden { width: 16px; }
+/* Two further encodings on the same tick, both additive, so the width and fill
+   the rules above assign stay exactly as they were.
+
+   Opacity for the context-reduced states. A bubble in summary mode or folded
+   shut is still in the conversation, so it must not read as excluded the way
+   mm-hidden's error tint does — only as quieter. Summary mode discards more of
+   the text than folding does, hence the lower value. minimap.js emits neither
+   class on a hidden row, so they never contend with mm-hidden's own opacity. */
+.mm-omit { opacity: 0.5; }
+.mm-collapse { opacity: 0.7; }
+/* A dot left of the tick for a bubble still holding an unsettled tool call.
+   A pseudo-element rather than a child node: minimap.js indexes
+   querySelectorAll('.mm-tick') positionally for bare-rail clicks, so an extra
+   sibling would misalign every one of them. ::after is already the hit area;
+   ::before was free.
+
+   Anchored to the tick, not to a fixed rail offset, so the gap survives the
+   hover width change. The rail is overflow:visible, which lets the dot sit a
+   few pixels past its left edge when an expanded user tick pushes it there. */
+.mm-pending::before {
+    content: ''; position: absolute;
+    right: calc(100% + 3px); top: 50%;
+    width: 5px; height: 5px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-warning);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+/* .mm-tick:hover applies scaleY(1.8) and the dot inherits it as a child of the
+   transformed box, which would stretch a 5px circle into a lozenge. 1/1.8
+   cancels exactly. */
+.mm-tick:hover.mm-pending::before { transform: translateY(-50%) scaleY(0.5556); }
 /* Position marker: a border-drawn triangle whose apex points left at the ticks.
    Its box height is exactly the two transparent borders, 10px, and minimap.js
    centres it on a tick using MM_CURSOR_H — keep the two in step.

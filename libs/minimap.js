@@ -5,6 +5,14 @@
  * error-tinted for bubbles excluded from the context. Clicking anywhere on the
  * rail scrolls to a bubble.
  *
+ * Three visual dimensions, deliberately orthogonal so any combination stays
+ * readable. Width and fill carry the role (or exclusion). Opacity carries how
+ * much of the bubble is currently in play — full for a normal turn, dimmer once
+ * it is folded, dimmest in summary mode. A dot to the left of the tick marks a
+ * bubble still holding an unsettled tool call, which under autopilot is the one
+ * position worth jumping straight to. Adding a fourth encoding means finding a
+ * fourth dimension, not reusing one of these.
+ *
  * Ticks are evenly spaced, one pitch per bubble, so a wall of short replies is
  * as easy to hit as one long essay. Jump accuracy is unaffected: a click
  * resolves the bubble by id, so where the tick happens to sit never entered
@@ -43,6 +51,29 @@ var _mmTickY = [];    // tick y within the rail
 var _mmTickH = MM_TICK_H;  // drawn thickness this render; shrinks when dense
 var _mmMsgs = [];     // message refs, not copies, so a streaming edit shows up
                       // in the hover preview with no invalidation step
+
+/**
+ * True when a bubble still holds a tool call nobody has settled yet.
+ *
+ * pending is waiting on a decision and executing is mid-flight; both are places
+ * the reader may need to reach quickly, which is the entire reason the rail
+ * marks them. adopted, rejected and failed are finished and get no marker.
+ *
+ * code and terminal parts share the same status field, so they are covered too;
+ * text and correction parts carry no status and fall through.
+ *
+ * @param {object} msg a conversation history entry
+ * @returns {boolean}
+ */
+function _mmPending(msg) {
+    var parts = msg && msg.content_parts;
+    if (!parts) return false;
+    for (var i = 0; i < parts.length; i++) {
+        var s = parts[i].status;
+        if (s === 'pending' || s === 'executing') return true;
+    }
+    return false;
+}
 
 function renderMinimap() {
     var rail = document.getElementById('chat-minimap');
@@ -124,13 +155,28 @@ function renderMinimap() {
         _mmTickY.push(y);
         _mmMsgs.push(row.msg);
 
+        // Exactly one base class, then modifiers. The modifiers are withheld
+        // from hidden rows on purpose: mm-hidden already spends opacity, and
+        // emitting both would leave which one wins to source order.
         var cls = 'mm-tick ';
         if (row.msg.is_hidden) cls += 'mm-hidden';
         else if (row.msg.role === 'user') cls += 'mm-user';
         else cls += 'mm-assistant';
+        if (!row.msg.is_hidden) {
+            if (row.msg.is_omitted) cls += ' mm-omit';
+            else if (row.msg.is_collapsed) cls += ' mm-collapse';
+        }
+        var pend = _mmPending(row.msg);
+        if (pend) cls += ' mm-pending';
 
-        var label = '[ID:' + row.id + '] ' + (row.msg.is_hidden ? '已隐藏 ' : '')
-            + (row.msg.role === 'user' ? '用户' : '助手');
+        var st = [];
+        if (row.msg.is_hidden) st.push('已隐藏');
+        if (row.msg.is_omitted) st.push('概括模式');
+        if (row.msg.is_collapsed) st.push('已折叠');
+        if (pend) st.push('待处理工具调用');
+        var label = '[ID:' + row.id + '] '
+            + (row.msg.role === 'user' ? '用户' : '助手')
+            + (st.length ? ' · ' + st.join(' · ') : '');
         var summary = (row.msg.summary || '').substring(0, 40).replace(/"/g, '&quot;');
         if (summary) label += ' — ' + summary;
 

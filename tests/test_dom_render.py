@@ -311,6 +311,87 @@ def test_ticks_carry_aria_label_and_not_title(page):
     assert '[ID:1]' in (tick.get_attribute('aria-label') or '')
 
 
+# ------------------------------------------------- minimap state encodings
+
+def test_pending_tool_call_gets_a_dot_on_its_tick(page):
+    """The dot is a ::before rather than a child node, because minimap.js indexes
+    querySelectorAll('.mm-tick') positionally for bare-rail clicks and an extra
+    sibling would misalign every one of them. Asserting the rendered pseudo-element
+    is therefore closer to the point than asserting the class name."""
+    page.evaluate("""
+        var hist = window.__harness.makeHistory(4);
+        hist[1].content_parts = [{type: 'tool_use_part', id: 'p1',
+                                  status: 'pending', tool_id: 't1',
+                                  tool_name: 'Bash',
+                                  content: JSON.stringify({type: 'tool_use',
+                                      id: 't1', name: 'Bash', input: {}})}];
+        window.__harness.render(hist);
+    """)
+    geom = page.evaluate('window.__harness.tickGeometry()')
+    assert 'mm-pending' in geom['ticks'][1]['cls']
+    assert all('mm-pending' not in t['cls']
+               for i, t in enumerate(geom['ticks']) if i != 1)
+    width = page.eval_on_selector(
+        '#chat-minimap .mm-pending',
+        "e => getComputedStyle(e, '::before').width")
+    assert width == '5px', 'the marker did not render: %s' % width
+
+
+def test_adopted_tool_call_gets_no_dot(page):
+    page.evaluate("""
+        var hist = window.__harness.makeHistory(4);
+        hist[1].content_parts = [{type: 'tool_use_part', id: 'p1',
+                                  status: 'adopted', tool_id: 't1',
+                                  tool_name: 'Bash',
+                                  content: JSON.stringify({type: 'tool_use',
+                                      id: 't1', name: 'Bash', input: {}})}];
+        window.__harness.render(hist);
+    """)
+    geom = page.evaluate('window.__harness.tickGeometry()')
+    assert all('mm-pending' not in t['cls'] for t in geom['ticks'])
+
+
+def test_summary_and_folded_ticks_are_dimmed_by_different_amounts(page):
+    """Read from the computed style, not the class list: a class that is present
+    while its rule is misspelled is the standard silent CSS failure, and the two
+    values have to stay ordered — summary mode discards more text than folding."""
+    page.evaluate("""
+        var hist = window.__harness.makeHistory(6);
+        hist[1].is_omitted = true;
+        hist[3].is_collapsed = true;
+        window.__harness.render(hist);
+    """)
+    geom = page.evaluate('window.__harness.tickGeometry()')
+    assert 'mm-omit' in geom['ticks'][1]['cls']
+    assert 'mm-collapse' in geom['ticks'][3]['cls']
+    ops = page.evaluate("""
+        (function () {
+            var r = document.getElementById('chat-minimap');
+            var g = function (s) {
+                var e = r.querySelector(s);
+                return e ? parseFloat(getComputedStyle(e).opacity) : null;
+            };
+            return {omit: g('.mm-omit'), collapse: g('.mm-collapse'),
+                    plain: g('.mm-assistant:not(.mm-omit):not(.mm-collapse)')};
+        })()
+    """)
+    assert ops['omit'] < ops['collapse'] < ops['plain'], ops
+
+
+def test_a_hidden_row_emits_no_dimming_modifier(page):
+    """mm-hidden already spends opacity. Emitting a second opacity class next to it
+    would leave which one wins to source order, so minimap.js withholds them."""
+    page.evaluate("""
+        var hist = window.__harness.makeHistory(4);
+        hist[1].is_hidden = true;
+        hist[1].is_omitted = true;
+        window.__harness.render(hist);
+    """)
+    cls = page.evaluate('window.__harness.tickGeometry()')['ticks'][1]['cls']
+    assert 'mm-hidden' in cls
+    assert 'mm-omit' not in cls and 'mm-collapse' not in cls, cls
+
+
 # ------------------------------------------------------ scroll-bottom button
 
 def test_scroll_button_lives_outside_the_diffed_container(page):
