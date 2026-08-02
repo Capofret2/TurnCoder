@@ -169,9 +169,13 @@ class ContextMixin:
                     paths_set_with_dirs.add('/'.join(parts[:i]))
             
             for p in sorted(list(paths_set_with_dirs)):
+                # p 是本函数自己构造的树片段，上游已 replace('\\', '/') 归一化，所以
+                # 紧邻的 count('/') 是对的。这里用 basename 而不是 split('/')[-1]：两者
+                # 在归一化路径上等价，而选前者是为了让 tests 里那条仓库级守卫保持只有
+                # 一个例外（URL）——带逐点例外清单的检查很快就没人敢信。
                 depth = p.count('/')
                 indent = "  " * depth
-                name = p.split('/')[-1]
+                name = os.path.basename(p)
                 is_file = p in all_paths_dict
                 if is_file:
                     full_tree_str += f"{indent}|-- {name}{all_paths_dict[p]}\n"
@@ -220,9 +224,10 @@ class ContextMixin:
                         paths_set.add('/'.join(parts[:i]))
 
                 for p in sorted(list(paths_set)):
+                    # 同上：p 已归一化为正斜杠，basename 与 split('/')[-1] 等价。
                     depth = p.count('/')
                     indent = "  " * depth
-                    name = p.split('/')[-1]
+                    name = os.path.basename(p)
                     is_file = p in valid_file_dict
                     if is_file:
                         tree_str += f"{indent}|-- {name}{valid_file_dict[p]}\n"

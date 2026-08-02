@@ -646,7 +646,7 @@ class ToolAcceptMixin:
                                             if _en:
                                                 bt = chr(96) * 3
                                                 _ar_id = f'toolu_autoread_{self._next_id()}_0'
-                                                _ar_bubble = {'id': self._next_id(), 'role': 'user', 'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_en}\n{bt}\n\n<system-reminder>\nThis file was modified by your Edit. The content above is the latest version.\n</system-reminder>', 'summary': f'自动读取 (Edit): {_efp.split("/")[-1]}', 'is_omitted': False, 'is_collapsed': False, 'is_tool_result': True, 'is_auto_read': True, 'auto_read_file': _efp, 'tool_use_id': _ar_id, 'auto_read_trigger_id': _tuid, 'created_at': time.time()}
+                                                _ar_bubble = {'id': self._next_id(), 'role': 'user', 'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_en}\n{bt}\n\n<system-reminder>\nThis file was modified by your Edit. The content above is the latest version.\n</system-reminder>', 'summary': f'自动读取 (Edit): {os.path.basename(_efp)}', 'is_omitted': False, 'is_collapsed': False, 'is_tool_result': True, 'is_auto_read': True, 'auto_read_file': _efp, 'tool_use_id': _ar_id, 'auto_read_trigger_id': _tuid, 'created_at': time.time()}
                                                 _sess['conversation_history'].append(_ar_bubble)
                                                 self.save_sessions(push_update=True)
                                         except Exception:
@@ -686,7 +686,7 @@ class ToolAcceptMixin:
                                         'id': self._next_id(),
                                         'role': 'user',
                                         'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_en}\n{bt}\n\n<system-reminder>\nThis file was modified by your Edit. The content above is the latest version.\n</system-reminder>',
-                                        'summary': f'自动读取 (Edit): {_edit_fp.split("/")[-1]}',
+                                        'summary': f'自动读取 (Edit): {os.path.basename(_edit_fp)}',
                                         'is_omitted': False,
                                         'is_collapsed': False,
                                         'is_tool_result': True,
@@ -711,12 +711,12 @@ class ToolAcceptMixin:
                                         if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
                                             if _m.get('is_auto_read') and _m.get('auto_read_file') == _edit_fp:
                                                 _m['is_outdated_read'] = True
-                                                _m['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                                _m['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
                                             elif not _m.get('is_auto_read'):
                                                 _ar_info = _ar_tui.get(_m.get('tool_use_id', ''))
                                                 if _ar_info and _ar_info[0] == 'Read' and _ar_info[1] == _edit_fp:
                                                     _m['is_outdated_read'] = True
-                                                    _m['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                                    _m['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
                                     session['conversation_history'].append(_ar_bubble)
                                     self.save_sessions(push_update=True)
                                 except Exception:
@@ -729,7 +729,7 @@ class ToolAcceptMixin:
                                 if _entry and isinstance(_entry, dict):
                                     _other_sids = _entry.get('sessions', set()) - {_active_sid}
                                     if not _other_sids:
-                                        print(f'[CROSS-SESSION AR] No other sessions for {_edit_fp.split("/")[-1]} (registered: {len(_entry.get("sessions", set()))} sessions, active: {_active_sid[:8]})', flush=True)
+                                        print(f'[CROSS-SESSION AR] No other sessions for {os.path.basename(_edit_fp)} (registered: {len(_entry.get("sessions", set()))} sessions, active: {_active_sid[:8]})', flush=True)
                                     if _other_sids:
                                         try:
                                             _bn, _bn_total_lines, _bn_truncated = _prepare_autoread_content(_edit_fp)
@@ -745,7 +745,7 @@ class ToolAcceptMixin:
                                                     'id': self._next_id(),
                                                     'role': 'user',
                                                     'content': f'**Tool Result** (tool: {_bar_id})\n\n{bt}\n{_bn}\n{bt}\n\n<system-reminder>\nThis file was modified. The content above is the latest version. Your previous read of this file is now outdated.\n</system-reminder>',
-                                                    'summary': f'自动读取 (跨会话修改): {_edit_fp.split("/")[-1]}',
+                                                    'summary': f'自动读取 (跨会话修改): {os.path.basename(_edit_fp)}',
                                                     'is_omitted': False,
                                                     'is_collapsed': False,
                                                     'is_tool_result': True,
@@ -769,15 +769,15 @@ class ToolAcceptMixin:
                                                     if _bm.get('is_tool_result') and not _bm.get('is_outdated_read'):
                                                         if _bm.get('is_auto_read') and _bm.get('auto_read_file') == _edit_fp:
                                                             _bm['is_outdated_read'] = True
-                                                            _bm['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                                            _bm['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
                                                         elif not _bm.get('is_auto_read'):
                                                             _bm_info = _bcast_tui.get(_bm.get('tool_use_id', ''))
                                                             if _bm_info and _bm_info[0] == 'Read' and _bm_info[1] == _edit_fp:
                                                                 _bm['is_outdated_read'] = True
-                                                                _bm['content'] = f"（已省略，概括为：{_edit_fp.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                                                _bm['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
                                                 _os['conversation_history'].append(_bar_bubble)
                                             self.save_sessions(push_update=True)
-                                            print(f'[CROSS-SESSION AR] Broadcast OK: {_edit_fp.split("/")[-1]} → {len(_other_sids)} sessions', flush=True)
+                                            print(f'[CROSS-SESSION AR] Broadcast OK: {os.path.basename(_edit_fp)} → {len(_other_sids)} sessions', flush=True)
                                         except Exception as _be:
                                             print(f'[CROSS-SESSION AR] Broadcast failed: {_be}', flush=True)
                         self._continue_autopilot_tool_queue(session, _active_sid)
@@ -1078,7 +1078,7 @@ class ToolAcceptMixin:
                     'id': self._next_id(),
                     'role': 'user',
                     'content': f'**Tool Result** (tool: {_ar_id})\n\n{bt}\n{_numbered}\n{bt}\n\n<system-reminder>\nThis file was modified. The content above is the latest version. Your previous read of this file is now outdated.\n</system-reminder>',
-                    'summary': f'自动读取 (外部修改): {file_path.split("/")[-1]}',
+                    'summary': f'自动读取 (外部修改): {os.path.basename(file_path)}',
                     'is_omitted': False,
                     'is_collapsed': False,
                     'is_tool_result': True,
@@ -1141,12 +1141,12 @@ class ToolAcceptMixin:
                         if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
                             if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
                                 _m['is_outdated_read'] = True
-                                _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
                             elif not _m.get('is_auto_read'):
                                 _chk_info = _chk_tui.get(_m.get('tool_use_id', ''))
                                 if _chk_info and _chk_info[0] == 'Read' and _chk_info[1] == file_path:
                                     _m['is_outdated_read'] = True
-                                    _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                                    _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
                 except Exception:
                     pass
         if _injected > 0:

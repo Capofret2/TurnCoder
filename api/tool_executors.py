@@ -893,7 +893,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
             if _pr_new_lines.issubset(_pr_visible):
                 return ToolResult(
                     f'<system-reminder>\nThis Read was intercepted: the requested range (lines {_pr_start+1}-{_pr_end}) is already within the visible line set for {file_path}. No new lines would be added. Use the existing content from the previous read.\n</system-reminder>',
-                    f'Read 部分读入防重: {file_path.split("/")[-1]}'
+                    f'Read 部分读入防重: {os.path.basename(file_path)}'
                 )
     if _r_api and _r_sid and not _is_system_read and not _pr_settings.get('enable_partial_read', False):
         _r_session = _r_api.sessions.get(_r_sid, {})
@@ -911,7 +911,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 print(f'[READ DEDUP] Local intercepted: {file_path}', flush=True)
                 return ToolResult(
                     f'<system-reminder>\nThis Read was intercepted: the file {file_path} already has a valid, non-hidden read result in this conversation. Re-reading is unnecessary — use the existing content from the previous read.\n</system-reminder>',
-                    f'Read 防重拦截: {file_path.split("/")[-1]}'
+                    f'Read 防重拦截: {os.path.basename(file_path)}'
                 )
             elif not _dm.get('is_auto_read'):
                 # 检查是否是同文件的 Read 工具返回
@@ -927,7 +927,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                                         print(f'[READ DEDUP] Local intercepted (non-autoread): {file_path}', flush=True)
                                         return ToolResult(
                                             f'<system-reminder>\nThis Read was intercepted: the file {file_path} already has a valid, non-hidden read result in this conversation. Re-reading is unnecessary — use the existing content from the previous read.\n</system-reminder>',
-                                            f'Read 防重拦截: {file_path.split("/")[-1]}'
+                                            f'Read 防重拦截: {os.path.basename(file_path)}'
                                         )
                                 except: pass
     try:
@@ -961,8 +961,8 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 _mime = _mime_map.get(_ext, 'image/png')
             # 返回特殊格式的 ToolResult，pipeline 会识别并注入 multimodal_blocks
             _result = ToolResult(
-                f'[Image: {file_path.split("/")[-1]}] ({_size/1024:.1f} KB, {_mime})',
-                f'Read: {file_path.split("/")[-1]} (image)'
+                f'[Image: {os.path.basename(file_path)}] ({_size/1024:.1f} KB, {_mime})',
+                f'Read: {os.path.basename(file_path)} (image)'
             )
             _result._image_data = _img_data
             _result._image_mime = _mime
@@ -989,7 +989,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                     if outputs:
                         parts.append(f'[Output]:\n{outputs}')
                 content = '\n\n'.join(parts)
-                return ToolResult(content, f'Read: {file_path.split("/")[-1]} (notebook, {len(cells)} cells)')
+                return ToolResult(content, f'Read: {os.path.basename(file_path)} (notebook, {len(cells)} cells)')
             except Exception as _nbe:
                 return ToolResult(f'<tool_use_error>Failed to parse notebook: {str(_nbe)}</tool_use_error>', 'Read: notebook解析失败', is_error=True)
         # PDF 文件：使用 PyMuPDF 提取文本
@@ -1024,7 +1024,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 texts = [f'--- Page {i+1} ---\n{doc[i].get_text()}' for i in range(start_page, min(end_page, len(doc)))]
                 doc.close()
                 content = '\n\n'.join(texts)
-                return ToolResult(content, f'Read: {file_path.split("/")[-1]} (PDF, {end_page-start_page} pages)')
+                return ToolResult(content, f'Read: {os.path.basename(file_path)} (PDF, {end_page-start_page} pages)')
             except Exception as _pdf_err:
                 return ToolResult(f'<tool_use_error>PDF read error: {str(_pdf_err)}</tool_use_error>', 'Read: PDF读取失败', is_error=True)
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -1032,7 +1032,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
         if not content:
             return ToolResult(
                 f'<system-reminder>\nThe file {file_path} exists but is empty (0 bytes).\n</system-reminder>',
-                f'Read: {file_path.split("/")[-1]} (empty)'
+                f'Read: {os.path.basename(file_path)} (empty)'
             )
         est_tokens = len(content) / 3
         lines = content.splitlines(keepends=True)
@@ -1082,12 +1082,12 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 if _rdm.get('is_tool_result') and not _rdm.get('is_outdated_read'):
                     if _rdm.get('is_auto_read') and _rdm.get('auto_read_file') == file_path:
                         _rdm['is_outdated_read'] = True
-                        _rdm['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                        _rdm['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
                     elif not _rdm.get('is_auto_read'):
                         _rdinfo = _rd_tui.get(_rdm.get('tool_use_id', ''))
                         if _rdinfo and _rdinfo[0] == 'Read' and _rdinfo[1] == file_path:
                             _rdm['is_outdated_read'] = True
-                            _rdm['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                            _rdm['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
         # 维护 _partial_read_state（无论 enable_partial_read 开关状态都执行）
         if _r_api and _r_sid:
             _pr_session = _r_api.sessions.get(_r_sid, {})
@@ -1135,7 +1135,7 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                                         _bk_input = _bkcp.get('tool_input') or {}
                                         if _bkcp.get('tool_name') == 'Read' and _bk_input.get('file_path') == file_path:
                                             _bkm['_read_file_path'] = file_path
-        _result = ToolResult(numbered, f'Read: {file_path.split("/")[-1]}')
+        _result = ToolResult(numbered, f'Read: {os.path.basename(file_path)}')
         _result._read_file_path = file_path
         return _result
     except FileNotFoundError:
@@ -1160,7 +1160,7 @@ def execute_write(tool_input, settings, cache_dir, **kwargs):
             os.makedirs(_dir, exist_ok=True)
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
-        return ToolResult(f'File created successfully at: {file_path}', f'Write: {file_path.split("/")[-1]}')
+        return ToolResult(f'File created successfully at: {file_path}', f'Write: {os.path.basename(file_path)}')
     except Exception as e:
         return ToolResult(f'<tool_use_error>Write error: {str(e)}</tool_use_error>', f'Write: 错误', is_error=True)
 
@@ -1198,7 +1198,7 @@ def execute_edit(tool_input, settings, cache_dir, **kwargs):
                 'id': api._next_id(),
                 'role': 'user',
                 'content': f'**Tool Result** (tool: {_fail_ar_id})\n\n{bt}\n{_fail_numbered}\n{bt}',
-                'summary': f'自动读取 (Edit失败): {file_path.split("/")[-1]}',
+                'summary': f'自动读取 (Edit失败): {os.path.basename(file_path)}',
                 'is_omitted': False,
                 'is_collapsed': False,
                 'is_tool_result': True,
@@ -1223,14 +1223,14 @@ def execute_edit(tool_input, settings, cache_dir, **kwargs):
                 if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
                     if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
                         _m['is_outdated_read'] = True
-                        _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                        _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
                     elif not _m.get('is_auto_read'):
                         _finfo = _fail_tui.get(_m.get('tool_use_id', ''))
                         if _finfo and _finfo[0] == 'Read' and _finfo[1] == file_path:
                             _m['is_outdated_read'] = True
-                            _m['content'] = f"（已省略，概括为：{file_path.split('/')[-1]} 的旧版本读取结果，已被更新的读取替代）"
+                            _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
             _fail_session.setdefault('conversation_history', []).append(_fail_ar_bubble)
-            print(f'[EDIT FAIL AUTOREAD] Created autoread bubble for {file_path.split("/")[-1]}, session has {len(_fail_session.get("conversation_history", []))} messages now', flush=True)
+            print(f'[EDIT FAIL AUTOREAD] Created autoread bubble for {os.path.basename(file_path)}, session has {len(_fail_session.get("conversation_history", []))} messages now', flush=True)
         return ToolResult(
             f'<tool_use_error>String to replace not found in file.\nString: {old_string[:200]}</tool_use_error>',
             'Edit: 未找到', is_error=True
@@ -1271,8 +1271,8 @@ def execute_edit(tool_input, settings, cache_dir, **kwargs):
         _entry['last_access'] = time.time()
         # 不更新 mtime/hash，让 _check 能检测到差异
     if replace_all:
-        return ToolResult(f'The file {file_path} has been updated. All occurrences were successfully replaced.', f'Edit: {file_path.split("/")[-1]}')
-    return ToolResult(f'The file {file_path} has been updated successfully.', f'Edit: {file_path.split("/")[-1]}')
+        return ToolResult(f'The file {file_path} has been updated. All occurrences were successfully replaced.', f'Edit: {os.path.basename(file_path)}')
+    return ToolResult(f'The file {file_path} has been updated successfully.', f'Edit: {os.path.basename(file_path)}')
 
 
 @register_executor('Bash', setting_check='enable_tool_simulate')

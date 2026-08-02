@@ -328,6 +328,43 @@ def test_tool_system_prompt_has_no_hardcoded_platform(read_text):
         assert ph in src, 'tool_system.json 缺少占位符 %s' % ph
 
 
+# ------------------------------------------------ Windows 路径处理
+
+def test_no_file_path_is_split_on_forward_slash_only(read_text):
+    """取文件名要用 os.path.basename，不能用 split("/")[-1]。
+
+    Windows 路径用反斜杠，那个表达式在 `D:\\Repos\\app.py` 上找不到任何 `/`，于是 `[-1]`
+    返回**整条路径**。后果不只是摘要变长：过时读取的「已省略，概括为：…」替换文本会进入
+    模型上下文，一条说明里塞进整条绝对路径等于每次为一个文件名付出四五十个字符。
+
+    这个写法极易被重新引入，因为它在 Linux 上完全正确（那里路径就是用 `/`），所以在那台
+    机器上写代码的人不会收到任何提示，而它还比 basename 短、看起来更顺手。
+
+    os.path.basename 在两个平台上都是严格改进而非取舍：Windows 的 ntpath 把 `/` 与 `\\`
+    都当分隔符，Linux 的 posixpath 只认 `/` 而那里的路径本来就用 `/`。
+
+    含 `url` 的行是刻意的例外——URL 永远用正斜杠，对它调路径函数是把工具用错了地方。
+    这个例外写在这里，免得下一个人以为守卫漏了几处而去「补全」它。
+
+    **这条守卫刻意是钝的，不要给它加逐点例外。** 它第一次运行时抓到了 context.py 的两处
+    树片段拼接，而那两处其实是对的：那里的 `p` 由本函数自己用 `replace('\\\\', '/')` 归一化
+    后再 `'/'.join` 拼出，所以只含正斜杠。当时的处理是改掉那两处而不是给守卫开例外，依据
+    是两侧代价不对称——假阳性的代价是一次无害的编辑（basename 在归一化路径上等价），漏判
+    的代价是跨平台的静默错误输出。一个带例外清单的检查很快就没人敢相信它。
+    """
+    import glob as _g
+    import os as _o
+
+    offenders = []
+    for rel in ['app.py'] + sorted(_g.glob('api/*.py')):
+        for i, line in enumerate(read_text(rel).splitlines(), 1):
+            if 'url' in line:
+                continue
+            if '.split("/")[-1]' in line or ".split('/')[-1]" in line:
+                offenders.append('%s:%d: %s' % (rel, i, line.strip()[:90]))
+    assert not offenders, '改用 os.path.basename：\n' + '\n'.join(offenders)
+
+
 def test_worker_engine_substitutes_the_environment_facts(read_text):
     """两个渲染点都要接线。
 
