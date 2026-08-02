@@ -1,9 +1,11 @@
 """Api mixin: Terminal process management - persistent shell sessions."""
-import os
 import queue
 import subprocess
 import threading
 import time
+
+from .platform_shell import (interactive_prelude, interactive_shell_argv,
+                             interrupt_signal, new_process_group_kwargs)
 
 
 class TerminalProcess:
@@ -17,18 +19,30 @@ class TerminalProcess:
         self.msg_id = None
         self.process = None
         
-        is_win = os.name == 'nt'
-        shell = ["cmd.exe"] if is_win else ["/bin/bash"]
+        # Windows 上优先 pwsh、回退 powershell.exe、最后才是 cmd.exe。原先直接写死
+        # cmd.exe，因此 Windows 用户从持久化终端里永远拿不到 PowerShell。
+        argv, self.shell_label = interactive_shell_argv()
         
         self.process = subprocess.Popen(
-            shell,
+            argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            universal_newlines=True
+            # 不给 encoding 就走 locale.getpreferredencoding()，中文 Windows 上是
+            # GBK，而 PowerShell 的输出编码由 $OutputEncoding 决定。两边不对齐的
+            # 症状是中文乱码而非报错，不会有任何东西提示你编码错了。
+            encoding='utf-8',
+            errors='replace',
+            **new_process_group_kwargs()
         )
+        # PowerShell 把提示符写进 stdout，与命令输出混在同一条流里；cmd 默认回显每
+        # 条收到的命令。两者都必须在第一条真实命令之前关掉，否则 _read_output 会把
+        # 提示符当成输出行推给前端。
+        for _pre in interactive_prelude(self.shell_label):
+            self.process.stdin.write(_pre + '\n')
+        self.process.stdin.flush()
         
         self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
         self.reader_thread.start()
@@ -46,17 +60,16 @@ class TerminalProcess:
             self.api.handle_terminal_output(self.sid, self.name, line)
 
     def _worker(self):
-        is_win = os.name == 'nt'
         while self.is_running:
             try:
                 cmd = self.cmd_queue.get(timeout=1)
                 self.state = "running"
                 self.api.handle_terminal_status(self.sid, self.name, "running")
                 self.process.stdin.write(cmd + "\n")
-                if is_win:
-                    self.process.stdin.write(f"echo __TERM_DONE_{self.name}__\n")
-                else:
-                    self.process.stdin.write(f"echo __TERM_DONE_{self.name}__\n")
+                # 哨兵用 echo 而不是各 shell 的原生写法：bash、PowerShell（echo 是
+                # Write-Output 的别名）与 cmd 三者都认它，所以这里本来就不需要平台
+                # 分支。原代码的 if is_win / else 两条分支写的是完全相同的一行。
+                self.process.stdin.write(f"echo __TERM_DONE_{self.name}__\n")
                 self.process.stdin.flush()
                 self.cmd_queue.task_done()
             except queue.Empty:
@@ -69,13 +82,18 @@ class TerminalProcess:
         self.cmd_queue.put(cmd)
 
     def interrupt(self):
-        if self.process and self.process.poll() is None:
-            if os.name != 'nt':
-                import signal
-                try:
-                    self.process.send_signal(signal.SIGINT)
-                except:
-                    pass
+        """中断当前正在执行的命令。
+
+        Windows 上原先整条分支是空的：点中断毫无反应且不报错，看起来像命令还没跑完。
+        现在走 CTRL_BREAK_EVENT，它与创建时的 CREATE_NEW_PROCESS_GROUP 是一对——缺
+        了那个创建标志，这个信号会打到 ChatApp 自己身上。
+        """
+        if not self.process or self.process.poll() is not None:
+            return
+        try:
+            self.process.send_signal(interrupt_signal())
+        except Exception as e:
+            print(f'[TERMINAL] 中断失败 ({getattr(self, "shell_label", "?")}): {e}', flush=True)
 
     def terminate(self):
         self.is_running = False

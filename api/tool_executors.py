@@ -10,7 +10,12 @@ to executors based on the registry.
 """
 import os
 import re
+import subprocess
+import tempfile
 import time
+import uuid
+
+from .platform_shell import detached_kwargs, kill_process_tree, shell_argv
  
 
 
@@ -1277,41 +1282,43 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
     All commands run as detached nohup processes (survive ChatApp restart).
     'Foreground' mode polls until completion; 'background' mode returns immediately.
     """
-    import subprocess, uuid as _bash_uuid
     command = tool_input.get('command', '')
     timeout = tool_input.get('timeout', 120000)
     run_bg = tool_input.get('run_in_background', False)
     if not command:
         return ToolResult('command is required', 'Bash: 缺少命令', is_error=True)
     timeout_sec = int(timeout) / 1000
-    # 使用 Popen + start_new_session=True：进程脱离 ChatApp 进程组（重启不影响），
-    # 输出文件在 Popen 调用时就被打开（无竞态条件）
-    _run_id = _bash_uuid.uuid4().hex[:8]
-    _out_file = f'/tmp/chatapp_bash_{_run_id}.out'
+    try:
+        _argv, _shell = shell_argv(command, tool_input.get('shell', ''))
+    except ValueError as e:
+        return ToolResult(str(e), 'Bash: 未知 shell', is_error=True)
+    # 输出文件在 Popen 调用时就被打开，因此不存在「子进程已开始写而文件尚未建立」
+    # 的竞态。目录取 tempfile.gettempdir() 而不是写死 /tmp：后者在 Windows 上不
+    # 存在，症状是每一条命令都在 open() 阶段抛 FileNotFoundError，而那个异常里没
+    # 有任何线索指向平台。
+    _run_id = uuid.uuid4().hex[:8]
+    _out_file = os.path.join(tempfile.gettempdir(), f'chatapp_bash_{_run_id}.out')
     try:
         _out_fd = open(_out_file, 'w')
         proc = subprocess.Popen(
-            ['bash', '-c', command],
+            _argv,
             stdout=_out_fd, stderr=subprocess.STDOUT,
             cwd=os.getcwd(),
-            start_new_session=True  # 脱离进程组，ChatApp 重启不会杀死它
+            **detached_kwargs()  # 脱离进程组，ChatApp 重启不会杀死它
         )
     except Exception as e:
         return ToolResult(f'Failed to launch command: {str(e)}', 'Bash: 启动失败', is_error=True)
     _pid = proc.pid
     if run_bg:
         return ToolResult(
-            f'Command started in background (pid={_pid}):\n{command[:200]}\nOutput file: {_out_file}',
-            f'Bash (bg): {command[:30]}'
+            f'Command started in background (pid={_pid}, shell={_shell}):\n{command[:200]}\nOutput file: {_out_file}',
+            f'{_shell} (bg): {command[:30]}'
         )
     # 前台模式：等待进程结束
     try:
         proc.wait(timeout=timeout_sec)
     except subprocess.TimeoutExpired:
-        import signal
-        try:
-            os.killpg(os.getpgid(_pid), signal.SIGTERM)
-        except Exception:
+        if not kill_process_tree(_pid):
             try:
                 proc.kill()
             except Exception:
@@ -1356,7 +1363,7 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
         os.remove(_out_file)
     except Exception:
         pass
-    return ToolResult(output, f'Bash: {command[:40]}')
+    return ToolResult(output, f'{_shell}: {command[:40]}')
 
 
 # ---------------------------------------------------------------------------

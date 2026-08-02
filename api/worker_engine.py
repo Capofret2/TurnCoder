@@ -5,6 +5,7 @@ import os
 import re
 import requests
 import time
+from .platform_shell import environment_facts
 from .provider_routes import route_provider, strip_composite, is_model_segmented
 
 
@@ -708,6 +709,10 @@ class WorkerEngineMixin:
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{MEMORY_DIR}", os.path.expanduser("~/.claude/memory/"))
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{GIT_STATUS}", "true" if os.path.exists(os.path.join(_cwd, ".git")) else "false")
                                 _tool_sys_prefix = _tool_sys_prefix.replace("{MODEL_IDENTITY}", "")
+                                # 平台 / Shell / OS 版本原先写死在 tool_system.json 里，
+                                # 于是模型在 Windows 上会被告知自己在 Linux 然后写 bash 语法。
+                                for _ph, _pv in environment_facts().items():
+                                    _tool_sys_prefix = _tool_sys_prefix.replace(_ph, _pv)
                                 _tool_sys_prefix = "[以下是 Claude Code 的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[Claude Code Prompt 参考信息结束]\n\n"
                         except Exception as _se:
                             print(f"加载 tool_system.json 失败: {_se}")
@@ -813,6 +818,9 @@ class WorkerEngineMixin:
                             _tool_sys_prefix = _tool_sys_prefix.replace("{MEMORY_DIR}", os.path.expanduser("~/.claude/memory/"))
                             _tool_sys_prefix = _tool_sys_prefix.replace("{GIT_STATUS}", "true" if os.path.exists(os.path.join(_cwd, ".git")) else "false")
                             _tool_sys_prefix = _tool_sys_prefix.replace("{MODEL_IDENTITY}", "")
+                            # 同上：非 Claude 模型走的是这条注入路径，两处都要接线。
+                            for _ph, _pv in environment_facts().items():
+                                _tool_sys_prefix = _tool_sys_prefix.replace(_ph, _pv)
                             _tool_sys_prefix = "[以下是 Claude Code 的 System Prompt 参考信息]\n" + _tool_sys_prefix + "\n[Claude Code Prompt 参考信息结束]\n\n"
                             if settings.get('enable_planned_tools', False):
                                 _serial_replacements2 = [
