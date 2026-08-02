@@ -1,6 +1,8 @@
 # 交接说明
 
-本文档面向接手 `rev` 分支的下一位开发者。分支基于上游 `0ed85d8`，全部为增量提交，未改写任何历史。
+本文档面向接手 `rev` 与 `feat/windows-support` 两条分支的下一位开发者。两者都基于上游 `0ed85d8`，全部为增量提交，未改写任何历史。
+
+`feat/windows-support` 从 `rev` 的 `142d1d7` 开出，只含让 ChatApp 本体跑在 Windows 上所需的改动。它尚未合回 `rev`，且有三项行为**未经真机验证**（见第三节第 7 项）。如果你在 Linux 或 macOS 上工作，`rev` 就是你要的分支，这条可以先不管。
 
 配套文档：`docs/UI_CONVENTIONS.md`（前端样式与图标约定，含改动时必须避开的陷阱清单）。
 
@@ -32,6 +34,14 @@ cp settings.example.json settings.json
 
 **不做这一步的症状**：服务能启动，但模型下拉列表为空，且不会有任何报错——`app.py` 的 `get_providers` 对 `FileNotFoundError` 返回空数组而非抛错。
 
+### 3. 提示词不要复制
+
+这一条与上面两条正好相反，所以单列出来免得被顺手照做。`prompts/` 下随仓库分发三份默认值（系统提示词与两档深度思考提示词），开箱即用，**不需要也不应该复制到 `data/`**。
+
+想让自己的修改进版本控制就直接改 `prompts/`；只想在本机生效就把同名文件放进 `data/`，它会覆写默认值，不需要重启。两处都缺时该提示词为空并在控制台打印一次警告。
+
+**为什么强调不要复制**：一旦 `data/` 下有了同名文件，解析器的存在性检查从此永远命中它，`prompts/` 里的任何后续改动（包括 `git pull` 带来的）对这台机器就彻底不可见了。旧实现正是在文件缺失时自动写一份到 `data/`，而 `CONFIG["SYSTEM_PROMPT"]` 是硬编码空串——于是写出的是一个空文件，模型在毫无协议约束的情况下工作而控制台一句话都没有。
+
 ---
 
 ## 二、改动范围
@@ -41,6 +51,37 @@ cp settings.example.json settings.json
 ### 敏感配置分离
 
 凭据文件移出版本控制，改为提供 `.example` 模板；补充忽略 `webfetch_cache/`；修复更新包打包时的凭据泄露。
+
+### 提示词默认值随仓库分发
+
+三份提示词的默认值移入仓库根 `prompts/` 并纳入追踪，`data/` 下的同名文件覆写它。上手说明见第一节第 3 项。
+
+**`.gitignore` 刻意没动。** `data/` 是整目录排除，而 git 在父目录被排除后不再下降进去比对，所以在其下写 `!data/system_prompt.txt` 这类取反规则**必然静默失效**——这一条用隔离仓库实测过。放宽成 `data/*` 加逐项取反技术上可行，但那会让保护用户对话记录的规则从此依赖于每个人都理解取反的作用范围。放默认值到仓库根则完全不进入这个话题。
+
+**顺带修掉一条数据丢失通道。** `app.py` 两处打包清单原先含 `data/` 下的提示词，而更新包里每一项都会被自动生成的 `update.py` 按相同相对路径 `shutil.copy2` 覆写——一次自动更新就静默覆盖用户改过的提示词。清单改为只发 `prompts/`，变量名一并从 `_release_data` / `_data_files` 改为 `_release_prompts` / `_prompt_files`，因为原名现在会主动误导。
+
+### Windows 支持（`feat/windows-support` 分支）
+
+新增 `api/platform_shell.py` 作为**唯一知道 `os.name` 的模块**。其余模块调用它的函数，因此新增平台、调整解释器回退链或改动编码对齐都是单点改动。
+
+设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 40 条用例正是靠这一点成立的。
+
+三个 Win32 常量（`CREATE_NEW_PROCESS_GROUP`、`CREATE_NO_WINDOW`、`CTRL_BREAK_EVENT`）写成字面量而非 `getattr(subprocess, ...)`：那些名字只在 Windows 的 `subprocess` / `signal` 里存在，Linux 上取不到，而本模块要在两个平台都能被导入。
+
+已解决的平台缺陷，按「不修会怎样」排序：
+
+- **`tool_system.json` 写死 `平台：linux` / `Shell：bash` / OS 版本三行。** 这是唯一一处不改则其余全部白做的地方：模型判断该写什么语法的首要依据就是这段环境信息，留着它意味着模型在 Windows 上被明确告知自己在 Linux，然后照旧写 bash。改为占位符由 `environment_facts()` 取值，`worker_engine.py` 的**两个**渲染点各接一次（一处服务 Anthropic 协议路径、一处服务非 Claude 注入路径，只接一处的症状是「换某些模型对了、换另一些又不对」）。
+- **`DETACHED_PROCESS`。** 详见第三节第 7 项与 `detached_kwargs` 的 docstring，那是本批改动里代价最高的一条。
+- **`os.killpg` 在 Windows 上属性不存在**，原代码必然走进 `except` 退化成 `proc.kill()`，只杀直接子进程而留下整棵子树继续占 CPU 与文件锁——一条超时的命令看起来被清理了，实际还在跑。改为 `taskkill /T /F`，`/T` 才是「连同后代」那一半。
+- **写死的 `/tmp`。** Windows 上该目录不存在，症状是每条命令在 `open()` 阶段抛 `FileNotFoundError`，而那个异常里没有任何线索指向平台。改用 `tempfile.gettempdir()`。
+- **`terminal.py` 的解释器写死 `cmd.exe`**，因此 Windows 用户从持久化终端里永远拿不到 PowerShell。改为 pwsh → powershell.exe → cmd.exe 回退链。
+- **`Popen(text=True)` 缺 `encoding`。** 默认走 `locale.getpreferredencoding()`，中文 Windows 上是 GBK，而 PowerShell 的输出编码由 `$OutputEncoding` 决定。两端不对齐的症状是**中文乱码而非报错**，没有任何东西会提示你编码不对。
+- **`interrupt()` 的 Windows 分支原先整条为空**，点中断毫无反应且不报错——看起来像命令还没跑完。改用 `CTRL_BREAK_EVENT`，它与 `CREATE_NEW_PROCESS_GROUP` 是一对：缺了那个创建标志，信号会打到 ChatApp 自己身上。
+- **禁用命令名单是纯 bash 词汇。** `cat` 与 `ls` 在 PowerShell 里恰好是别名所以原名单部分生效，缺的是 `Get-Content` / `Select-String` / `findstr` 这类原生写法。同时改为大小写与 `.exe` 归一化——PowerShell 大小写无关，精确匹配使整份名单形同虚设。**递归列目录单独特判而不进名单**：bash 里 `ls` 与 `find` 是两个命令，PowerShell 里是同一个 cmdlet 的两种用法，直接入名单会拦掉系统提示词明确要求的裸 `ls`。这是平台间唯一一处无法靠加词解决的不对称。
+
+**Bash schema 新增 `shell` 枚举参数（bash / powershell / pwsh / cmd）而不是新增一个工具名。** 后者需要同步八处白名单（`message_edit.py`、`response.py` 两处、`tool_accept.py` 两处、`chat.js` 等），而其中 `chat.js:392` 那份**已经漂移了**——它缺 `缩减读取`，Python 侧两份都有。再加一个名字只会加速这种漂移。
+
+结果摘要里的解释器 label 取值恰好等于该参数接受的四个名字，所以看到 `cmd: dir` 就知道可以写 `shell=cmd`。`_exe_label` 剥掉扩展名正是为此：Windows 上 `which` 返回的后缀大小写由 PATHEXT 决定，实测拿到的是 `pwsh.EXE`。
 
 ### 前端视觉体系
 
@@ -149,14 +190,24 @@ cp settings.example.json settings.json
 
 **一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-### 5. ~~测试~~（116 个用例通过）
+### 5. ~~测试~~（122 passed / 2 skipped）
+
+**先确认你用的是哪个解释器，这不是脚注。** `pytest` 装在哪个 Python 里与 ChatApp 跑在哪个 Python 里是两件事，而它们不一致时的表象是「无输出加退出码 1」——那与测试内容毫无关系，纯粹是模块找不到。本文档原先写「`pytest 9.1.1` 在 conda 环境 `deep_lea` 中」，那只在最初那台机器上成立；在 Windows 那台上根本没有 conda，而 PATH 上的 `python` 解析到一个没装 pytest 的 miniconda 环境。
+
+所以第一步永远是问出解释器的身份：
 
 ```bash
-python -m pytest tests/ -q          # 全部
-python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览器
+python -c "import sys, importlib.util as u; print(sys.executable); print(u.find_spec('pytest') is not None)"
 ```
 
-`pytest 9.1.1` 在 conda 环境 `deep_lea` 中。构成：
+拿到确切路径之后再跑，必要时写全路径：
+
+```bash
+python -m pytest tests/ -q                 # 全部
+python -m pytest tests/ -q -k "not dom"    # 只跑纯 Python，不需要浏览器
+```
+
+Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-8 写 stdout（测试里的断言消息与 docstring 都是中文，走 ANSI 代码页会抛编码错误而表现为无输出），`-p no:cacheprovider` 少一个会 `Path()` 的部件。构成：
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -165,6 +216,8 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 | `test_message_toggle.py` | 分类顺序、筛选条件、内联思维链可逆性 |
 | `test_cross_language_consistency.py` | 前后端分类逻辑的一致性 |
 | `test_static_assets.py` | CSS 花括号、令牌引用、缓存版本号 |
+| `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入 |
+| `test_platform_shell.py` | 40 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性 |
 | `test_dom_render.py` | 30 个浏览器内 DOM 用例，跑 `harness/render.html` |
 | `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js` |
 | `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
@@ -196,6 +249,20 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 - **~~`libs/main.js` 的 100ms `setInterval`~~（已改为按需启停）。** 拆成 `_waitTimerId` 状态位、幂等的 `_startWaitTicker` 与自带停机条件的 `_waitTick`；由 `renderChat` 末尾启动，元素归零时自行 `clearInterval`。**心跳防丢包跟着一起停是正确的，不要「修」回常驻**：`syncCounter` 本来就只在有等待气泡时累加，计时器停下的时刻恰好是心跳本该静默的时刻。启动点选 `renderChat` 是因为它是 `.waiting-time` 元素的唯一生产者，「从无到有」这个方向由生产者覆盖才不会漏。
 - **~~`libs/chat.js` 的 `msgHash`~~（已改为双 32 位累加器）。** 字段与采样口径完全不变，因此判定灵敏度不变；省掉的是每条消息每次渲染约两百字符的中间串。**`Math.imul` 是正确性必需而非风格偏好**：32 位乘积会溢出双精度尾数，普通 `*` 静默丢掉的正是低位，也就是哈希唯一依赖的部分——改回 `*` 不会报错，只会让缓存判定偶发失灵。用两个累加器而非一个的理由是单个 32 位摘要按生日界在约 8 万个不同值时开始碰撞；但这里不是生日问题，每条消息只与自己上一次比较，所以 64 位使单次比较的碰撞概率落在 $2^{-64}$ 量级。
 - **~~`libs/chat.js` 的 KaTeX 扫描~~（已加 `_hasMath` 预判）。** 判定读 `msg.content` / `diff_content` / `content_parts` 而非 `bubble.textContent`：后者虽然一定准确，但会为长气泡多分配一份完整副本，把省下的开销又花掉一部分。工具结果与 subagent 正文来自别的消息，主气泡的字段扫描覆盖不到，因此在各自的 append 处单独置标记；subagent 那处取无条件置真，因为它数量极少而漏判的代价是公式永久不渲染，两侧不对称。
+
+### 7. Windows 上尚未验证的三项
+
+一次性命令执行（`execute_bash` 那条链路）已在真机上确认可用：默认解释器走 pwsh 7、stdout 正常回收、中文不乱码、无窗口闪现。以下三项**没有任何真机证据**，因为它们只能在界面交互中暴露。
+
+**持久化终端。** 开一个终端、执行一条命令。三种失败各有不同表现：
+
+- 终端一直停在「运行中」不回到空闲 → `-Command -` 没有逐行执行而是缓冲到 EOF，哨兵 `__TERM_DONE__` 永远等不到。这一种最严重，等于整个终端功能不可用。
+- 输出正常但每条命令之后多出几行奇怪内容 → `function prompt { '' }` 没把提示符从 stdout 清干净。PowerShell 把提示符写进与命令输出同一条流，这是唯一能从进程内部关掉它的办法。
+- 桌面上多出一个**常驻**的控制台窗口（不是闪一下）→ `CREATE_NO_WINDOW` 在长期存活的交互式进程上不成立。回退办法写在 `new_process_group_kwargs` 的 docstring 里：先摘掉这个标志单独验证，把变量隔离开再判断。
+
+**中断（`CTRL_BREAK_EVENT`）。** 需要先有一个正在跑的长命令再点中断。**第一次务必用无害命令试，比如 `Start-Sleep 30`。** 风险是明确的：若 `CREATE_NEW_PROCESS_GROUP` 因某种原因没生效，那个信号会打到 ChatApp 自己身上——表现是**整个后端被中断**而不是那条命令被停下。用无害命令试，最坏情况也只是重启一次后端。
+
+**后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
 
 ---
 
@@ -253,7 +320,9 @@ python -m pytest tests/ -q -k "not dom"   # 只跑纯 Python，不需要浏览�
 
 ## 五、验证方法
 
-这个项目没有构建步骤。现在有两层保障：`tests/` 下的 84 个用例，加上下面这些静态检查。
+这个项目没有构建步骤。现在有两层保障：`tests/` 下的 122 个纯 Python 用例（另有浏览器内 DOM 用例，缺 Playwright 时跳过），加上下面这些静态检查。
+
+用例数会随改动变化，别把它当断言看——真正的判据是第三节第 5 项那张表，以及跑一遍的结果本身。
 
 ### 测试
 
@@ -292,6 +361,15 @@ python -m py_compile app.py config.py api/*.py
 ### HTML 标签配对
 
 用 `html.parser` 追踪标签栈。`frontend.html` 含十余段嵌套内联 SVG，标签配对出错时浏览器会静默纠错成完全不同的 DOM 树，症状是元素位置诡异而控制台无任何输出。
+
+### 四条关于验证手段本身的教训
+
+这几条不是关于代码，而是关于「怎么知道一件事真的发生了」。它们各自都曾让我基于虚假证据下结论。
+
+1. **「退出码 0 且无输出」不能当作成功。** 至少三种完全不同的原因会产生一模一样的表象：`DETACHED_PROCESS` 下的 PowerShell 启动后 host 初始化失败、不执行任何命令、以 0 退出；解释器里没装 pytest 时 `-m pytest` 的失败信息去了别处；以及 `py_compile` 成功时本来就不打印任何东西。**每次需要确认某件事真的发生了，都要求一个正向证据**：一个被打印出来的标记、一个被创建的文件、一个可以读回的版本号。诊断脚本里那个 `side_exists` 字段就是这个思路，它当场把「没执行」与「执行了但输出丢了」分开了。
+2. **同一个文件名不能作为反复读取的诊断出口。** Read 工具的防重机制会在第二次读取时返回一段 system-reminder 而不是新内容，而那段文本长得很像正常返回，容易被当成「文件没变」。诊断产物要么直接打 stdout，要么每次换文件名。
+3. **跨平台的测试断言必须两个方向都打补丁。** `tests/test_platform_shell.py` 原先只给 Windows 方向打补丁、POSIX 方向靠「开发机恰好是 Linux」，那等于把开发机的平台悄悄写进了测试前提——搬到 Windows 上之后八条用例集体反向失败。现在有对称的 `nt` / `posix` 两个 fixture，外加独立的 `no_powershell`（平台是 Windows 不代表装了 pwsh）。**凡是伪造出来的通过都在各自 docstring 里写明**：把「伪造出来的通过」误当成「真机验证过」是这类测试最容易造成的伤害。
+4. **含中文的提交信息用 `git commit -F` 读文件，不要用 `-m` 传字符串。** 后者要跨 shell 到 git 的编码转换，而提交信息一旦写成乱码就固化在历史里了，比命令失败难处理得多。写文件这条路径已实测可靠。
 
 ### 写检查脚本时的两个注意点
 
