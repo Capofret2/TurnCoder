@@ -537,9 +537,11 @@ def handle_action():
                     'requirements.txt',
                 ]
                 _release_dirs = {'api': {'.py'}, 'libs': {'.js', '.css'}}
-                _release_data = ['data/system_prompt.txt', 'data/deep_think_prompt.txt', 'data/deep_think_prompt_medium.txt']
+                # 随包分发的是 prompts/ 下的默认值，不是 data/ 下的用户覆写：
+                # 后者是用户资产，且发布包解压时会落在同一相对路径上。
+                _release_prompts = ['prompts/system_prompt.txt', 'prompts/deep_think_prompt.txt', 'prompts/deep_think_prompt_medium.txt']
                 all_files = [f for f in _release_files if os.path.exists(f)]
-                for f in _release_data:
+                for f in _release_prompts:
                     if os.path.exists(f): all_files.append(f)
                 for d, exts in _release_dirs.items():
                     if os.path.isdir(d):
@@ -699,13 +701,16 @@ def handle_action():
                     'libs': {'.js', '.css'},
                     'tests': {'.py'},
                 }
-                _data_files = ['data/system_prompt.txt', 'data/deep_think_prompt.txt', 'data/deep_think_prompt_medium.txt']
+                # 更新包里的每一项都会被下方自动生成的 update.py 按相同相对路径
+                # shutil.copy2 覆写。因此清单中一旦出现 data/ 下的文件，一次自动
+                # 更新就会静默覆盖用户自己改过的提示词。只发 prompts/ 默认值。
+                _prompt_files = ['prompts/system_prompt.txt', 'prompts/deep_think_prompt.txt', 'prompts/deep_think_prompt_medium.txt']
                 # 收集文件清单
                 all_files = []
                 for f in _root_files:
                     if os.path.exists(f):
                         all_files.append(f)
-                for f in _data_files:
+                for f in _prompt_files:
                     if os.path.exists(f):
                         all_files.append(f)
                 for d, exts in _update_dirs.items():

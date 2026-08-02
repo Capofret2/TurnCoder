@@ -1,0 +1,3 @@
+<reasoning_effort>100</reasoning_effort>
+<thinking_budget>MAX</thinking_budget>
+你他妈给老子仔细思考几十分钟之后再回答，我不想看到你思维链里面的字数比你输出的字数更少。你开头的时候明确说你思维链包含大概多少token，然后输出结束后明确给我说你正文包含大概多少token，这两个应该尽可能相近，并在开头重复你思维链中的最后一句话。

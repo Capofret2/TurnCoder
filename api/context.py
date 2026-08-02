@@ -4,59 +4,87 @@ import os
 import re
 
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 随仓库分发的提示词默认值。data/ 下的同名文件覆写它。
+DEFAULT_PROMPT_DIR = os.path.join(_REPO_ROOT, "prompts")
+
 
 class ContextMixin:
     """Api mixin: System prompt, code monitoring, and context assembly."""
 
-    def get_system_prompt(self):
-        import re
+    def _resolve_prompt_path(self, filename: str) -> str:
+        """定位一份提示词：data/ 下的用户覆写优先于 prompts/ 下的追踪默认值。
+
+        每次调用都做一次存在性检查，而不是启动时解析一次并缓存路径——这样新建
+        覆写文件无需重启即可生效，与下方基于 mtime 的热更新是同一套取向。
+
+        默认值永远不会被复制进 data/。一旦复制，上面那个存在性检查从此永远成立，
+        prompts/ 里的任何后续改动对「启动过一次」的安装就彻底不可见了，等于这份
+        默认值只在全新安装的第一秒有意义。
+        """
+        override = os.path.join(self.data_dir, filename)
+        if os.path.exists(override):
+            return override
+        return os.path.join(DEFAULT_PROMPT_DIR, filename)
+
+    def get_system_prompt(self) -> str:
         def _decode_prompt(text):
             return re.sub(r'\{([\'"])(.*?)\1\*(\d+)\}', lambda m: m.group(2) * int(m.group(3)), text)
 
-        # 检查文件是否存在，不存在则将 app.py 中的默认配置写入文件
-        if not os.path.exists(self.prompt_file_path):
-            default_prompt = self.config.get("SYSTEM_PROMPT", "")
-            try:
-                with open(self.prompt_file_path, "w", encoding="utf-8") as f:
-                    f.write(default_prompt)
-                self.cached_prompt = default_prompt
-                self.prompt_mtime = os.path.getmtime(self.prompt_file_path)
-            except Exception as e:
-                print(f"写入初始系统提示词失败: {e}")
-                return _decode_prompt(default_prompt)
-        
-        # 校验最后修改时间，实现低开销热更新
+        path = self._resolve_prompt_path("system_prompt.txt")
         try:
-            current_mtime = os.path.getmtime(self.prompt_file_path)
-            if current_mtime > self.prompt_mtime:
-                with open(self.prompt_file_path, "r", encoding="utf-8") as f:
+            current_mtime = os.path.getmtime(path)
+        except OSError:
+            # 两处都不存在。以前这里会静默写出一个空文件并返回空提示词——
+            # 模型在毫无协议约束的情况下工作，控制台一句话都没有。警告只发一次，
+            # 因为本方法在每次组装上下文时都会被调用。
+            if not getattr(self, "_prompt_missing_warned", False):
+                self._prompt_missing_warned = True
+                print(f"[PROMPT] 系统提示词缺失：{os.path.join(self.data_dir, 'system_prompt.txt')} "
+                      f"与 {path} 均不存在，将以空提示词运行", flush=True)
+            return ""
+
+        # 缓存键是「路径 + mtime」而不只是 mtime：用户新建覆写文件时路径变了，
+        # 而新文件的 mtime 完全可能早于当前缓存值（例如从别处复制过来的），
+        # 只比 mtime 会漏掉这次切换。
+        if path != getattr(self, "_prompt_src", None) or current_mtime > self.prompt_mtime:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
                     self.cached_prompt = f.read()
+                self._prompt_src = path
                 self.prompt_mtime = current_mtime
-        except Exception as e:
-            print(f"读取系统提示词失败: {e}")
-        
+            except OSError as e:
+                print(f"读取系统提示词失败 ({path}): {e}", flush=True)
+
         return _decode_prompt(self.cached_prompt)
 
 
-    def _load_deep_think_prompt(self, level=2):
-        """Load deep think prompt by level from file. Level 2=data/deep_think_prompt.txt, Level 1=data/deep_think_prompt_medium.txt."""
+    def _load_deep_think_prompt(self, level: int = 2) -> str:
+        """按档位加载深度思考提示词。level >= 2 用 deep_think_prompt.txt，
+        level 1 用 deep_think_prompt_medium.txt。解析规则与系统提示词一致：
+        data/ 覆写优先于 prompts/ 默认值。
+
+        缓存元组是 (path, mtime, content)。带上 path 的理由同 get_system_prompt：
+        新建覆写文件会改变路径，而其 mtime 未必大于缓存值。
+        """
         if not hasattr(self, '_dt_cache'):
             self._dt_cache = {}
         _fname = "deep_think_prompt.txt" if level >= 2 else "deep_think_prompt_medium.txt"
-        _dt_path = os.path.join(self.data_dir, _fname)
-        if not os.path.exists(_dt_path):
-            return ""
+        _dt_path = self._resolve_prompt_path(_fname)
         try:
             _dt_mtime = os.path.getmtime(_dt_path)
-            _cached = self._dt_cache.get(level)
-            if not _cached or _dt_mtime > _cached[0]:
-                with open(_dt_path, "r", encoding="utf-8") as f:
-                    _content = f.read().strip()
-                self._dt_cache[level] = (_dt_mtime, _content)
-                return _content
-            return _cached[1]
-        except Exception:
+        except OSError:
             return ""
+        _cached = self._dt_cache.get(level)
+        if _cached and _cached[0] == _dt_path and _dt_mtime <= _cached[1]:
+            return _cached[2]
+        try:
+            with open(_dt_path, "r", encoding="utf-8") as f:
+                _content = f.read().strip()
+        except OSError:
+            return ""
+        self._dt_cache[level] = (_dt_path, _dt_mtime, _content)
+        return _content
 
 
     def scan_files(self, paths, extensions):

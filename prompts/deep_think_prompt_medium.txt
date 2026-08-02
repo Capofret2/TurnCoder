@@ -1,0 +1,3 @@
+<reasoning_effort>100</reasoning_effort>
+<thinking_budget>MAX</thinking_budget>
+仔细思考之后再回答。

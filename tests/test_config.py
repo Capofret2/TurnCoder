@@ -12,7 +12,7 @@ import pytest
 import config
 
 REQUIRED_KEYS = [
-    'API_KEY', 'MODEL_NAME', 'SYSTEM_PROMPT', 'THINKING_CONFIG', 'API_URL',
+    'API_KEY', 'MODEL_NAME', 'THINKING_CONFIG', 'API_URL',
     'LOCAL_API_URL', 'SUBAGENT_PROVIDERS',
 ]
 
@@ -27,6 +27,16 @@ def test_thinking_config_shape():
     assert isinstance(tc, dict)
     assert tc['thinking_level'] == 'high'
     assert tc['include_thoughts'] is True
+
+
+def test_system_prompt_is_not_a_config_key():
+    """提示词的来源是 prompts/ 下的文件，不是 CONFIG。
+
+    这个键曾经是硬编码空串，而 get_system_prompt 在文件缺失时会把它写进 data/ —
+    也就是写出一个空文件，然后让模型在毫无协议约束的情况下工作且不打印任何东西。
+    把它加回来就等于把那条路径也加回来，所以这里让那个动作变成一次失败。
+    """
+    assert 'SYSTEM_PROMPT' not in config.CONFIG
 
 
 def test_subagent_providers_is_always_a_list():

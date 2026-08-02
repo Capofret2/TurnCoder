@@ -78,9 +78,11 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
         if not self.sessions:
             self.create_session("\u9ed8\u8ba4\u5bf9\u8bdd")
 
-        self.prompt_file_path = os.path.join(self.data_dir, "system_prompt.txt")
+        # 提示词的实际路径在每次读取时解析：data/ 下的用户覆写优先于随仓库分发的
+        # prompts/ 默认值。见 ContextMixin._resolve_prompt_path。
         self.cached_prompt = ""
         self.prompt_mtime = 0
+        self._prompt_src = None
 
         # 回填历史气泡的 created_at 时间戳（仅对 user/assistant 按 600 秒间隔递增，其他类型跟随前一个主气泡的时间）
         for _sid, _sess in self.sessions.items():

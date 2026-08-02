@@ -24,7 +24,6 @@ def _env_json(key, default=None):
 CONFIG = {
     "API_KEY": _env("API_KEY"),
     "MODEL_NAME": _env("MODEL_NAME", "gemini-3.1-pro-preview-cli"),
-    "SYSTEM_PROMPT": "",
     "THINKING_CONFIG": {"thinking_level": "high", "include_thoughts": True},
     "API_URL": _env("API_URL", "https://api.example.com/v1/chat/completions"),
     "VIBE_API_KEY": _env("VIBE_API_KEY"),
