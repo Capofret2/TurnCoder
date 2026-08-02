@@ -144,8 +144,12 @@ def kill_process_tree(pid: int) -> bool:
     """
     if is_windows():
         try:
+            # CREATE_NO_WINDOW 是防御性的：taskkill 是控制台程序，当前它继承 ChatApp 的
+            # 控制台所以不闪窗，但 ChatApp 被 pythonw.exe 启动或作为服务运行时父进程没有
+            # 控制台，taskkill 就会自己分配一个——正是别处刚修掉的那个闪窗机制。
             subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)],
-                           capture_output=True, timeout=10)
+                           capture_output=True, timeout=10,
+                           creationflags=CREATE_NO_WINDOW)
             return True
         except Exception:
             return False

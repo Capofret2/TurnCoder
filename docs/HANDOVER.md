@@ -78,6 +78,8 @@ cp settings.example.json settings.json
 - **`Popen(text=True)` 缺 `encoding`。** 默认走 `locale.getpreferredencoding()`，中文 Windows 上是 GBK，而 PowerShell 的输出编码由 `$OutputEncoding` 决定。两端不对齐的症状是**中文乱码而非报错**，没有任何东西会提示你编码不对。
 - **`interrupt()` 的 Windows 分支原先整条为空**，点中断毫无反应且不报错——看起来像命令还没跑完。改用 `CTRL_BREAK_EVENT`，它与 `CREATE_NEW_PROCESS_GROUP` 是一对：缺了那个创建标志，信号会打到 ChatApp 自己身上。
 - **禁用命令名单是纯 bash 词汇。** `cat` 与 `ls` 在 PowerShell 里恰好是别名所以原名单部分生效，缺的是 `Get-Content` / `Select-String` / `findstr` 这类原生写法。同时改为大小写与 `.exe` 归一化——PowerShell 大小写无关，精确匹配使整份名单形同虚设。**递归列目录单独特判而不进名单**：bash 里 `ls` 与 `find` 是两个命令，PowerShell 里是同一个 cmdlet 的两种用法，直接入名单会拦掉系统提示词明确要求的裸 `ls`。这是平台间唯一一处无法靠加词解决的不对称。
+- **`file_path.split("/")[-1]` 取文件名。** 反斜杠路径上找不到任何 `/`，`[-1]` 因此返回**整条路径**。后果不只是摘要变长：过时读取的「已省略，概括为：…」替换文本会进入模型上下文，而标记旧读取为过时的那几处会遍历整个会话历史逐条重写，所以同一条绝对路径在上下文里出现的是多次而非一次。改用 `os.path.basename`（Windows 的 ntpath 把两种分隔符都认，Linux 的 posixpath 只认 `/` 而那里本来就用 `/`，所以是严格改进）。有 `test_no_file_path_is_split_on_forward_slash_only` 守着，因为这个写法在 Linux 上完全正确、下一个人不会收到任何提示。
+- **裸 `pip install`。** PDF 分支在 PyMuPDF 缺失时自动装包，原先调 PATH 上的 `pip`——而它未必属于跑应用的那个解释器。装进错误环境之后 `import fitz` 照旧失败，报出的是「安装失败」或第二次 ImportError，两者都不指向「装到别处去了」。改用 `sys.executable -m pip`，有 `test_pip_is_never_invoked_as_a_bare_executable` 守着。这条与本文档第三节第 5 项的解释器教训是同一件事。
 
 **Bash schema 新增 `shell` 枚举参数（bash / powershell / pwsh / cmd）而不是新增一个工具名。** 后者需要同步八处白名单（`message_edit.py`、`response.py` 两处、`tool_accept.py` 两处、`chat.js` 等），而其中 `chat.js:392` 那份**已经漂移了**——它缺 `缩减读取`，Python 侧两份都有。再加一个名字只会加速这种漂移。
 
@@ -263,6 +265,12 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 **中断（`CTRL_BREAK_EVENT`）。** 需要先有一个正在跑的长命令再点中断。**第一次务必用无害命令试，比如 `Start-Sleep 30`。** 风险是明确的：若 `CREATE_NEW_PROCESS_GROUP` 因某种原因没生效，那个信号会打到 ChatApp 自己身上——表现是**整个后端被中断**而不是那条命令被停下。用无害命令试，最坏情况也只是重启一次后端。
 
 **后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
+
+**`os.execv` 的语义在 Windows 上不同（已定位，刻意未改）。** 它出现在 `updater.py:208`、`updater.py:241` 与 `app.py` 的启动更新分支。POSIX 上它**替换**当前进程映像，PID 不变；Windows 上没有这个语义，CPython 的实现是新起一个进程然后让原进程立即退出——于是父进程句柄失效、控制台归属混乱，在被 shell 启动的场景下表现是「命令看起来结束了但服务在后台继续跑」。
+
+没改的三条理由：它只在 `enable_auto_update` 开启**且**确实发现新版本时才触发；正确的修法需要一个产品判断而非技术选择（改成 `subprocess.Popen` 加 `sys.exit`，还是干脆打印「更新已应用，请手动重启」——后者更诚实但改变了自动更新的体验）；以及它无法在不真正触发一次更新的情况下验证，而伪造一次更新会动 `version.json` 与 `data/updates/`。
+
+要修的话两个候选都记在这里，免得下一个人重新推导：`Popen` 加 `sys.exit(0)` 保留自动重启但父子关系与原来不同；打印提示并退出则把重启交给用户，代价是「自动更新」名不副实。
 
 ---
 

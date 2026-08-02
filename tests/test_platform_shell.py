@@ -214,12 +214,17 @@ def test_windows_kill_uses_taskkill_with_the_tree_flag(nt, monkeypatch):
 
     def _fake_run(argv, **kw):
         seen['argv'] = argv
+        seen['kw'] = kw
         return _R()
 
     monkeypatch.setattr(ps.subprocess, 'run', _fake_run)
     assert ps.kill_process_tree(4242) is True
     assert seen['argv'][:3] == ['taskkill', '/T', '/F']
     assert seen['argv'][-1] == '4242'
+    # taskkill 本身也是控制台程序。ChatApp 若由 pythonw.exe 启动（父进程无控制台），
+    # 它会自己分配一个窗口。原来的假 run 用 **kw 吞掉关键字却不检查，于是这个标志
+    # 加了也没人验证——而它属于「不会让别的测试变红」那一类。
+    assert seen['kw'].get('creationflags', 0) & ps.CREATE_NO_WINDOW
 
 
 def test_interrupt_signal_is_sigint_on_posix(posix):
@@ -363,6 +368,29 @@ def test_no_file_path_is_split_on_forward_slash_only(read_text):
             if '.split("/")[-1]' in line or ".split('/')[-1]" in line:
                 offenders.append('%s:%d: %s' % (rel, i, line.strip()[:90]))
     assert not offenders, '改用 os.path.basename：\n' + '\n'.join(offenders)
+
+
+def test_pip_is_never_invoked_as_a_bare_executable(read_text):
+    """装包要用 sys.executable -m pip，不能调 PATH 上的 pip。
+
+    PATH 上的 pip 未必属于跑应用的那个解释器。实测的一台机器上 PATH 指向 miniconda 的
+    某个环境，而应用跑在另一个 Python——裸 pip 会把包装进错误的环境，随后 import 照旧
+    失败，而报出的是「安装失败」或第二次 ImportError，两者都不指向「装到别处去了」。
+
+    这与 split("/")[-1] 属于同一类错误：在单解释器机器上完全不可见（那里 PATH 上的 pip
+    就是对的），只在特定环境下暴露，而暴露时的错误信息指向别处。
+
+    判据是 `['pip'` 这个子串——它精确对应「把 pip 当可执行文件调用」，而正确写法
+    `[sys.executable, '-m', 'pip'` 不含它。
+    """
+    import glob as _g
+
+    offenders = []
+    for rel in ['app.py'] + sorted(_g.glob('api/*.py')):
+        for i, line in enumerate(read_text(rel).splitlines(), 1):
+            if "['pip'" in line or '["pip"' in line:
+                offenders.append('%s:%d: %s' % (rel, i, line.strip()[:90]))
+    assert not offenders, "改用 [sys.executable, '-m', 'pip', ...]：\n" + '\n'.join(offenders)
 
 
 def test_worker_engine_substitutes_the_environment_facts(read_text):

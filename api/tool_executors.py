@@ -11,6 +11,7 @@ to executors based on the registry.
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -998,15 +999,21 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 import fitz
             except ImportError:
                 # Auto-install PyMuPDF
-                import subprocess as _pdf_sp
-                print('[READ] PyMuPDF not found, auto-installing...', flush=True)
-                _install_result = _pdf_sp.run(
-                    ['pip', 'install', 'pymupdf'],
-                    capture_output=True, text=True, timeout=120
+                # sys.executable -m pip 而不是裸 pip：PATH 上的 pip 未必属于跑应用的那个
+                # 解释器（实测的一台机器上 PATH 指向 miniconda 的某个环境，而应用跑在另一
+                # 个 Python）。裸 pip 会把包装进错误的环境，随后 import fitz 照旧失败，而
+                # 报出的是「安装失败」或第二次 ImportError——两者都不指向「装到别处去了」。
+                from .platform_shell import CREATE_NO_WINDOW, is_windows
+                print(f'[READ] PyMuPDF not found, auto-installing into {sys.executable}...', flush=True)
+                _pdf_kw = {'creationflags': CREATE_NO_WINDOW} if is_windows() else {}
+                _install_result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', 'pymupdf'],
+                    capture_output=True, text=True, timeout=120, **_pdf_kw
                 )
                 if _install_result.returncode != 0:
                     return ToolResult(
-                        f'<tool_use_error>Failed to auto-install PyMuPDF: {_install_result.stderr[:200]}</tool_use_error>',
+                        f'<tool_use_error>Failed to auto-install PyMuPDF into {sys.executable}: '
+                        f'{_install_result.stderr[:200]}</tool_use_error>',
                         'Read: PyMuPDF安装失败', is_error=True
                     )
                 import fitz
