@@ -2,7 +2,7 @@
 
 本文档面向接手 `rev` 与 `feat/windows-support` 两条分支的下一位开发者。两者都基于上游 `0ed85d8`，全部为增量提交，未改写任何历史。
 
-`feat/windows-support` 从 `rev` 的 `142d1d7` 开出，只含让 ChatApp 本体跑在 Windows 上所需的改动。它尚未合回 `rev`，且有三项行为**未经真机验证**（见第三节第 7 项）。如果你在 Linux 或 macOS 上工作，`rev` 就是你要的分支，这条可以先不管。
+`feat/windows-support` 从 `rev` 的 `142d1d7` 开出，只含让 ChatApp 本体跑在 Windows 上所需的改动。它尚未合回 `rev`：一次性命令执行那条链路已在真机确认，但另有**三项改动未经真机验证、一项缺陷刻意未修**（见第三节第 7 项）。如果你在 Linux 或 macOS 上工作，`rev` 就是你要的分支，这条可以先不管。
 
 配套文档：`docs/UI_CONVENTIONS.md`（前端样式与图标约定，含改动时必须避开的陷阱清单）。
 
@@ -64,7 +64,7 @@ cp settings.example.json settings.json
 
 新增 `api/platform_shell.py` 作为**唯一知道 `os.name` 的模块**。其余模块调用它的函数，因此新增平台、调整解释器回退链或改动编码对齐都是单点改动。
 
-设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 40 条用例正是靠这一点成立的。
+设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 33 条用例正是靠这一点成立的——它们用对称的 `nt` / `posix` 两个 fixture 覆盖两条分支，而不是靠在两台机器上各跑一遍。
 
 三个 Win32 常量（`CREATE_NEW_PROCESS_GROUP`、`CREATE_NO_WINDOW`、`CTRL_BREAK_EVENT`）写成字面量而非 `getattr(subprocess, ...)`：那些名字只在 Windows 的 `subprocess` / `signal` 里存在，Linux 上取不到，而本模块要在两个平台都能被导入。
 
@@ -192,7 +192,7 @@ cp settings.example.json settings.json
 
 **一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-### 5. ~~测试~~（122 passed / 2 skipped）
+### 5. ~~测试~~（124 passed / 2 skipped）
 
 **先确认你用的是哪个解释器，这不是脚注。** `pytest` 装在哪个 Python 里与 ChatApp 跑在哪个 Python 里是两件事，而它们不一致时的表象是「无输出加退出码 1」——那与测试内容毫无关系，纯粹是模块找不到。本文档原先写「`pytest 9.1.1` 在 conda 环境 `deep_lea` 中」，那只在最初那台机器上成立；在 Windows 那台上根本没有 conda，而 PATH 上的 `python` 解析到一个没装 pytest 的 miniconda 环境。
 
@@ -219,7 +219,7 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 | `test_cross_language_consistency.py` | 前后端分类逻辑的一致性 |
 | `test_static_assets.py` | CSS 花括号、令牌引用、缓存版本号 |
 | `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入 |
-| `test_platform_shell.py` | 40 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性 |
+| `test_platform_shell.py` | 33 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
 | `test_dom_render.py` | 30 个浏览器内 DOM 用例，跑 `harness/render.html` |
 | `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js` |
 | `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
@@ -252,9 +252,11 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 - **~~`libs/chat.js` 的 `msgHash`~~（已改为双 32 位累加器）。** 字段与采样口径完全不变，因此判定灵敏度不变；省掉的是每条消息每次渲染约两百字符的中间串。**`Math.imul` 是正确性必需而非风格偏好**：32 位乘积会溢出双精度尾数，普通 `*` 静默丢掉的正是低位，也就是哈希唯一依赖的部分——改回 `*` 不会报错，只会让缓存判定偶发失灵。用两个累加器而非一个的理由是单个 32 位摘要按生日界在约 8 万个不同值时开始碰撞；但这里不是生日问题，每条消息只与自己上一次比较，所以 64 位使单次比较的碰撞概率落在 $2^{-64}$ 量级。
 - **~~`libs/chat.js` 的 KaTeX 扫描~~（已加 `_hasMath` 预判）。** 判定读 `msg.content` / `diff_content` / `content_parts` 而非 `bubble.textContent`：后者虽然一定准确，但会为长气泡多分配一份完整副本，把省下的开销又花掉一部分。工具结果与 subagent 正文来自别的消息，主气泡的字段扫描覆盖不到，因此在各自的 append 处单独置标记；subagent 那处取无条件置真，因为它数量极少而漏判的代价是公式永久不渲染，两侧不对称。
 
-### 7. Windows 上尚未验证的三项
+### 7. Windows 上未验证的三项与未修的一项
 
-一次性命令执行（`execute_bash` 那条链路）已在真机上确认可用：默认解释器走 pwsh 7、stdout 正常回收、中文不乱码、无窗口闪现。以下三项**没有任何真机证据**，因为它们只能在界面交互中暴露。
+一次性命令执行（`execute_bash` 那条链路）已在真机上确认可用：默认解释器走 pwsh 7、stdout 正常回收、中文不乱码、无窗口闪现、摘要带解释器名与真实耗时。
+
+**这一节里有两类事项，别把它们混为一谈。** 前三项是**代码已改但没有真机证据**——它们只能在界面交互中暴露，跑测试证明不了。最后一项（`os.execv`）是**缺陷已定位但刻意没改**，那里没有任何新行为可验，需要的是一个产品判断而不是一次验证。把它当成前三项去「验证」会白花一轮才发现读错了分类。
 
 **持久化终端。** 开一个终端、执行一条命令。三种失败各有不同表现：
 
@@ -328,7 +330,7 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 
 ## 五、验证方法
 
-这个项目没有构建步骤。现在有两层保障：`tests/` 下的 122 个纯 Python 用例（另有浏览器内 DOM 用例，缺 Playwright 时跳过），加上下面这些静态检查。
+这个项目没有构建步骤。现在有两层保障：`tests/` 下的 124 个纯 Python 用例（另有浏览器内 DOM 用例，缺 Playwright 时跳过），加上下面这些静态检查。
 
 用例数会随改动变化，别把它当断言看——真正的判据是第三节第 5 项那张表，以及跑一遍的结果本身。
 
