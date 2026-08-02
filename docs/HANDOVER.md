@@ -192,7 +192,7 @@ cp settings.example.json settings.json
 
 **一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-### 5. ~~测试~~（124 passed / 2 skipped）
+### 5. ~~测试~~（165 个 item：124 通过，41 个 DOM 用例待 Chromium）
 
 **先确认你用的是哪个解释器，这不是脚注。** `pytest` 装在哪个 Python 里与 ChatApp 跑在哪个 Python 里是两件事，而它们不一致时的表象是「无输出加退出码 1」——那与测试内容毫无关系，纯粹是模块找不到。本文档原先写「`pytest 9.1.1` 在 conda 环境 `deep_lea` 中」，那只在最初那台机器上成立；在 Windows 那台上根本没有 conda，而 PATH 上的 `python` 解析到一个没装 pytest 的 miniconda 环境。
 
@@ -211,17 +211,25 @@ python -m pytest tests/ -q -k "not dom"    # 只跑纯 Python，不需要浏览�
 
 Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-8 写 stdout（测试里的断言消息与 docstring 都是中文，走 ANSI 代码页会抛编码错误而表现为无输出），`-p no:cacheprovider` 少一个会 `Path()` 的部件。构成：
 
+**表格里的用例数是 item 数，不是函数数，两者不是同一个量。** 一个带 `@pytest.mark.parametrize` 的函数产出多个 item，写在类里的测试方法又不会被「数 `def test_` 开头的行」这种判据数到。用 grep 数函数曾在这里得出 110 而套件报告 124——差额十四个，全部来自这两种情况。
+
+权威来源只有一个，跑它而不是数源码：
+
+```bash
+python -m pytest tests --collect-only -q -p no:cacheprovider
+```
+
 | 文件 | 覆盖 |
 | --- | --- |
-| `test_config.py` | 配置加载与静默降级 |
-| `test_style_filter.py` | 过滤规则的确定性与变更记录可回放 |
-| `test_message_toggle.py` | 分类顺序、筛选条件、内联思维链可逆性 |
-| `test_cross_language_consistency.py` | 前后端分类逻辑的一致性 |
-| `test_static_assets.py` | CSS 花括号、令牌引用、缓存版本号 |
+| `test_config.py` | 13 个，配置加载与静默降级 |
+| `test_style_filter.py` | 16 个（10 个函数 + 三处 parametrize），过滤规则的确定性与变更记录可回放 |
+| `test_message_toggle.py` | 25 个（19 个函数 + 一处 parametrize），分类顺序、筛选条件、内联思维链可逆性 |
+| `test_cross_language_consistency.py` | 4 个，前后端分类逻辑的一致性 |
+| `test_static_assets.py` | 7 个（5 个函数 + 两处 parametrize），CSS 花括号、令牌引用、缓存版本号 |
 | `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入 |
 | `test_platform_shell.py` | 33 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
-| `test_dom_render.py` | 30 个浏览器内 DOM 用例，跑 `harness/render.html` |
-| `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js` |
+| `test_dom_render.py` | 31 个浏览器内 DOM 用例，跑 `harness/render.html`。**在 Windows 上尚未真正执行过**（见第六节：包已装但 `launch()` 失败，逐条跳过） |
+| `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js`。同上，Windows 上未执行 |
 | `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
 
 **后两个文件各自打开了一片此前完全无覆盖的区域，而「此前为什么测不了」是最值得记下的部分。**
@@ -330,7 +338,9 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 
 ## 五、验证方法
 
-这个项目没有构建步骤。现在有两层保障：`tests/` 下的 124 个纯 Python 用例（另有浏览器内 DOM 用例，缺 Playwright 时跳过），加上下面这些静态检查。
+这个项目没有构建步骤。现在有两层保障：`tests/` 下的 165 个 item（124 个纯 Python 用例，加 41 个浏览器内 DOM 用例），加上下面这些静态检查。
+
+DOM 那 41 条在 Windows 那台机器上**尚未真正执行过**：playwright 包已装、模块能导入、item 也产出了，但 `launch()` 因 Chromium revision 不匹配而失败，于是逐条跳过。跳过数目有两种形状且相差一个量级，见第六节。
 
 用例数会随改动变化，别把它当断言看——真正的判据是第三节第 5 项那张表，以及跑一遍的结果本身。
 
@@ -434,11 +444,30 @@ python -c "import glob, py_compile, sys; fs = ['app.py', 'config.py'] + sorted(g
 
 **用户运行 ChatApp 不应依赖它，因此测试套件本身也不能因它缺席而变红。** `tests/test_dom_render.py` 用模块级 `pytest.importorskip('playwright')` 加 `browser` fixture 里对 `launch()` 的异常捕获实现「缺件即跳过」：缺 Python 包、缺 Chromium 二进制、缺 Chromium 所需的系统库三种情形都会跳过并给出原因。这条已被实证——首次跑时 Chromium 尚未下载完，结果是 `64 passed, 20 skipped` 而非二十个红叉。
 
-**跳过数目有两种形状，差一个量级，别把少的那种当成用例丢失。** 缺 Python 包时 `importorskip` 在**模块导入阶段**就跳过整个文件，两个 DOM 文件各算一条，总数是 **2**；缺 Chromium 二进制时模块能导入、失败发生在 `browser` fixture 里，于是**逐条**跳过，数目等于受影响的用例数（上面那次是 20）。两者都是设计内的行为。
+**跳过数目有两种形状，差一个量级，别把少的那种当成用例丢失。** 缺 Python 包时 `importorskip` 在**模块导入阶段**就跳过整个文件，两个 DOM 文件各算一条，总数是 **2**；模块能导入而 `launch()` 失败时（缺 Chromium 二进制、版本不匹配、缺系统库）跳过发生在 `browser` fixture 里，于是**逐条**跳过，数目等于受影响的 item 数。两者都是设计内的行为。
+
+逐条那种的数目会随用例增减而变，不是常量：早期在 Linux 上是 20，现在两个 DOM 文件合计 41。**看到一个陌生的跳过数目不要当成第三种形状**，先看它是「2」还是「等于 dom item 总数」——只有这两类。
 
 同一个原因还解释了另一件容易困惑的事：缺 Python 包时，`-k "not dom"` 加与不加的总数**完全相同**——那两个模块从不产出任何 item，没有东西可供筛选。
 
-**Windows 那台机器的状态是个特例，值得记一下**：Chromium 缓存目录已经存在（`%LOCALAPPDATA%\ms-playwright`，大概是另一个 conda 环境装的），但应用解释器里没有 playwright 包。所以在那台机器上要跑 DOM 用例只需 `pip install playwright`，不必再下 115MB 浏览器。
+**`skipped` 与 `deselected` 的区别是个免费的判据。** 同一条 `-k "not dom"` 命令，在缺 playwright 包时报「124 passed, 2 skipped」，装好之后报「124 passed, 41 deselected」——前者是那两个模块在导入阶段整个被跳过（各算一条），后者是它们正常产出 41 个 item 然后被 `-k` 排除。想知道包在不在，看这个词比去查 `find_spec` 更直接。
+
+**Windows 那台机器上「装了包」不等于「能跑」，这一点花了一轮才认清。** 缓存目录 `%LOCALAPPDATA%\ms-playwright` 本来就存在（大概是另一个 conda 环境装的），往应用解释器 `pip install playwright` 之后模块确实能导入——`-k "not dom"` 的输出从「2 skipped」变成「41 deselected」就是证据。但完整套件报的是 **`124 passed, 41 skipped`**：那 41 条一条都没执行，走的是上面说的第二种跳过形状（模块导入成功、`launch()` 在 `browser` fixture 里失败、逐条跳过）。
+
+**这里有一个容易犯的推理错误值得记下：** 41 这个数字同时出现在「被 `-k` 排除的 item 数」与「跳过的 item 数」里，看到相同的数字很容易顺势认为「排除的那批现在能跑了」。两个 41 指的是同一批 item，但一个说的是「它们存在」，另一个说的是「它们没执行」——数字相同不代表结论相同。
+
+**根因是 revision 不匹配，不是「没装浏览器」。** 错误信息的确切形状是：
+
+```
+BrowserType.launch: Executable doesn't exist at
+  C:\Users\...\AppData\Local\ms-playwright\chromium_headless_shell-XXXX\...
+```
+
+而那台机器的缓存目录里 `chromium-1217`、`chromium-1223`、`chromium_headless_shell-1217`、`chromium_headless_shell-1223` **四个目录都在**——两个 revision 各自的正式版与 headless shell 都齐全。playwright 是按固定路径名去找它自己那个版本要求的 revision 的，号码不合就等于没装，与「装过没装过」无关。
+
+**一个不显然的事实：新版 playwright 的无头模式用的是独立的 `chromium_headless_shell-*` 二进制，不是 `chromium-*` 那个。** 两个目录名对应两个不同的下载产物。所以即便正式版 Chromium 在位、版本也对，headless 启动仍然可能失败——只看到 `chromium-XXXX` 存在就断定「浏览器已就绪」会得出错误结论。
+
+解决办法是往**跑测试的那个解释器**跑一次安装（它会下该版本要求的 revision，而不是复用缓存里别的版本）：
 
 安装浏览器：
 
