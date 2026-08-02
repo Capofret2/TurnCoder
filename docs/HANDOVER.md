@@ -324,6 +324,8 @@ Windows 上另外两个开关值得默认加上：`-X utf8` 让子进程按 UTF-
 
 用例数会随改动变化，别把它当断言看——真正的判据是第三节第 5 项那张表，以及跑一遍的结果本身。
 
+**新增检查时把逻辑写进 Python，不要写进 shell。** 下面几条静态检查里原先有两条是 bash 专属写法（通配展开与 `for`/`case` 循环），搬到 Windows 上一条也跑不了。把遍历、过滤、判定都放在 `python -c` 里，命令在两个平台上就逐字相同，顺带避开 cmd 的引号转义规则与 PowerShell 不为原生命令展开通配这两个坑。
+
 ### 测试
 
 ```bash
@@ -336,19 +338,41 @@ python -m pytest tests/ -q
 
 ### JavaScript 语法
 
+bash / zsh：
+
 ```bash
 for f in libs/*.js; do case "$f" in *.min.js) ;; *) node --check "$f" ;; esac; done
 ```
 
+PowerShell（上面那条用的 `for` / `do` / `case` / `esac` 全是 bash 关键字，在 PowerShell 与 cmd 下不是行为差异而是根本无法解析）：
+
+```powershell
+Get-ChildItem libs\*.js | Where-Object { $_.Name -notlike '*.min.js' } | ForEach-Object -Process { node --check $_.FullName } -End { Write-Output 'node --check finished' }
+```
+
+两条并列而非替换：这个仓库现在同时服务两个平台。
+
+`-End` 那段不是装饰，理由同下面 Python 那条的 `print`：`node --check` 成功时不打印任何东西，于是「全部通过」与「管道压根没执行」产生一模一样的表象。用 `ForEach-Object -End` 而不是分号拼一个 `Write-Output`，是为了让它留在同一条管道里——不引入第二条命令，也就不会成为「反正可以随便拼」的先例。
+
 `node --check` 只做解析不执行、无副作用。它比朴素的括号计数可靠得多——后者会被正则字面量里的字符类（如 ``[^`\n]``）触发假阳性。
+
+**node 属额外依赖。** 它不在 `requirements.txt` 里，应用本身也不需要它（项目明确宣称无 Node.js 构建步骤）。所以它缺席时这条检查做不了，而不是项目坏了——遇到「找不到 node」不要去装构建工具链，那是另一回事。
 
 ### Python 语法
 
+**通配展开要交给 Python 做，不要交给 shell。** 原先这里写的是 `python -m py_compile app.py config.py api/*.py`，那在 bash 下可行，但 PowerShell 对原生命令**不做**通配展开——Python 会收到字面的 `api/*.py` 这个不存在的路径。下面这条在两个平台上逐字相同：
+
 ```bash
-python -m py_compile app.py config.py api/*.py
+python -c "import glob, py_compile, sys; fs = ['app.py', 'config.py'] + sorted(glob.glob('api/*.py')); [py_compile.compile(f, doraise=True) for f in fs]; print('py_compile OK:', len(fs), 'files')"
 ```
 
-与项目自身 `restart_server` 动作采用的校验手段一致。`api/response.py` 或 `api/state.py` 一旦有语法错误，应用在 `import api` 阶段就会崩溃、连启动都做不到。
+这与项目自身 `restart_server` 动作采用的手段一致——那一处本来就是在 Python 里 `glob.glob("**/*.py", recursive=True)`，所以这不是新做法，是把文档对齐到代码既有的做法。
+
+**用跑应用的那个解释器，不是 PATH 上的那个。** 理由同第三节第 5 项：不同 Python 版本对语法的接受范围并不完全一致，在 A 上编译通过不保证在 B 上导入不炸。
+
+末尾那句 `print` 不是装饰。`py_compile` 成功时本来就不打印任何东西，而「无输出加退出码 0」在这个环境里至少有三种完全不同的成因（见下面第五节末的第 1 条）——给它一个正向证据，才能把「通过了」与「根本没跑」区分开。
+
+`api/response.py` 或 `api/state.py` 一旦有语法错误，应用在 `import api` 阶段就会崩溃、连启动都做不到。
 
 ### CSS 花括号收支
 
@@ -399,6 +423,12 @@ python -m py_compile app.py config.py api/*.py
 ### Playwright 是开发期依赖
 
 **用户运行 ChatApp 不应依赖它，因此测试套件本身也不能因它缺席而变红。** `tests/test_dom_render.py` 用模块级 `pytest.importorskip('playwright')` 加 `browser` fixture 里对 `launch()` 的异常捕获实现「缺件即跳过」：缺 Python 包、缺 Chromium 二进制、缺 Chromium 所需的系统库三种情形都会跳过并给出原因。这条已被实证——首次跑时 Chromium 尚未下载完，结果是 `64 passed, 20 skipped` 而非二十个红叉。
+
+**跳过数目有两种形状，差一个量级，别把少的那种当成用例丢失。** 缺 Python 包时 `importorskip` 在**模块导入阶段**就跳过整个文件，两个 DOM 文件各算一条，总数是 **2**；缺 Chromium 二进制时模块能导入、失败发生在 `browser` fixture 里，于是**逐条**跳过，数目等于受影响的用例数（上面那次是 20）。两者都是设计内的行为。
+
+同一个原因还解释了另一件容易困惑的事：缺 Python 包时，`-k "not dom"` 加与不加的总数**完全相同**——那两个模块从不产出任何 item，没有东西可供筛选。
+
+**Windows 那台机器的状态是个特例，值得记一下**：Chromium 缓存目录已经存在（`%LOCALAPPDATA%\ms-playwright`，大概是另一个 conda 环境装的），但应用解释器里没有 playwright 包。所以在那台机器上要跑 DOM 用例只需 `pip install playwright`，不必再下 115MB 浏览器。
 
 安装浏览器：
 
