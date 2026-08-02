@@ -113,11 +113,16 @@ def test_windows_prefers_pwsh_over_powershell(nt, fake_pwsh):
 
 def test_cmd_sets_codepage_before_the_command(nt):
     """chcp 用 && 串联而非 &：设置失败时不该继续执行，否则输出编码与读回口径不一致，
-    而这种不一致只表现为乱码。"""
+    而这种不一致只表现为乱码。
+
+    argv 与 label 刻意不同：argv[0] 是真实要执行的 `cmd.exe`，label 是 `cmd`（展示用，
+    也是 shell 参数接受的词汇）。两条断言并存是为了防止有人为「统一」把 argv 也改掉——
+    那会让命令根本启动不起来。
+    """
     argv, label = ps.shell_argv('dir', 'cmd')
     assert argv[:2] == ['cmd.exe', '/c']
     assert argv[2].startswith('chcp 65001>nul && ')
-    assert label == 'cmd.exe'
+    assert label == 'cmd'
 
 
 def test_bash_can_be_forced_on_windows(nt):
@@ -249,7 +254,7 @@ def test_interactive_falls_back_to_cmd_when_no_powershell(nt, no_powershell):
     只在开发机上成立，搬到装了 pwsh 7 的 Windows 机器上就变成一句会误导人的记录，比断言
     失败更糟。
     """
-    assert ps.interactive_shell_argv() == (['cmd.exe'], 'cmd.exe')
+    assert ps.interactive_shell_argv() == (['cmd.exe'], 'cmd')
 
 
 def test_powershell_prelude_silences_the_prompt():
@@ -261,8 +266,27 @@ def test_powershell_prelude_silences_the_prompt():
 
 
 def test_cmd_prelude_disables_echo():
-    pre = ps.interactive_prelude('cmd.exe')
+    pre = ps.interactive_prelude('cmd')
     assert '@echo off' in pre
+
+
+def test_prelude_matches_the_label_the_producer_emits(nt, fake_pwsh):
+    """生产者与消费者必须对上。
+
+    其余 prelude 用例都传字面量 label，因此「interactive_shell_argv 改了 label 格式而
+    interactive_prelude 的匹配没跟上」这种情况对它们完全不可见。症状是 PowerShell 终端
+    失去提示符抑制、cmd 终端失去 @echo off，两者都表现为「输出里多出几行看不懂的东西」
+    而不是报错——这类失败正是最难反推的一种。这条把两端接起来。
+    """
+    _argv, label = ps.interactive_shell_argv()
+    assert ps.interactive_prelude(label), '产出的 label 喂回 prelude 得到了空列表'
+
+
+def test_prelude_matches_the_cmd_label_too(nt, no_powershell):
+    """cmd 那一档同理。它是 Windows 上没装任何 PowerShell 时的唯一选择，所以这条链路
+    断了就等于那类机器上的终端全都带着回显与乱码。"""
+    _argv, label = ps.interactive_shell_argv()
+    assert '@echo off' in ps.interactive_prelude(label)
 
 
 def test_bash_needs_no_prelude():

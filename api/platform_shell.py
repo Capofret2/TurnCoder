@@ -42,6 +42,19 @@ def default_shell() -> str:
     return 'powershell' if is_windows() else 'bash'
 
 
+def _exe_label(path: str) -> str:
+    """可执行文件路径 → 摘要里显示的解释器名。
+
+    剥掉扩展名而不是只取 basename：Windows 上 which 返回的后缀大小写由 PATHEXT 决定，
+    实测拿到的是 `pwsh.EXE`，直接用会让每条工具结果的摘要都显示成 `pwsh.EXE: git log`。
+
+    统一之后 label 的取值恰好等于 shell 参数接受的那四个名字（pwsh / powershell / cmd /
+    bash），于是摘要里看到 `cmd: dir` 就知道可以写 shell=cmd。这是它值得统一的实质理由，
+    不只是观感。
+    """
+    return os.path.splitext(os.path.basename(path))[0].lower()
+
+
 def shell_argv(command: str, requested: str = ''):
     """把一条命令包装成完整 argv。返回 (argv, label)。
 
@@ -57,11 +70,13 @@ def shell_argv(command: str, requested: str = ''):
     if name in ('powershell', 'pwsh'):
         exe = shutil.which('pwsh') or shutil.which('powershell') or 'powershell.exe'
         return ([exe, '-NoProfile', '-NonInteractive', '-Command',
-                 _PS_UTF8 + '\n' + command], os.path.basename(exe))
+                 _PS_UTF8 + '\n' + command], _exe_label(exe))
     if name == 'cmd':
         # chcp 与命令本体用 && 串联而非 &：代码页设置失败时不该继续执行，否则输出
         # 编码与读回口径不一致，而这种不一致只会表现为乱码。
-        return (['cmd.exe', '/c', 'chcp 65001>nul && ' + command], 'cmd.exe')
+        # argv 里保留 cmd.exe（真实要执行的文件名），label 用 cmd（展示与 shell 参数的
+        # 词汇）。两者是不同的东西，混淆它们会让命令根本启动不起来。
+        return (['cmd.exe', '/c', 'chcp 65001>nul && ' + command], 'cmd')
     if name != 'bash':
         raise ValueError('unknown shell: %r' % (requested,))
     return ([shutil.which('bash') or '/bin/bash', '-c', command], 'bash')
@@ -151,8 +166,8 @@ def interactive_shell_argv():
         return ([shutil.which('bash') or '/bin/bash'], 'bash')
     exe = shutil.which('pwsh') or shutil.which('powershell')
     if exe:
-        return ([exe, '-NoLogo', '-NoProfile', '-Command', '-'], os.path.basename(exe))
-    return (['cmd.exe'], 'cmd.exe')
+        return ([exe, '-NoLogo', '-NoProfile', '-Command', '-'], _exe_label(exe))
+    return (['cmd.exe'], 'cmd')
 
 
 def interactive_prelude(label: str):
@@ -161,11 +176,15 @@ def interactive_prelude(label: str):
     PowerShell 会把提示符写进 stdout，与命令输出混在同一条流里；把 prompt 函数改成
     返回空串是唯一能从进程内部关掉它的办法。cmd 的 @echo off 同理，它默认回显每一
     条收到的命令。
+
+    label 必须是 interactive_shell_argv 产出的那些值（见 _exe_label）。这两个函数是一对：
+    改了 label 格式而没同步这里的匹配，cmd 终端会失去 @echo off 与 chcp，症状是每条命令
+    被回显一遍加中文乱码，而不是任何形式的报错。
     """
     low = (label or '').lower()
     if low.startswith(('pwsh', 'powershell')):
         return ["function prompt { '' }", _PS_UTF8]
-    if low == 'cmd.exe':
+    if low == 'cmd':
         return ['@echo off', 'chcp 65001>nul']
     return []
 
