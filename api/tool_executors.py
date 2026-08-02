@@ -1298,6 +1298,7 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
     # 有任何线索指向平台。
     _run_id = uuid.uuid4().hex[:8]
     _out_file = os.path.join(tempfile.gettempdir(), f'chatapp_bash_{_run_id}.out')
+    _t_start = time.time()
     try:
         _out_fd = open(_out_file, 'w')
         proc = subprocess.Popen(
@@ -1355,9 +1356,14 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
     if proc.returncode != 0:
         output += f'\n\nExit code: {proc.returncode}'
     if not output.strip():
-        import datetime as _dt_empty
-        _elapsed = _dt_empty.datetime.now().timestamp() - os.path.getmtime(_out_file) if os.path.exists(_out_file) else 0
-        output = f'(no output)\n\nCommand completed with exit code {proc.returncode}.\nPID: {_pid}\nElapsed: ~{timeout_sec - _elapsed:.0f}s (approx)\nCommand: {command[:200]}'
+        # 真实墙钟耗时。原先是 timeout_sec 减去「now - out_file.mtime」，而 mtime 就是
+        # 刚才，于是那个差值恒等于 timeout_sec，让「瞬间结束且无输出」显示成「跑满了
+        # 超时」。这个数字本身有诊断价值：退出码 0、无输出、耗时不到 0.1 秒，基本就是
+        # 进程根本没执行命令。
+        _real_elapsed = time.time() - _t_start
+        output = (f'(no output)\n\nCommand completed with exit code {proc.returncode}.\n'
+                  f'PID: {_pid}\nShell: {_shell}\nElapsed: {_real_elapsed:.2f}s\n'
+                  f'Command: {command[:200]}')
     # 清理临时文件
     try:
         os.remove(_out_file)

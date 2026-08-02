@@ -21,6 +21,7 @@ import sys
 # 在两个平台都能被导入。数值属于 Win32 ABI，不会变。
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 DETACHED_PROCESS = 0x00000008
+CREATE_NO_WINDOW = 0x08000000
 # signal.CTRL_BREAK_EVENT 同样只在 Windows 的 signal 模块里存在，Linux 上取不到。
 # 用裸值是等价的：Popen.send_signal 拿 == 比较，而 signal.Signals 是 IntEnum。
 CTRL_BREAK_EVENT = 1
@@ -73,9 +74,30 @@ def detached_kwargs() -> dict:
     把这个形参命名为 unused_start_new_session 并静默忽略它（见 subprocess.py
     第 1414 行）。所以原先那句「脱离进程组，ChatApp 重启不会杀死它」的注释在
     Windows 上是一句无声的假话，进程会随 ChatApp 一起没。
+
+    **不要把 DETACHED_PROCESS 加回来。** 实测（Windows 10 / pwsh 7）：带上它之后
+    PowerShell 会启动、host 初始化失败、不执行任何命令、以退出码 0 退出——既没有
+    输出，也没有副作用，而调用方看到的是「成功」。cmd.exe 与 python.exe 在同一
+    标志下完全正常，所以这不是通用的重定向问题，是 PowerShell 需要控制台才能初始化
+    它的输出管道。这个失败形式是最坏的一种：不报错，假装成功。
+
+    **DETACHED_PROCESS 同时造成两个看起来无关的症状，别只修一个。** 它的语义不是
+    「没有控制台」而是「不继承父进程的控制台」，于是控制台程序会自己新分配一个：
+      1. cmd.exe 与 python.exe 因此每次执行都闪一个黑窗口（用户可见的那个）；
+      2. pwsh 7 的 host 在这种状态下初始化失败，进而不执行任何命令、以 0 退出。
+    两者同源。只修掉闪窗而保留这个标志，PowerShell 那条静默空操作还在；反过来也一样。
+
+    CREATE_NO_WINDOW 的语义是「明确不创建控制台窗口」，两个症状一并消除且重定向完好。
+    实测（Windows 10）：pwsh 7 与 Windows PowerShell 5.1 在 NO_WINDOW|NEW_PROCESS_GROUP
+    下 stdout 与副作用都正常。
+
+    CREATE_NEW_PROCESS_GROUP 仍然保留：它让子进程不接收发往 ChatApp 那个进程组的
+    Ctrl+C，也就是「按 Ctrl+C 重启 ChatApp」这个主要场景依然安全。挡不住的是整个终端
+    窗口被关闭时广播的 CTRL_CLOSE_EVENT——这是接受的取舍，因为后台命令存在的全部意义
+    就是稍后读它的输出，一个没有输出的后台命令是纯粹的浪费。
     """
     if is_windows():
-        return {'creationflags': DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP}
+        return {'creationflags': CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP}
     return {'start_new_session': True}
 
 
@@ -85,9 +107,16 @@ def new_process_group_kwargs() -> dict:
     POSIX 上刻意返回空字典而不是 start_new_session：持久化终端应该随 ChatApp 一同
     退出，而脱离会话会让它活下来变成孤儿进程。与 detached_kwargs 的差别正在这里，
     两者不可互换。
+
+    CREATE_NO_WINDOW 在这里比在一次性执行那边更要紧：一次性命令的控制台窗口是闪一下，
+    而终端进程长期存活，它的窗口会一直挂在桌面上。
+
+    未经真机验证：诊断矩阵测的是一次性执行（-Command 加立即退出）。交互式 PowerShell
+    从 stdin 逐行读命令时 CREATE_NO_WINDOW 的行为没有被覆盖，需要在界面上真开一个终端
+    才能确认。若终端启动后无响应，先试着摘掉 CREATE_NO_WINDOW 单独验证这一项。
     """
     if is_windows():
-        return {'creationflags': CREATE_NEW_PROCESS_GROUP}
+        return {'creationflags': CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP}
     return {}
 
 

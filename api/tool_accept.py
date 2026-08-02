@@ -389,19 +389,49 @@ class ToolAcceptMixin:
         # Bash 禁用命令拦截：仅在非CC模拟模式下生效
         if tool_block.get('name') == 'Bash' and not getattr(self, 'global_settings', {}).get('enable_tool_simulate', False):
             cmd = tool_block.get('input', {}).get('command', '')
-            _banned = {'find', 'grep', 'rg', 'cat', 'head', 'tail', 'sed', 'awk'}
+            # 两组词汇：bash 的原名，与 PowerShell / Windows 的等价物。
+            # cat 与 ls 在 PowerShell 里本就是别名，所以原名单已经部分生效；缺的是
+            # Get-Content / Select-String 这类原生写法，不补就等于在 Windows 上开了
+            # 一个绕过口，而症状是「规则在某个平台上不生效」，极难被联想到是名单漏项。
+            _banned = {
+                'find', 'grep', 'rg', 'cat', 'head', 'tail', 'sed', 'awk',
+                'get-content', 'gc', 'type',            # → Read
+                'select-string', 'sls', 'findstr',      # → Grep
+                'get-item', 'gi',                       # → Read
+            }
             # 仅检查第一个管道符 '|' 之前的词 — 管道后面的命令可以合法使用这些被禁用的工具
             _pipe_idx = cmd.find('|')
             _pre_pipe = cmd[:_pipe_idx] if _pipe_idx >= 0 else cmd
             _cmd_words = _pre_pipe.split()
-            _hit = [w for w in _cmd_words if w in _banned]
+
+            def _norm_cmd_word(w):
+                """归一化一个命令词：小写 + 剥掉 .exe。
+
+                PowerShell 是大小写无关的，Get-Content 与 get-content 等价；不归一化
+                则整份名单在 PowerShell 上形同虚设。.exe 同理：findstr 与 findstr.exe
+                是同一个程序，模型两种都可能写。
+                """
+                w = w.lower()
+                return w[:-4] if w.endswith('.exe') else w
+
+            _hit = [w for w in _cmd_words if _norm_cmd_word(w) in _banned]
+            # 递归列目录单独判断，不进名单：Get-ChildItem / dir / ls 不带 -Recurse 时
+            # 就是系统提示词明确要求用来验证父目录存在的那个 ls，塞进名单会把被允许的
+            # 用法一起拦掉。bash 里 ls 与 find 是两个命令，PowerShell 里是同一个 cmdlet
+            # 的两种用法——这是平台间唯一一处无法靠加词解决的不对称。
+            _lower_pre = _pre_pipe.lower()
+            if '-recurse' in _lower_pre:
+                for _w in _cmd_words:
+                    if _norm_cmd_word(_w) in ('get-childitem', 'gci', 'dir', 'ls'):
+                        _hit.append(_w + ' -Recurse')
+                        break
             if _hit:
                 bt = chr(96) * 3
                 _hit_str = ', '.join(set(_hit))
                 fake_result = {
                     "id": self._next_id(),
                     "role": "user",
-                    "content": f"**Tool Error** (tool: {_tool_use_id})\n\n{bt}\n<system-reminder>\nYour Bash command was rejected because it contains banned command(s): {_hit_str}\nPer rule S25, you MUST use the dedicated tools instead:\n- find → use Glob tool\n- grep/rg → use Grep tool (Grep is based on ripgrep)\n- cat/head/tail → use Read tool\n- sed/awk → use Edit tool\nThese dedicated tools provide better user experience and are optimized for the correct permissions.\nPlease rewrite your operation using the appropriate tool(s).\n\nIMPORTANT — Take a deep breath. Do NOT panic if an Edit tool call fails. Edit failures are completely normal and harmless — they only mean your old_string did not exactly match the current file content.\nBefore retrying an Edit, you MUST:\n1. Carefully copy-paste the EXACT surrounding code from the Read output (do not type from memory)\n2. Double-check every character, space, and newline in your old_string against the file\n3. Only then submit the retry\nDo NOT attempt to bypass the Edit tool by using Bash commands (sed, awk, echo, python -c, heredocs, etc.) to modify files. This will be intercepted and rejected. The Edit tool is safe; Bash file modification is dangerous and prohibited.\nStay calm. Use the proper tools. You have unlimited retries at zero cost.\n</system-reminder>\n{bt}",
+                    "content": f"**Tool Error** (tool: {_tool_use_id})\n\n{bt}\n<system-reminder>\nYour Bash command was rejected because it contains banned command(s): {_hit_str}\nPer rule S25, you MUST use the dedicated tools instead:\n- find, Get-ChildItem -Recurse, gci -Recurse → use Glob tool\n- grep, rg, Select-String, sls, findstr → use Grep tool (Grep is based on ripgrep)\n- cat, head, tail, Get-Content, gc, type, Get-Item → use Read tool\n- sed, awk, and any -replace piped into Set-Content → use Edit tool\nNote: a bare Get-ChildItem / dir / ls without -Recurse is allowed — that is the directory listing the instructions ask you to run before creating files. Only the recursive form is a Glob substitute.\nThese dedicated tools provide better user experience and are optimized for the correct permissions.\nPlease rewrite your operation using the appropriate tool(s).\n\nIMPORTANT — Take a deep breath. Do NOT panic if an Edit tool call fails. Edit failures are completely normal and harmless — they only mean your old_string did not exactly match the current file content.\nBefore retrying an Edit, you MUST:\n1. Carefully copy-paste the EXACT surrounding code from the Read output (do not type from memory)\n2. Double-check every character, space, and newline in your old_string against the file\n3. Only then submit the retry\nDo NOT attempt to bypass the Edit tool by using Bash commands (sed, awk, echo, python -c, heredocs, etc.) to modify files. This will be intercepted and rejected. The Edit tool is safe; Bash file modification is dangerous and prohibited.\nStay calm. Use the proper tools. You have unlimited retries at zero cost.\n</system-reminder>\n{bt}",
                     "summary": f"Bash 禁用命令被拦截: {_hit_str}",
                     "is_omitted": False,
                     "is_collapsed": True,

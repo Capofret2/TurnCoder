@@ -4,15 +4,36 @@
 platform_shell 里的函数一律返回数据而不起进程，这个文件是那个取向的兑现：monkeypatch
 os.name 之后，两条分支能在同一台机器上被逐条断言。
 
-本机没装 PowerShell，所以 shutil.which('pwsh') 恒为 None。需要覆盖回退链前两档的
-用例改为伪造 which，并在各自的 docstring 里写明这一点——把「伪造出来的通过」误当成
-「真机验证过」是这类测试最容易造成的伤害。
+两个方向都显式打补丁（nt / posix 两个 fixture），因此这个文件的结果与运行它的机器是
+什么平台无关。原先只给 Windows 方向打补丁、posix 方向靠「开发机恰好是 Linux」，那等于
+把开发机的平台悄悄写进了测试的前提——搬到 Windows 上之后那批用例集体反向失败。
+
+which 的结果同样要打补丁。开发机没装 PowerShell 而 Windows 机器装了 pwsh 7，所以两台
+机器上「回退链走到第几档」正好相反。凡是伪造出来的通过都在各自 docstring 里写明——把
+「伪造出来的通过」误当成「真机验证过」是这类测试最容易造成的伤害。
 """
 import os
+import sys
 
 import pytest
 
 from api import platform_shell as ps
+
+
+@pytest.fixture
+def posix(monkeypatch):
+    """把平台判定翻成 POSIX。与 nt 对称，理由见模块 docstring。"""
+    monkeypatch.setattr(ps, 'is_windows', lambda: False)
+
+
+@pytest.fixture
+def no_powershell(monkeypatch):
+    """伪造「一个 PowerShell 都没装」。
+
+    与 nt 是两个独立条件：平台是 Windows 不代表装了 pwsh。开发机上这个状态是真实的，
+    在装了 pwsh 7 的机器上必须伪造才能走到回退链最后一档。
+    """
+    monkeypatch.setattr(ps.shutil, 'which', lambda n: None)
 
 
 @pytest.fixture
@@ -37,7 +58,7 @@ def fake_pwsh(monkeypatch):
 
 # ------------------------------------------------ 默认解释器
 
-def test_default_shell_is_bash_on_posix():
+def test_default_shell_is_bash_on_posix(posix):
     assert ps.default_shell() == 'bash'
 
 
@@ -52,24 +73,40 @@ def test_is_windows_matches_the_real_platform():
 
 # ------------------------------------------------ 一次性执行的 argv
 
-def test_posix_wraps_in_bash_dash_c():
+def test_posix_wraps_in_bash_dash_c(posix):
+    """只比 argv[1:]：argv[0] 取决于机器上装没装 bash（取不到时回退 /bin/bash 字面量），
+    而这条用例要验的是包装形式，不是环境。"""
     argv, label = ps.shell_argv('ls')
     assert argv[1:] == ['-c', 'ls']
     assert label == 'bash'
 
 
 def test_windows_defaults_to_powershell_with_utf8_first(nt):
-    """UTF-8 设置必须排在命令之前，否则前面的输出已经按旧代码页写出去了。"""
+    """UTF-8 设置必须排在命令之前，否则前面的输出已经按旧代码页写出去了。
+
+    label 的判据与 interactive_prelude 保持一致（pwsh 或 powershell 开头）而不是写死
+    'powershell'：label 是 which 实际找到的可执行文件名，装了 pwsh 7 的机器上是
+    `pwsh.EXE`，两个都没装的机器上才回退到 `powershell.exe` 字面量。原断言把「开发机
+    没装 pwsh」写进了前提——这是本文件里最后一条同类错误。
+
+    两处用同一个谓词还有个附带好处：对「什么算 PowerShell」的判断不会在实现与测试
+    之间分叉。
+    """
     argv, label = ps.shell_argv('Get-ChildItem')
     assert argv[1:4] == ['-NoProfile', '-NonInteractive', '-Command']
-    assert label.lower().startswith('powershell')
+    assert label.lower().startswith(('pwsh', 'powershell'))
     body = argv[-1]
     assert body.startswith('[Console]::OutputEncoding')
     assert body.endswith('Get-ChildItem')
 
 
 def test_windows_prefers_pwsh_over_powershell(nt, fake_pwsh):
-    """伪造 which 的用例：本机无 PowerShell，回退链前两档否则走不到。"""
+    """回退链第一档：pwsh 优先于 powershell。
+
+    which 与路径都是伪造的（`/usr/bin/pwsh`，posix 风格），所以这条验的是「优先顺序 +
+    label 取 basename」这个逻辑，不是真机上的回退行为。真机行为已由手工探测确认：装了
+    pwsh 7 的机器上 shell_argv 拿到的是 `...\\7-preview\\pwsh.EXE`。
+    """
     _argv, label = ps.shell_argv('Get-Date')
     assert label == 'pwsh'
 
@@ -99,7 +136,7 @@ def test_unknown_shell_raises_instead_of_falling_back():
 
 # ------------------------------------------------ 进程组与脱离
 
-def test_posix_detach_uses_new_session():
+def test_posix_detach_uses_new_session(posix):
     assert ps.detached_kwargs() == {'start_new_session': True}
 
 
@@ -108,25 +145,55 @@ def test_windows_detach_uses_creationflags(nt):
     _execute_child 把该形参命名为 unused_start_new_session），所以必须换成
     creationflags，否则「重启不影响」是一句无声的假话。"""
     assert ps.detached_kwargs() == {
-        'creationflags': ps.DETACHED_PROCESS | ps.CREATE_NEW_PROCESS_GROUP}
+        'creationflags': ps.CREATE_NO_WINDOW | ps.CREATE_NEW_PROCESS_GROUP}
 
 
-def test_posix_process_group_kwargs_are_empty():
+def test_windows_detach_suppresses_the_console_window(nt):
+    """必须带 CREATE_NO_WINDOW，否则每条命令都闪一个黑窗口。
+
+    这是用户实际报告过的现象。它纯属观感、不影响功能、不会让任何别的测试变红，所以
+    极容易在某次「简化 creationflags」时被摘掉而无人察觉——因此单独立一条。
+    """
+    assert ps.detached_kwargs()['creationflags'] & ps.CREATE_NO_WINDOW
+
+
+def test_windows_detach_never_uses_detached_process(nt):
+    """DETACHED_PROCESS 必须不出现在这里。
+
+    实测（Windows 10 / pwsh 7）：带上它之后 PowerShell 启动、host 初始化失败、不执行
+    任何命令、以退出码 0 退出。调用方看到的是「成功」，而实际什么都没发生。cmd 与
+    python 在同一标志下正常，所以这是 PowerShell 特有的。
+
+    这条用例的存在理由：那个标志的名字听起来正是「让后台进程活下去」该用的东西，加
+    回它的动机很强，而症状是所有命令静默返回空并报告成功——几乎不可能被联想到是一个
+    创建标志。所以让那个动作变成一次失败。
+    """
+    _flags = ps.detached_kwargs().get('creationflags', 0)
+    assert not (_flags & ps.DETACHED_PROCESS)
+
+
+def test_posix_process_group_kwargs_are_empty(posix):
     """刻意不返回 start_new_session：持久化终端应随 ChatApp 一同退出，脱离会话会让
     它活成孤儿进程。与 detached_kwargs 的差别正在这里，两者不可互换。"""
     assert ps.new_process_group_kwargs() == {}
 
 
 def test_windows_process_group_enables_ctrl_break(nt):
+    """终端进程长期存活，缺了 NO_WINDOW 会留下一个常驻控制台窗口而非一次闪现。"""
     assert ps.new_process_group_kwargs() == {
-        'creationflags': ps.CREATE_NEW_PROCESS_GROUP}
+        'creationflags': ps.CREATE_NO_WINDOW | ps.CREATE_NEW_PROCESS_GROUP}
 
 
 def test_win32_flag_values_match_the_abi():
-    """这两个常量是从 _winapi 抄来的 ABI 数值，因为那两个名字在 Linux 的 subprocess
-    里取不到，而本模块要在两个平台都能导入。"""
+    """四个常量都是从 _winapi 与 Windows signal 抄来的 ABI 数值。
+
+    那些名字在 Linux 的 subprocess / signal 里根本取不到，而本模块要在两个平台都能被
+    导入，所以只能写字面量。而 CreateProcess 对未知标志位是**静默忽略**的——抄错一位
+    不会有任何报错，只会让那个标志失效。把数值本身写成断言是唯一的保护。
+    """
     assert ps.DETACHED_PROCESS == 0x00000008
     assert ps.CREATE_NEW_PROCESS_GROUP == 0x00000200
+    assert ps.CREATE_NO_WINDOW == 0x08000000
     assert ps.CTRL_BREAK_EVENT == 1
 
 
@@ -150,7 +217,7 @@ def test_windows_kill_uses_taskkill_with_the_tree_flag(nt, monkeypatch):
     assert seen['argv'][-1] == '4242'
 
 
-def test_interrupt_signal_is_sigint_on_posix():
+def test_interrupt_signal_is_sigint_on_posix(posix):
     import signal
     assert ps.interrupt_signal() == signal.SIGINT
 
@@ -175,8 +242,13 @@ def test_interactive_argv_never_passes_noninteractive(nt, fake_pwsh):
     assert label == 'pwsh'
 
 
-def test_interactive_falls_back_to_cmd_when_no_powershell(nt):
-    """本机确实没有 PowerShell，所以这条是真实回退而非伪造。"""
+def test_interactive_falls_back_to_cmd_when_no_powershell(nt, no_powershell):
+    """回退链最后一档：Windows 但一个 PowerShell 都没装。
+
+    which 必须打补丁。这条原先写着「本机确实没有 PowerShell，所以是真实回退」——那句话
+    只在开发机上成立，搬到装了 pwsh 7 的 Windows 机器上就变成一句会误导人的记录，比断言
+    失败更糟。
+    """
     assert ps.interactive_shell_argv() == (['cmd.exe'], 'cmd.exe')
 
 
@@ -205,9 +277,11 @@ def test_environment_facts_covers_all_three_placeholders():
     assert all(facts.values()), '占位符取到空值会让那一行变成半句话'
 
 
-def test_environment_facts_reports_bash_on_posix():
+def test_environment_facts_reports_bash_on_posix(posix):
+    """比 sys.platform 而不是写死 'linux'：posix 分支的行为是透传 sys.platform，写死
+    平台名等于把开发机的身份写进断言。"""
     facts = ps.environment_facts()
-    assert facts['{PLATFORM}'] == 'linux'
+    assert facts['{PLATFORM}'] == sys.platform
     assert facts['{SHELL}'] == 'bash'
 
 

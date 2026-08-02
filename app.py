@@ -17,13 +17,27 @@ REQUIRED_PACKAGES = {
     "simple_websocket": "simple-websocket",
 }
 
+_missing_pkgs = []
 for module_name, pip_name in REQUIRED_PACKAGES.items():
     try:
         importlib.import_module(module_name)
     except ImportError:
-        print(f"Missing module '{module_name}', installing: {pip_name}")
+        _missing_pkgs.append((module_name, pip_name))
+
+for module_name, pip_name in _missing_pkgs:
+    print(f"Missing module '{module_name}', installing: {pip_name}", flush=True)
+    try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
         importlib.invalidate_caches()
+    except Exception as _pip_err:
+        # 装不上就继续，不让异常冲出模块作用域。这段的职责只是省掉用户一次手工
+        # pip install，而不是充当依赖守卫——真正的守卫是下面那几行 import，它的
+        # ImportError 会准确报出缺哪个模块。
+        # 原先是裸 check_call：在没有 pip 的环境（embeddable / Microsoft Store 版
+        # Python、uv venv）里它必然失败，于是一个为防启动失败而写的机制成了启动
+        # 失败的唯一原因，而且报的是 pip 的错误码，看不出缺哪个包。
+        print(f"  自动安装失败: {_pip_err}", flush=True)
+        print(f"  若启动失败请手动执行: \"{sys.executable}\" -m pip install {pip_name}", flush=True)
 # 不要怀疑用户服务器忘记重启，用户总是会记得在合适的时候重启服务器以应用修改
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -553,7 +567,7 @@ def handle_action():
                 _ver_data = {'timestamp': ts, 'version': ts, 'update_url': '', 'description': f'ChatApp Release {ts}'}
                 if os.path.exists(_ver_path):
                     try:
-                        with open(_ver_path, 'r') as _vf: _ver_data.update(json.load(_vf))
+                        with open(_ver_path, 'r', encoding='utf-8') as _vf: _ver_data.update(json.load(_vf))
                     except: pass
                 _ver_data['timestamp'] = ts
                 _ver_data['version'] = ts
@@ -745,7 +759,7 @@ def handle_action():
                 _local_ver_path_for_pkg = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
                 if os.path.exists(_local_ver_path_for_pkg):
                     try:
-                        with open(_local_ver_path_for_pkg, 'r') as _lpf:
+                        with open(_local_ver_path_for_pkg, 'r', encoding='utf-8') as _lpf:
                             _lpv = json.load(_lpf)
                         _pkg_update_url = _lpv.get('update_url', '')
                         if '?token=' in _pkg_update_url:
@@ -769,11 +783,16 @@ def handle_action():
                 # 更新本地 version.json 的时间戳（保留原有的 update_url 等字段）
                 _local_ver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
                 try:
-                    with open(_local_ver_path, 'r') as _lvf:
+                    # 两端都必须显式 UTF-8：json.dump 带 ensure_ascii=False 会把中文
+                    # description 按 locale 编码写出（中文 Windows 是 GBK），而更新包里
+                    # 的 version.json 是 zf.writestr 写的 UTF-8。缺了 encoding，「下载更新
+                    # 包再读它的 version.json」在中文 Windows 上抛 UnicodeDecodeError，
+                    # 而那个异常发生在自动更新流程里、被外层 except 吞成一行日志。
+                    with open(_local_ver_path, 'r', encoding='utf-8') as _lvf:
                         _local_ver = json.load(_lvf)
                     _local_ver['timestamp'] = ts
                     _local_ver['version'] = ts
-                    with open(_local_ver_path, 'w') as _lvf:
+                    with open(_local_ver_path, 'w', encoding='utf-8') as _lvf:
                         json.dump(_local_ver, _lvf, ensure_ascii=False, indent=2)
                 except Exception:
                     pass
@@ -781,7 +800,7 @@ def handle_action():
                 _upload_msg = ''
                 _ver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
                 try:
-                    with open(_ver_path, 'r') as _vrf:
+                    with open(_ver_path, 'r', encoding='utf-8') as _vrf:
                         _ver_info = json.load(_vrf)
                     _upload_url = _ver_info.get('update_url', '')
                     if _upload_url and _upload_url.startswith('gitee://'):
@@ -793,7 +812,12 @@ def handle_action():
                         # 优先从独立文件读取 token，不再依赖 URL 参数
                         _gitee_token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'update_admin_token.txt')
                         if os.path.exists(_gitee_token_path):
-                            with open(_gitee_token_path, 'r') as _gtf:
+                            # utf-8-sig 而非 utf-8：这个文件由用户手工创建，而 Windows
+                            # 记事本的历史版本会在 UTF-8 文件开头写 BOM。用 utf-8 读会
+                            # 把 BOM 留在字符串首位，strip() 去不掉（它不是空白字符），
+                            # token 因此多出一个不可见前缀，症状是 HTTP 401 而没有任何
+                            # 线索指向编码。无 BOM 时 utf-8-sig 的行为与 utf-8 一致。
+                            with open(_gitee_token_path, 'r', encoding='utf-8-sig') as _gtf:
                                 _gitee_token = _gtf.read().strip()
                         if not _gitee_token and len(_parts) > 1:
                             for _param in _parts[1].split('&'):
@@ -838,7 +862,7 @@ def handle_action():
                         _admin_token = ''
                         _admin_token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'update_admin_token.txt')
                         if os.path.exists(_admin_token_path):
-                            with open(_admin_token_path, 'r') as _atf:
+                            with open(_admin_token_path, 'r', encoding='utf-8-sig') as _atf:
                                 _admin_token = _atf.read().strip()
                         with open(zip_path, 'rb') as _zf:
                             _up_resp = _up_req.post(
