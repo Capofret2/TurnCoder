@@ -1288,9 +1288,12 @@
     color: var(--md-sys-color-on-surface);
 }
 .settings-title { font-weight: 500; }
-/* 26px keeps the text aligned under the label rather than the checkbox. */
+/* No indent. It used to be 26px to clear a leading checkbox; the switch now
+   sits at the end of the row, so title and description align as one column and
+   the control stands alone on the right — which is what makes an Adwaita
+   preference row recognisable. */
 .settings-desc {
-    margin: var(--md-sys-spacing-1) 0 0 26px;
+    margin: var(--md-sys-spacing-1) 0 0 0;
     font-size: var(--md-sys-typescale-body-small-size);
     line-height: 1.5;
     color: var(--md-sys-color-on-surface-variant);
@@ -1302,6 +1305,66 @@
 @media (max-width: 768px) {
     .settings-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Switch — GNOME/Flutter form, drawn on the checkbox itself.
+   --------------------------------------------------------------------------
+   Deliberately not a wrapper element. settings.js reads and writes .checked on
+   twenty-two inputs by id, twice each; wrapping them would leave that code
+   working while the visible state came from somewhere else, which shows up as
+   "I flipped the switch and the setting did not change" — or the reverse, which
+   is worse because nothing looks wrong.
+
+   The control sits at the end of the row rather than before the label: that is
+   how an Adwaita preference row is arranged, title left and control right, and
+   it is why .settings-desc no longer needs the 26px indent that used to align
+   it under a leading checkbox.
+
+   The on state takes --md-sys-color-primary, so the switch follows all seven
+   accents for free — the same behaviour as Flutter's Switch. Both states set a
+   thumb colour alongside the track colour; setting only one is the trap that
+   survives the light scheme by accident.
+   ========================================================================== */
+.settings-label input[type="checkbox"],
+.md-switch {
+    appearance: none; -webkit-appearance: none;
+    position: relative; flex-shrink: 0;
+    order: 2; margin: 0 0 0 auto;
+    width: 40px; height: 24px; box-sizing: border-box;
+    border: none; border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-surface-container-highest);
+    box-shadow: inset 0 0 0 1px var(--md-sys-color-outline);
+    cursor: pointer;
+    transition: background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+                box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.settings-label input[type="checkbox"]::after,
+.md-switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: var(--md-sys-color-outline);
+    transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized),
+                background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.settings-label input[type="checkbox"]:checked,
+.md-switch:checked {
+    background: var(--md-sys-color-primary);
+    box-shadow: none;
+}
+.settings-label input[type="checkbox"]:checked::after,
+.md-switch:checked::after {
+    transform: translateX(16px);
+    background: var(--md-sys-color-on-primary);
+}
+/* Keyboard focus has to stay visible: the native outline is suppressed by
+   appearance:none on some engines. */
+.settings-label input[type="checkbox"]:focus-visible,
+.md-switch:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+.settings-label .settings-title { order: 1; }
 
 /* ==========================================================================
    Scroll-to-bottom affordance. Created by minimap.js and parented to

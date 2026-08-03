@@ -26,7 +26,11 @@ function openSettingsModal() {
     if (document.getElementById('set-reverse-context')) document.getElementById('set-reverse-context').checked = globalSettings.enable_reverse_context;
     if (document.getElementById('set-anthropic-protocol')) document.getElementById('set-anthropic-protocol').checked = globalSettings.enable_anthropic_protocol;
     if (document.getElementById('set-cc-inject')) document.getElementById('set-cc-inject').checked = globalSettings.enable_tool_inject;
-    if (document.getElementById('set-auto-update')) document.getElementById('set-auto-update').checked = !!globalSettings.enable_auto_update;
+    // !== false, not a truthiness test: this preference defaults to on, so a
+    // fresh install without the key would render the switch off while the
+    // backend behaves as on. Same reading as main.js uses for the per-session
+    // field, and the two have to agree or one state shows two ways.
+    if (document.getElementById('set-default-thinking-visible')) document.getElementById('set-default-thinking-visible').checked = globalSettings.default_thinking_visible !== false;
     if (document.getElementById('set-bulk-logging')) document.getElementById('set-bulk-logging').checked = globalSettings.enable_bulk_logging;
 
 
@@ -73,7 +77,7 @@ function saveSettings() {
     if (document.getElementById('set-reverse-context')) globalSettings.enable_reverse_context = document.getElementById('set-reverse-context').checked;
     if (document.getElementById('set-anthropic-protocol')) globalSettings.enable_anthropic_protocol = document.getElementById('set-anthropic-protocol').checked;
     if (document.getElementById('set-cc-inject')) globalSettings.enable_tool_inject = document.getElementById('set-cc-inject').checked;
-    if (document.getElementById('set-auto-update')) globalSettings.enable_auto_update = document.getElementById('set-auto-update').checked;
+    if (document.getElementById('set-default-thinking-visible')) globalSettings.default_thinking_visible = document.getElementById('set-default-thinking-visible').checked;
     if (document.getElementById('set-bulk-logging')) globalSettings.enable_bulk_logging = document.getElementById('set-bulk-logging').checked;
 
     if (document.getElementById('set-billing-sync-button')) globalSettings.enable_billing_sync_button = document.getElementById('set-billing-sync-button').checked;
@@ -134,8 +138,6 @@ function applySettingsUI() {
     renderModelDropdown();
 
     // Developer mode UI visibility controls
-    var devButtons = document.getElementById('dev-buttons-row');
-    if (devButtons) devButtons.style.display = devMode ? 'flex' : 'none';
     var imgUploadBtn = document.getElementById('image-upload-btn');
     if (imgUploadBtn) imgUploadBtn.style.display = 'inline-block';
     document.querySelectorAll('.dev-only-setting').forEach(function(el) {

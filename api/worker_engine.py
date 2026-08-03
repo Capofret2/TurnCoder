@@ -1403,7 +1403,9 @@ class WorkerEngineMixin:
                         _think_summary = "模型内置思维链 (到达8k被截断)" if _thinking_truncated else "模型内置思维链"
                         thought_msg = self._make_msg("assistant", thought_content,
                             summary=_think_summary, msg_id=new_id,
-                            is_hidden=not session.get('thinking_visible', True),
+                            is_hidden=not session.get(
+                                'thinking_visible',
+                                getattr(self, 'global_settings', {}).get('default_thinking_visible', True)),
                             is_collapsed=True, model_name=f"{display_m_name} (思考过程)",
                             cc_type='thinking')
                         session['conversation_history'].insert(target_idx, thought_msg)

@@ -28,9 +28,12 @@ class SessionMixin:
             'enable_custom_webfetch_jina': True,
             'enable_webfetch_headless': True,
             'enable_bottom_tabs': False,
-            # 默认关闭：启动时自动拉取并应用远程更新会在用户未明确同意的情况下
-            # 覆写本地源码，属于不该默认开启的行为。需要时在设置面板手动勾选。
-            'enable_auto_update': False
+            # 新思维链气泡的默认可见性。刻意放在这里而不是 create_session 的初值里：
+            # 会话自己的 thinking_visible 一旦被显式切换过就以会话值为准，没切换过的
+            # 会话在 worker_engine 的消费点回落到这一项。因此改这个开关对既有会话立即
+            # 生效。若「顺手」改成建会话时写死初值，症状是改了开关对现有会话毫无反应，
+            # 而那看起来像是没保存成功。
+            'default_thinking_visible': True
         }
 
         # 兼容并迁移旧版单一文件

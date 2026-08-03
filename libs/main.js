@@ -913,22 +913,6 @@ function _doHandleStateUpdate(data) {
                         sendButton.style.display = (globalSettings.enable_autopilot && currentSession.autopilot_active) ? 'none' : '';
                     }
 
-                    // CC 绑定状态：仅 CC 直连模式下显示 Link 按钮
-                    var linkCcBtn = document.getElementById('link-cc-btn');
-                    if (linkCcBtn) {
-                        var _showLinkBtn = globalSettings.enable_tool_inject && !globalSettings.enable_tool_simulate;
-                        linkCcBtn.style.display = _showLinkBtn ? '' : 'none';
-                        if (_showLinkBtn) {
-                            if (currentSession.bound_cc_id) {
-                                linkCcBtn.style.background = 'var(--md-sys-color-tertiary-container)';
-                                linkCcBtn.style.color = 'var(--md-sys-color-on-tertiary-container)';
-                            } else {
-                                linkCcBtn.style.background = 'var(--md-sys-color-success-container)';
-                                linkCcBtn.style.color = 'var(--md-sys-color-on-success-container)';
-                            }
-                        }
-                    }
-
                     if (typeof _kanbanActive === 'undefined' || !_kanbanActive) {
                         document.getElementById('input-area').style.display = (data.current_session_id === 'starred_session_virtual') ? 'none' : 'block';
                     }
@@ -1308,7 +1292,20 @@ function _doHandleStateUpdate(data) {
                 gDiv.draggable = true;
                 gDiv.style.cssText = 'margin: 2px 0 6px;';
                 // 组自身可拖拽排序
-                gDiv.ondragstart = (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({type:'group',gid:gid})); gDiv.style.opacity = '0.5'; };
+                // e.target 守卫不是防御性冗余，它是组内拖拽能否工作的分界。
+                // 组内的每个 .session-item 自己也是 draggable，它的 dragstart 会
+                // 冒泡到这里；没有这道守卫时，会话行刚写好的 {type:'session'}
+                // 载荷会被下一行的 {type:'group'} 覆盖掉。后果是三条路径同时
+                // 静默失效：_createSessionItem 的 ondrop、list 的 ondrop 都以
+                // payload.type === 'session' 开头，而 gDiv 自己的组排序分支要求
+                // payload.gid !== gid，拖在本组内时也不成立。
+                // 症状里有个旁证：拖动组内会话时整个分组会一起变半透明，
+                // 因为同一个处理器还执行了下面那句 opacity。
+                gDiv.ondragstart = (e) => {
+                    if (e.target !== gDiv) return;
+                    e.dataTransfer.setData('text/plain', JSON.stringify({type:'group',gid:gid}));
+                    gDiv.style.opacity = '0.5';
+                };
                 gDiv.ondragend = (e) => { gDiv.style.opacity = '1'; };
                 // 组作为拖放目标：会话拖入组 / 组排序。用 outline 而非 border 表达
                 // 可放置状态：outline 不参与布局，不会在拖拽时挤动组内条目。
@@ -2008,9 +2005,6 @@ function _doHandleStateUpdate(data) {
                 '<button onclick="closeSessionManager();createGroup()" class="sm-toolbar-btn">' + mdIcon('create_new_folder', 16) + ' 新建组</button>' +
                 '<button onclick="closeSessionManager();openSettingsModal()" class="sm-toolbar-btn">' + mdIcon('settings', 16) + ' 全局设置</button>' +
                 '<button onclick="closeSessionManager();openManualModal()" class="sm-toolbar-btn">' + mdIcon('book', 16) + ' 使用说明</button>' +
-                '<button onclick="exportSnapshot()" class="sm-toolbar-btn">' + mdIcon('inventory', 16) + ' 更新</button>' +
-                '<button onclick="smExportRelease()" class="sm-toolbar-btn">' + mdIcon('north_east', 16) + ' 发布</button>' +
-                '<button onclick="clearLogs()" class="sm-toolbar-btn" style="color:var(--md-sys-color-error);">' + mdIcon('delete_sweep', 16) + ' 清理</button>' +
                 '<button onclick="smToggleArchived()" class="sm-toolbar-btn" id="sm-archive-btn">' + mdIcon('archive', 16) + ' 查看归档</button>';
             panel.appendChild(toolbar);
             // Body
@@ -2221,11 +2215,4 @@ function _doHandleStateUpdate(data) {
             renderSessionManagerGrid();
         }
 
-        function smExportRelease() {
-            fetch('/api/action', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({action: 'export_release'})
-            }).then(function(r) { return r.json(); }).then(function(d) {
-                showToast(d.message, d.status === 'ok' ? 'success' : 'error');
-            }).catch(function(e) { showToast('\u53D1\u5E03\u5931\u8D25: ' + e, 'error'); });
-        }
+
