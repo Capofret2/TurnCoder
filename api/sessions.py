@@ -20,7 +20,6 @@ class SessionMixin:
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_tool_lower_bound': False,
-            'enable_tool_simulate': False,
             'enable_descriptor_tool_calls': False,
             'enable_webfetch_file_mode': True,
             'enable_custom_websearch': True,
@@ -76,7 +75,10 @@ class SessionMixin:
                     if "session_groups" in data:
                         self.session_groups = data["session_groups"]
                     # 迁移旧设置键名到新键名
-                    _key_migrations = {'enable_cc_inject': 'enable_tool_inject', 'enable_cc_simulate': 'enable_tool_simulate'}
+                    # 只剩一条不是残缺，enable_cc_simulate → enable_tool_simulate 那一
+                    # 半随该开关删除。它是活代码：持有旧键的 global.json 会被它 pop 出
+                    # 旧键并写入新键，于是一个已经没有任何消费者的键在每次启动时复活。
+                    _key_migrations = {'enable_cc_inject': 'enable_tool_inject'}
                     for _old_k, _new_k in _key_migrations.items():
                         if _old_k in self.global_settings:
                             self.global_settings[_new_k] = self.global_settings.pop(_old_k)
@@ -90,7 +92,6 @@ class SessionMixin:
                             'enable_autopilot': True,
                             'enable_anthropic_protocol': True, 'enable_tool_inject': True,
                 'enable_tool_lower_bound': False,
-                'enable_tool_simulate': True,
                 'enable_webfetch_file_mode': True,
                 'enable_custom_websearch': True,
                 'enable_custom_webfetch': True,

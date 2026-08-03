@@ -85,7 +85,9 @@ cp settings.example.json settings.json
 - **`terminal.py` 的解释器写死 `cmd.exe`**，因此 Windows 用户从持久化终端里永远拿不到 PowerShell。改为 pwsh → powershell.exe → cmd.exe 回退链。
 - **`Popen(text=True)` 缺 `encoding`。** 默认走 `locale.getpreferredencoding()`，中文 Windows 上是 GBK，而 PowerShell 的输出编码由 `$OutputEncoding` 决定。两端不对齐的症状是**中文乱码而非报错**，没有任何东西会提示你编码不对。
 - **`interrupt()` 的 Windows 分支原先整条为空**，点中断毫无反应且不报错——看起来像命令还没跑完。**现在的实现不发信号**：`CTRL_BREAK_EVENT` 已实测为静默空操作，改为枚举 shell 的直接子进程、滤掉 `conhost.exe` 这类基础设施进程、对剩下的调 `taskkill /T /F`。这只覆盖外部命令，cmdlet 无解——详见第三节第 7 项，那里记了三个被排除的假设，别重走。
-- **禁用命令名单是纯 bash 词汇。** `cat` 与 `ls` 在 PowerShell 里恰好是别名所以原名单部分生效，缺的是 `Get-Content` / `Select-String` / `findstr` 这类原生写法。同时改为大小写与 `.exe` 归一化——PowerShell 大小写无关，精确匹配使整份名单形同虚设。**递归列目录单独特判而不进名单**：bash 里 `ls` 与 `find` 是两个命令，PowerShell 里是同一个 cmdlet 的两种用法，直接入名单会拦掉系统提示词明确要求的裸 `ls`。这是平台间唯一一处无法靠加词解决的不对称。
+- **禁用命令名单是纯 bash 词汇。** 缺的是 `Get-Content` / `Select-String` / `findstr` 这类原生写法。
+
+  **一条重要更正：这份名单当时从未执行过一次，所以「原名单部分生效」那句话是错的。** 它与 1k 长度上限的条件都是「是 Bash **且未开启** `enable_tool_simulate`」，而那个开关在非开发者模式下被 `applySettingsUI` 强制为真——两段拦截因此恒为假。补词这次修复被验证的是名单的**内容**，不是它的生效。该开关已随本批改动移除，两处条件改为无条件生效，详见本节「移除自动更新与 Claude Code CLI 直连」末尾。同时改为大小写与 `.exe` 归一化——PowerShell 大小写无关，精确匹配使整份名单形同虚设。**递归列目录单独特判而不进名单**：bash 里 `ls` 与 `find` 是两个命令，PowerShell 里是同一个 cmdlet 的两种用法，直接入名单会拦掉系统提示词明确要求的裸 `ls`。这是平台间唯一一处无法靠加词解决的不对称。
 - **`file_path.split("/")[-1]` 取文件名。** 反斜杠路径上找不到任何 `/`，`[-1]` 因此返回**整条路径**。后果不只是摘要变长：过时读取的「已省略，概括为：…」替换文本会进入模型上下文，而标记旧读取为过时的那几处会遍历整个会话历史逐条重写，所以同一条绝对路径在上下文里出现的是多次而非一次。改用 `os.path.basename`（Windows 的 ntpath 把两种分隔符都认，Linux 的 posixpath 只认 `/` 而那里本来就用 `/`，所以是严格改进）。有 `test_no_file_path_is_split_on_forward_slash_only` 守着，因为这个写法在 Linux 上完全正确、下一个人不会收到任何提示。
 - **裸 `pip install`。** PDF 分支在 PyMuPDF 缺失时自动装包，原先调 PATH 上的 `pip`——而它未必属于跑应用的那个解释器。装进错误环境之后 `import fitz` 照旧失败，报出的是「安装失败」或第二次 ImportError，两者都不指向「装到别处去了」。改用 `sys.executable -m pip`，有 `test_pip_is_never_invoked_as_a_bare_executable` 守着。这条与本文档第三节第 5 项的解释器教训是同一件事。
 
@@ -106,7 +108,15 @@ cp settings.example.json settings.json
 - 于是 `/v1/messages` 恒返 500，而 `/api/proxy_event` 捕获 `AttributeError` 之后照旧 `return jsonify({"status": "ok"})`——**对调用方谎报成功**；
 - `main.js` 里操作 `#link-cc-btn` 的十四行同理：那个元素在 `frontend.html` 中从未存在，`if (linkCcBtn)` 恒为假。这类失效比缺函数更隐蔽，缺函数会抛 `ReferenceError`，而 `getElementById` 返回 null 加一道存在性检查是完全合法的写法，静态检查与测试都看不出问题。
 
-**顺带修掉一个真实缺陷，它不是死代码。** `worker_engine.py` 两处按 `enable_tool_simulate` 在 `tools.json` 与 `tools_external.json` 之间二选一，而后者是交给真 CC 执行时用的定义、仓库里根本不存在：开关关掉时 `os.path.exists` 为假、`_tools_text_for_prompt` 保持空串，**模型一个工具定义都拿不到，且不报错**。非开发者模式下 `applySettingsUI` 强制该开关为真所以普通用户碰不到，开发者关掉它就会得到一个没有任何工具的会话，症状是「模型不写工具调用了」，看起来像模型的问题。现已改为无条件加载 `tools.json`；那个开关本身已无实际分支，界面描述已注明，字段暂留以兼容既有 `global.json`。
+**顺带修掉一个真实缺陷，它不是死代码。** `worker_engine.py` 两处按 `enable_tool_simulate` 在 `tools.json` 与 `tools_external.json` 之间二选一，而后者是交给真 CC 执行时用的定义、仓库里根本不存在：开关关掉时 `os.path.exists` 为假、`_tools_text_for_prompt` 保持空串，**模型一个工具定义都拿不到，且不报错**。非开发者模式下 `applySettingsUI` 强制该开关为真所以普通用户碰不到，开发者关掉它就会得到一个没有任何工具的会话，症状是「模型不写工具调用了」，看起来像模型的问题。现已改为无条件加载 `tools.json`。
+
+**`enable_tool_simulate` 本身也已整体移除，而「暂留字段」那个判断是错的。** 它并非无害的残留键，而是通过 `tool_executors.py` 四处 `setting_check='enable_tool_simulate'` **直接门控 Read / Write / Edit / Bash 四个执行器**：关掉它 `_use_local` 取到假，四个工具全部落到 `accept_tool` 末尾那句「不支持的工具」错误。它在开发者模式下可见可点，一点就废掉整个工具系统——所以它只能造成损害，没有第二条分支可选。
+
+清除面：四处装饰器实参、前端设置项与 `settings.js` 三行（读 / 写 / 非开发者模式强制赋值）、四处后端默认值（`sessions.py` 两处、`state.py` 两处），以及 `load_sessions` 里 `_key_migrations` 中指向它的那一半——最后这一处是活代码，留着会让持有旧键 `enable_cc_simulate` 的 `global.json` 在每次启动时把这个键重新种回来。
+
+`setting_check` 机制本身保留：`WebSearch` 与 `WebFetch` 仍在用它，所以看到那四个装饰器不带该参数而相邻的带，不是漏写。
+
+**一次用户可感知的行为变化，请勿误判为回归。** `tool_accept.py` 那两处 Bash 拦截（1k 长度上限、禁用命令名单）的条件都是「未开启该开关」，因此**从未执行过一次**。开关移除后条件必须选一边，选了**生效**——两段拦截文本都在教模型「用 Edit 而不是 sed/awk 改文件」，那是系统提示词 S25 的要求，也是文档一直把这份名单当作在用功能来描述的前提。此前从未见过这两条拦截，第一次遇到最可能被当成新引入的缺陷。
 
 ### 前端视觉体系
 

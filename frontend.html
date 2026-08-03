@@ -260,13 +260,6 @@
                 </div>
                 <div class="settings-item dev-only-setting">
                     <label class="settings-label">
-                        <input type="checkbox" id="set-cc-simulate" onchange="saveSettings()">
-                        <span class="settings-title">本地执行工具调用</span>
-                    </label>
-                    <div class="settings-desc">工具调用在 ChatApp 内部直接执行。Claude Code CLI 直连链路已移除，本地执行是唯一路径，因此这一项已无实际分支——保留它只是为了兼容既有 global.json 里的字段，下一次清理会一并删除。</div>
-                </div>
-                <div class="settings-item dev-only-setting">
-                    <label class="settings-label">
                         <input type="checkbox" id="set-partial-read" onchange="saveSettings()">
                         <span class="settings-title">部分读入</span>
                     </label>
@@ -509,7 +502,7 @@
     <script src="/libs/icons.js?v=3"></script>
     <script src="/libs/utils.js?v=2"></script>
     <script src="/libs/codeblocks.js?v=4"></script>
-    <script src="/libs/settings.js?v=4"></script>
+    <script src="/libs/settings.js?v=5"></script>
     <script src="/libs/providers.js?v=2"></script>
     <script src="/libs/models.js?v=2"></script>
     <script src="/libs/codemonitor.js?v=1"></script>

@@ -7,7 +7,7 @@ function openSettingsModal() {
 
     if (document.getElementById('set-tool-lower-bound')) document.getElementById('set-tool-lower-bound').checked = globalSettings.enable_tool_lower_bound;
     if (document.getElementById('set-tool-desc-enforcement')) document.getElementById('set-tool-desc-enforcement').checked = globalSettings.enable_tool_description_enforcement;
-    if (document.getElementById('set-cc-simulate')) document.getElementById('set-cc-simulate').checked = globalSettings.enable_tool_simulate;
+
     if (document.getElementById('set-partial-read')) document.getElementById('set-partial-read').checked = !!globalSettings.enable_partial_read;
     if (document.getElementById('set-descriptor-tool-calls')) document.getElementById('set-descriptor-tool-calls').checked = globalSettings.enable_descriptor_tool_calls;
 
@@ -59,7 +59,7 @@ function saveSettings() {
 
     if (document.getElementById('set-tool-lower-bound')) globalSettings.enable_tool_lower_bound = document.getElementById('set-tool-lower-bound').checked;
     if (document.getElementById('set-tool-desc-enforcement')) globalSettings.enable_tool_description_enforcement = document.getElementById('set-tool-desc-enforcement').checked;
-    if (document.getElementById('set-cc-simulate')) globalSettings.enable_tool_simulate = document.getElementById('set-cc-simulate').checked;
+
     if (document.getElementById('set-partial-read')) globalSettings.enable_partial_read = document.getElementById('set-partial-read').checked;
     if (document.getElementById('set-descriptor-tool-calls')) globalSettings.enable_descriptor_tool_calls = document.getElementById('set-descriptor-tool-calls').checked;
 
@@ -119,7 +119,7 @@ function applySettingsUI() {
         globalSettings.enable_starred = false;
         globalSettings.enable_reverse_context = false;
         globalSettings.enable_tool_lower_bound = false;
-        globalSettings.enable_tool_simulate = true;
+
         globalSettings.enable_routing_token = false;
         globalSettings.enable_descriptor_tool_calls = true;
     }

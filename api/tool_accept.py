@@ -354,8 +354,16 @@ class ToolAcceptMixin:
             self._continue_autopilot_tool_queue(session, _active_sid)
             return
 
-        # Bash 命令长度拦截：超过约 1k 字符的命令直接生成假返回，不发给 CC（CC模拟模式跳过）
-        if tool_block.get('name') == 'Bash' and not getattr(self, 'global_settings', {}).get('enable_tool_simulate', False):
+        # Bash 命令长度拦截：超过约 1k 字符的命令直接生成假返回。
+        #
+        # **这段此前从未执行过一次。** 原条件是「是 Bash 且未开启 enable_tool_simulate」，
+        # 而那个开关在非开发者模式下被 applySettingsUI 强制为真，于是 1k 上限一直不存在。
+        # 开关移除后条件必须选一边，选了生效——拦截文本在教模型「用 Edit 而不是
+        # sed/awk 写文件」，那是系统提示词 S25 的要求。
+        #
+        # 这是一次用户可感知的行为变化：此前从未见过这条拦截，第一次遇到最可能被当成
+        # 新引入的缺陷。
+        if tool_block.get('name') == 'Bash':
             cmd = tool_block.get('input', {}).get('command', '')
             if len(cmd) > 1000:
                 bt = chr(96) * 3
@@ -386,8 +394,12 @@ class ToolAcceptMixin:
                 self._continue_autopilot_tool_queue(session, _active_sid)
                 return
 
-        # Bash 禁用命令拦截：仅在非CC模拟模式下生效
-        if tool_block.get('name') == 'Bash' and not getattr(self, 'global_settings', {}).get('enable_tool_simulate', False):
+        # Bash 禁用命令拦截。
+        #
+        # 同上，这份名单也一直是死代码。值得单独记一句：HANDOVER 第二节记录了「为
+        # Windows 补上 Get-Content / Select-String / findstr」这次修复，而那是修在一段
+        # 永不执行的代码上——被实测过的是名单的内容，不是它的生效。
+        if tool_block.get('name') == 'Bash':
             cmd = tool_block.get('input', {}).get('command', '')
             # 两组词汇：bash 的原名，与 PowerShell / Windows 的等价物。
             # cat 与 ls 在 PowerShell 里本就是别名，所以原名单已经部分生效；缺的是

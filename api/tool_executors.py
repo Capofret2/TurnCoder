@@ -861,9 +861,18 @@ def execute_expand_bubbles(tool_input, settings, cache_dir, **kwargs):
 #  CC模拟 executors: Read, Write, Edit, Bash (本地执行)
 # ---------------------------------------------------------------------------
 
-@register_executor('Read', setting_check='enable_tool_simulate')
+# 四个核心执行器刻意不带 setting_check。**不要给它们加回门控。**
+#
+# 原先是 setting_check='enable_tool_simulate'，而那个开关关掉时 _use_local 取到假，
+# Read / Write / Edit / Bash 四个工具全部落到 tool_accept.py 末尾那句「不支持的工具」
+# 错误——一点就废掉整个工具系统。Claude Code CLI 直连移除后本地执行是唯一路径，这个
+# 门控已无第二条分支可选。
+#
+# setting_check 参数本身仍在使用（WebSearch 与 WebFetch），所以看到相邻装饰器带它而
+# 这四个不带不是漏写。
+@register_executor('Read')
 def execute_read(tool_input, settings, cache_dir, **kwargs):
-    """Local Read executor for CC simulate mode. No line limit; rejects files > 100k tokens."""
+    """Local Read executor. No line limit; rejects files > 100k tokens."""
     file_path = tool_input.get('file_path', '')
     offset = tool_input.get('offset')
     limit = tool_input.get('limit')
@@ -1154,9 +1163,9 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
         return ToolResult(f'<tool_use_error>Read error: {str(e)}</tool_use_error>', f'Read: 错误', is_error=True)
 
 
-@register_executor('Write', setting_check='enable_tool_simulate')
+@register_executor('Write')
 def execute_write(tool_input, settings, cache_dir, **kwargs):
-    """Local Write executor for CC simulate mode."""
+    """Local Write executor."""
     file_path = tool_input.get('file_path', '')
     content = tool_input.get('content', '')
     if not file_path:
@@ -1172,9 +1181,9 @@ def execute_write(tool_input, settings, cache_dir, **kwargs):
         return ToolResult(f'<tool_use_error>Write error: {str(e)}</tool_use_error>', f'Write: 错误', is_error=True)
 
 
-@register_executor('Edit', setting_check='enable_tool_simulate')
+@register_executor('Edit')
 def execute_edit(tool_input, settings, cache_dir, **kwargs):
-    """Local Edit executor for CC simulate mode."""
+    """Local Edit executor."""
     file_path = tool_input.get('file_path', '')
     old_string = tool_input.get('old_string', '')
     new_string = tool_input.get('new_string', '')
@@ -1282,9 +1291,9 @@ def execute_edit(tool_input, settings, cache_dir, **kwargs):
     return ToolResult(f'The file {file_path} has been updated successfully.', f'Edit: {os.path.basename(file_path)}')
 
 
-@register_executor('Bash', setting_check='enable_tool_simulate')
+@register_executor('Bash')
 def execute_bash(tool_input, settings, cache_dir, **kwargs):
-    """Local Bash executor for CC simulate mode.
+    """Local Bash executor.
 
     All commands run as detached nohup processes (survive ChatApp restart).
     'Foreground' mode polls until completion; 'background' mode returns immediately.
@@ -1809,8 +1818,14 @@ def execute_create_child_session(tool_input, settings, cache_dir, **kwargs):
     _waiter = _cw_threading.Thread(target=_child_waiter, daemon=True)
     _waiter.start()
 
-    # Return None: pipeline falls through to CC queue path (no bound_cc_id → toast + return).
-    # No immediate tool_result is created. The background thread injects it when child ends.
+    # Return None on purpose: this executor is listed in tool_accept.py's
+    # _ASYNC_LOCAL_EXECUTORS, so the pipeline marks the part 'executing' and stops
+    # there. No immediate tool_result is created; the waiter thread above injects
+    # one when the child session ends.
+    #
+    # The old comment here said None fell through to a CC queue path — that path
+    # went away with the Claude Code CLI direct connection. Following it now leads
+    # nowhere, while the real handoff is in the other file.
     return None
 
 
