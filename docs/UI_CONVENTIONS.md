@@ -123,6 +123,7 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 
 ### 其他
 
+- `.md-switch` — GNOME/Flutter 形制的拨动开关。**画在 checkbox 自己身上，不包 wrapper**：`settings.js` 按 id 读写二十余个 input 的 `.checked` 各两处，包一层会让那些代码继续正确工作而视觉状态由别的元素表达，症状是「点了开关但设置没变」或反过来（后者更糟，看不出哪里不对）。`.settings-label input[type="checkbox"]` 自动获得该外观，所以偏好行不需要额外加类。开启态取 `primary` 因此自动跟随七个主题色。两个状态都同时设了轨道色与滑块色——只设一个是第二节那个在亮色下侥幸成立的坑
 - `.md-chip` — filter chip，`--selected` 为选中态
 - `.md-modal-overlay` / `--header` / `--close` / `--footer` / `--body` — 对话框骨架，五个弹窗共用
 - `.settings-item` / `-label` / `-title` / `-desc` / `-grid` — GNOME 风格偏好行
@@ -232,7 +233,15 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 
 改动前先 grep 确认有几处。补水前后会互相替换的那几对尤其明显，配色不一致会造成可见跳变。
 
-### 13. 覆盖层的 Escape 由一个 document 级监听器统管
+### 13. 滚动容器与内容层拆开后，写错一层不会报错
+
+**症状**：某段提示文字永久留在角落里，与真实内容并存；或者反过来，写进去的内容完全看不见。
+
+**根因**：看板与统一上下文面板都是「外层负责滚动、内层负责内容且高度由 JS 写入」的两层结构。往内层写内容而它此刻高度为零，内容无处渲染；往外层写 `innerHTML` 则会**销毁内层节点**，替换生成的新内层与刚写的那段文字成为兄弟，而正常分支只重写内层、永远不会碰那个兄弟。
+
+**做法**：空态也写进内层，临时给它 `height: 100%`（正常分支会把高度改回按内容计算的值，两条路径因此不互相污染）。`kanban.js` 的 `renderKanban` 空标签分支就是这个形态，注释里记了原委。
+
+### 14. 覆盖层的 Escape 由一个 document 级监听器统管
 
 `utils.js` 末尾有一个 keydown 监听器负责全部覆盖层的 Escape 与 Tab 焦点循环，选择器是 `MD_OVERLAY_SELECTOR`。新增覆盖层只要带上其中任一 class 或 id 就自动获得这两个行为，不需要在 open 函数里接线。
 
@@ -240,7 +249,7 @@ el.innerHTML = mdIcon('content_copy', 14) + ' 复制';
 
 **`showPromptModal` 与 `showConfirmModal` 刻意不在选择器里。** 它们的 Escape 必须 resolve 各自的 Promise，而这个监听器注册在前——抢先移除它们的节点会让 `await` 永远不返回。两者各自处理 Escape 并调 `preventDefault()`，而监听器开头检查 `e.defaultPrevented`，这是两侧唯一的协调机制。`showPromptModal` 原先不调 `preventDefault`，症状是一次按键关掉两层弹窗。
 
-### 14. 跨 script 标签的 `var` 与 `let`/`const` 同名是 SyntaxError
+### 15. 跨 script 标签的 `var` 与 `let`/`const` 同名是 SyntaxError
 
 **症状**：整个文件像是没加载，但 `typeof someFunction` 却返回 `'function'`。
 **根因**：这个组合本身是解析期错误，文件不会被求值；而函数声明的提升发生在解析期，所以 `typeof` 仍然看得见它们。一旦真的调用，函数体里引用的任何 `let`/`const` 都还在 TDZ，抛 `ReferenceError`。

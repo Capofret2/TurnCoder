@@ -4,7 +4,9 @@
 
 `feat/windows-support` 从 `rev` 的 `142d1d7` 开出，只含让 ChatApp 本体跑在 Windows 上所需的改动。
 
-**Windows 上的功能已全部在真机验证**：一次性命令执行、持久化终端、中断、启动器的进程交接、以及 171 个 item 的完整套件（含 41 条浏览器内 DOM 用例）。剩下**两条已知限制**，都写在第三节第 7 项：cmdlet 无法中断、后台命令熬不过终端窗口关闭。两者都是实测确认的边界而非待办。
+**Windows 上的功能已全部在真机验证**：一次性命令执行、持久化终端、中断、以及 169 个 item 的完整套件（128 纯 Python + 41 条浏览器内 DOM 用例，两侧均全绿）。剩下**两条已知限制**，都写在第三节第 7 项：cmdlet 无法中断、后台命令熬不过终端窗口关闭。两者都是实测确认的边界而非待办。
+
+**用例数从 171 降到 169 是刻意的，不是丢失。** 差额是随 `platform_shell.exec_or_spawn` 一并删除的那两条——自动更新功能整体移除后它成了零调用方的平台分支。第三节第 5 项那张表已同步。
 
 配套文档：`docs/UI_CONVENTIONS.md`（前端样式与图标约定，含改动时必须避开的陷阱清单）。
 
@@ -62,11 +64,15 @@ cp settings.example.json settings.json
 
 **顺带修掉一条数据丢失通道。** `app.py` 两处打包清单原先含 `data/` 下的提示词，而更新包里每一项都会被自动生成的 `update.py` 按相同相对路径 `shutil.copy2` 覆写——一次自动更新就静默覆盖用户改过的提示词。清单改为只发 `prompts/`，变量名一并从 `_release_data` / `_data_files` 改为 `_release_prompts` / `_prompt_files`，因为原名现在会主动误导。
 
+**这两处清单本身已随自动更新功能整体删除**（见本节「移除自动更新与 Claude Code CLI 直连」）。留着这段是因为那条通道的机理是真实的：清单里出现 `data/` 下的提示词就等于一次静默覆盖。守卫仍在，且已改写为在打包代码缺席时静默、在它回来时自动重新武装——`test_packaging_never_ships_user_overrides` 以 `import zipfile` 作为「这个文件里有打包代码」的探针。
+
 ### Windows 支持（`feat/windows-support` 分支）
 
 新增 `api/platform_shell.py` 作为**唯一知道 `os.name` 的模块**。其余模块调用它的函数，因此新增平台、调整解释器回退链或改动编码对齐都是单点改动。
 
-设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 39 条用例正是靠这一点成立的——它们用对称的 `nt` / `posix` 两个 fixture 覆盖两条分支，而不是靠在两台机器上各跑一遍。
+设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 37 条用例正是靠这一点成立的——它们用对称的 `nt` / `posix` 两个 fixture 覆盖两条分支，而不是靠在两台机器上各跑一遍。
+
+**曾是 39 条，`exec_or_spawn` 的两条随该函数一并删除。** 那个函数唯一的调用场景是 `updater.py` 末尾的启动器，自动更新移除后它成了零调用方的平台分支。**这次删除与 `interrupt_signal` 那次性质完全不同，别混起来**：后者是实现被实测证伪（它返回的信号是静默空操作），而 `exec_or_spawn` 的实现是正确的，只是它服务的场景整体不存在了。它当时解决的问题记在 `platform_shell.py` 末尾的墓碑注释里，免得将来重新引入启动脚本时再踩一遍。
 
 三个 Win32 常量（`CREATE_NEW_PROCESS_GROUP`、`CREATE_NO_WINDOW`、`CTRL_BREAK_EVENT`）写成字面量而非 `getattr(subprocess, ...)`：那些名字只在 Windows 的 `subprocess` / `signal` 里存在，Linux 上取不到，而本模块要在两个平台都能被导入。
 
@@ -86,6 +92,21 @@ cp settings.example.json settings.json
 **Bash schema 新增 `shell` 枚举参数（bash / powershell / pwsh / cmd）而不是新增一个工具名。** 后者需要同步八处白名单（`message_edit.py`、`response.py` 两处、`tool_accept.py` 两处、`chat.js` 等），而其中 `chat.js:392` 那份**已经漂移了**——它缺 `缩减读取`，Python 侧两份都有。再加一个名字只会加速这种漂移。
 
 结果摘要里的解释器 label 取值恰好等于该参数接受的四个名字，所以看到 `cmd: dir` 就知道可以写 `shell=cmd`。`_exe_label` 剥掉扩展名正是为此：Windows 上 `which` 返回的后缀大小写由 PATHEXT 决定，实测拿到的是 `pwsh.EXE`。
+
+### 移除自动更新与 Claude Code CLI 直连（`feat/ui-modernize` 分支）
+
+两块功能整体删除。它们的性质完全不同，混起来会误判后续风险。
+
+**自动更新是有功能的代码，按用户要求移除。** `updater.py` 与 `version.json` 整份删除；`app.py` 移除 `export_snapshot`（含自动生成 `update.py` 与 Gitee / 自建服务器两条上传通道）、`export_release`、`clear_logs`、启动时的更新检查；前端移除侧边栏与会话管理页各三个开发者按钮。顺带收窄了一处值得记的攻击面：`export_snapshot` 会把整个仓库连同 `data/` 下的管理凭据打包上传到第三方端点，而包内自动生成的 `update.py` 对清单每一项做无条件 `shutil.copy2` 覆写。
+
+**CC 直连是已经死了的代码，移除它没有任何行为变化。** 而「它是怎么死的」比删了什么更值得记——这是本项目反复出现的那一类：
+
+- `link_cc` / `handle_cc_direct_request` / `handle_proxy_event` 三个被调用的后端方法在 `api/` 下**零定义**；
+- `api/cc_diag.py` 这个模块不存在（现名 `tool_diag.py`），而两处 `from api.cc_diag import` 都包在 `try/except pass` 里，因此**从未成功执行过一次**，诊断日志里从来没有 `HTTP_RECV` 与 `SSE_ERROR` 两类事件；
+- 于是 `/v1/messages` 恒返 500，而 `/api/proxy_event` 捕获 `AttributeError` 之后照旧 `return jsonify({"status": "ok"})`——**对调用方谎报成功**；
+- `main.js` 里操作 `#link-cc-btn` 的十四行同理：那个元素在 `frontend.html` 中从未存在，`if (linkCcBtn)` 恒为假。这类失效比缺函数更隐蔽，缺函数会抛 `ReferenceError`，而 `getElementById` 返回 null 加一道存在性检查是完全合法的写法，静态检查与测试都看不出问题。
+
+**顺带修掉一个真实缺陷，它不是死代码。** `worker_engine.py` 两处按 `enable_tool_simulate` 在 `tools.json` 与 `tools_external.json` 之间二选一，而后者是交给真 CC 执行时用的定义、仓库里根本不存在：开关关掉时 `os.path.exists` 为假、`_tools_text_for_prompt` 保持空串，**模型一个工具定义都拿不到，且不报错**。非开发者模式下 `applySettingsUI` 强制该开关为真所以普通用户碰不到，开发者关掉它就会得到一个没有任何工具的会话，症状是「模型不写工具调用了」，看起来像模型的问题。现已改为无条件加载 `tools.json`；那个开关本身已无实际分支，界面描述已注明，字段暂留以兼容既有 `global.json`。
 
 ### 前端视觉体系
 
@@ -194,15 +215,27 @@ cp settings.example.json settings.json
 
 **一处已知取舍，不是缺陷。** 七个种子色对白字的对比度为蓝 3.77、青 3.79、绿 3.85、橙 3.42、粉 3.50、灰蓝 3.91、紫 5.83，除紫色外均低于 WCAG AA 对正文的 4.5。但既有的 Adwaita 蓝本身就是 3.77——Adwaita 整套按「UI 组件 3:1」而非「正文 4.5:1」取值，这是配色体系的既定选择，新增色相与项目原有默认处于同一水平，并非新引入的回归。若要达 AA，正确做法是把 `on-primary` 从固定白改为按种子色明度二选一，但那会同时改变现有蓝色主题的按钮文字颜色，属产品判断。
 
-### 5. ~~测试~~（171 个 item，两平台各自全绿）
+### 5. ~~测试~~（169 个 item = 128 纯 Python + 41 DOM，两平台各自全绿）
 
-**先确认你用的是哪个解释器，这不是脚注。** `pytest` 装在哪个 Python 里与 ChatApp 跑在哪个 Python 里是两件事，而它们不一致时的表象是「无输出加退出码 1」——那与测试内容毫无关系，纯粹是模块找不到。本文档原先写「`pytest 9.1.1` 在 conda 环境 `deep_lea` 中」，那只在最初那台机器上成立；在 Windows 那台上根本没有 conda，而 PATH 上的 `python` 解析到一个没装 pytest 的 miniconda 环境。
+**先确认你用的是哪个解释器，这不是脚注。** `pytest` 装在哪个 Python 里与 ChatApp 跑在哪个 Python 里是两件事，而它们不一致时的表象是「无输出加退出码 1」——那与测试内容毫无关系，纯粹是模块找不到。
 
-所以第一步永远是问出解释器的身份：
+**这一段被改过两次，两次都是因为把某台机器的状态当成了普遍事实。** 最初写的是「`pytest 9.1.1` 在 conda 环境 `deep_lea` 中」；后来改成「Windows 那台上根本没有 conda」——那句同样是错的，那台机器有 miniconda3，PATH 上的 `python` 就在它的某个环境里，而 `deep_lea` 反倒没装 pytest。
+
+**所以不要记环境名，记判据。** 选解释器的依据不是「哪个装了 pytest」而是**「哪个装了 flask」**：`test_action_api.py` 要 `import app`，它必须跑在应用真正使用的那棵依赖树上，否则通过的是另一份代码。装 pytest 是可逆的一步，认错解释器不是。
+
+所以第一步是问出解释器的身份，**并且先问 flask 再问 pytest**：
 
 ```bash
-python -c "import sys, importlib.util as u; print(sys.executable); print(u.find_spec('pytest') is not None)"
+python -c "import sys, importlib.util as u; print(sys.executable); print({m: u.find_spec(m) is not None for m in ['flask','flask_socketio','requests','eventlet','dotenv','simple_websocket','pytest']})"
 ```
+
+前六个全为真才说明这是应用的运行环境；`fitz` 不在清单里是刻意的，它由 PDF 分支按需安装，缺它不影响判断。确认之后再往这个解释器装 pytest：
+
+```bash
+python -m pip install pytest
+```
+
+`python -m pip` 而非裸 `pip`，理由与第二节那条自动装包的修复完全相同。
 
 拿到确切路径之后再跑，必要时写全路径：
 
@@ -228,8 +261,8 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 | `test_message_toggle.py` | 25 个（19 个函数 + 一处 parametrize），分类顺序、筛选条件、内联思维链可逆性 |
 | `test_cross_language_consistency.py` | 4 个，前后端分类逻辑的一致性 |
 | `test_static_assets.py` | 7 个（5 个函数 + 两处 parametrize），CSS 花括号、令牌引用、缓存版本号 |
-| `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入 |
-| `test_platform_shell.py` | 39 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性、中断与进程交接；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
+| `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入。末条已改名为 `test_packaging_never_ships_user_overrides`（按旧名 grep 会找不到，它没被删） |
+| `test_platform_shell.py` | 37 个用例（曾 39，`exec_or_spawn` 两条随该函数删除），两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性、中断；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
 | `test_dom_render.py` | 31 个浏览器内 DOM 用例，跑 `harness/render.html`。**已在 Windows 与 Linux 上各自跑过并全绿** |
 | `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js`。同上，两平台均已通过 |
 | `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
@@ -304,13 +337,16 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 
 **后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
 
-**`os.execv` 的语义在 Windows 上不同。三处已全部处理，但两类处理方式不同，别把它们混起来。** POSIX 上它**替换**当前进程映像，PID 不变；Windows 上没有这个语义，CPython 的实现是新起一个进程然后让原进程立即退出——于是父进程句柄失效、控制台归属混乱，在被 shell 启动的场景下表现是「命令看起来结束了但服务在后台继续跑」，用户拿回提示符却发现端口被占着。
+**`os.execv` 在 Windows 上语义不同。这段知识刻意保留，但它描述的三处代码已经全部不存在了。** 自动更新与它的启动器一并移除后，本仓库再没有任何进程交接的调用点。留着它是因为那个平台差异是真实的，任何重新引入「起一个进程然后让自己退出」的改动都会立刻撞上它。
 
-**两处「更新后重启」改成打印提示并退出**（`updater.py` 的 `main()` 与 `app.py` 的启动更新分支）。这是产品判断的结果而非遗漏：两个候选是 `Popen` 加 `sys.exit` 保留自动重启但父子关系与原来不同，或把重启交给用户。选了后者——更诚实，且两个平台行为一致。**别把它「修」回自动重启**，那是被明确选掉的方案。退出码取 0 因为更新本身成功了；若有外层脚本按「0 就自动重跑」包着它会变成循环，所以提示文字明确要求人来重启。
+POSIX 上 `os.execv` **替换**当前进程映像，PID 不变、不留额外进程；Windows 上没有这个语义，CPython 的实现是新起一个进程然后让原进程立即退出——于是父进程句柄失效、控制台归属混乱，在被 shell 启动的场景下表现是「命令看起来结束了但服务在后台继续跑」，用户拿回提示符却发现端口被占着。
 
-**一处启动器改成平台分支**（`updater.py` 末尾那句起 `app.py` 的调用）。它不是「更新后重启」而是这个文件的本职，对它打印「请手动重启」是荒谬的——用户刚敲的就是启动命令。现在走 `platform_shell.exec_or_spawn`：POSIX 保持 `os.execv`（那里它不留额外进程），Windows 走 `subprocess.call` 加 `sys.exit(返回码)`，等子进程结束再退出，shell 因此保持阻塞、控制台归属清晰。**退出码必须透传**——那是外层脚本判断应用成败的唯一依据，吞掉它等于让任何包装脚本都无法区分正常退出与崩溃。
+当时的三处处理分两类，若将来重新引入，这个分类仍然适用：
 
-`updater.py` 里那段按文件路径加载 `platform_shell` 的代码**不要「简化」成 `from api.platform_shell import`**。后者会先执行 `api/__init__.py`，而那里导入了 `requests` 等第三方包；而 `updater.py` 的全部意义就是在依赖装好之前也能跑（它自己的 `check_remote_version` 同样把 `import requests` 放在函数内部并用 `except` 兜住）。改成包导入的症状是「依赖没装好时连更新器都起不来」，而那正是它本该解决的问题。`platform_shell` 只依赖标准库，所以按路径加载是安全的。
+- **两处「更新后重启」曾改成打印提示并退出**（`updater.py` 的 `main()`、`app.py` 的启动更新分支）。这是产品判断而非技术妥协：候选方案是 `Popen` 加 `sys.exit` 保住自动重启但父子关系与原来不同，或把重启交给用户。选了后者，更诚实且两个平台行为一致。退出码取 0 因为更新本身成功了；若有外层脚本按「0 就自动重跑」包着它会变成循环，所以提示文字明确要求人来重启。
+- **一处启动器曾改成平台分支**（`updater.py` 末尾起 `app.py` 那句）。它不是「更新后重启」而是那个文件的本职，对它打印「请手动重启」是荒谬的——用户刚敲的就是启动命令。当时走 `platform_shell.exec_or_spawn`：POSIX 保持 `os.execv`，Windows 走 `subprocess.call` 加 `sys.exit(返回码)`，等子进程结束再退出，shell 因此保持阻塞、控制台归属清晰。**退出码必须透传**——那是外层脚本判断应用成败的唯一依据，吞掉它等于让任何包装脚本都无法区分正常退出与崩溃。
+
+还有一条与依赖顺序有关的教训值得留着：`updater.py` 当时按文件路径加载 `platform_shell` 而非 `from api.platform_shell import`，因为后者会先执行 `api/__init__.py`，而那里导入了 `requests` 等第三方包——而启动器的全部意义就是在依赖装好之前也能跑。**任何「在依赖就绪之前运行」的脚本都要避免包导入**，症状是「依赖没装好时连它自己都起不来」，而那正是它本该解决的问题。
 
 ---
 
@@ -339,11 +375,15 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 
 **被接受的后果：`data/sessions/` 下的文件只增不减。** 软删的会话始终留在 `self.sessions` 里，孤儿清理因此永远扫不到它的文件。看到目录堆积**不要**当成清理逻辑坏了——回收空间是用户在应用之外自己决定的事。
 
-### 分组内条目拖到组外不带排序
+### ~~分组内条目拖到组外不带排序~~（已决策：移出即置末）
 
-当前只发出 `remove_session_from_group`，因此移出后条目会按原有 `order` 落在未分组区的某个位置，而不是松手的地方。
+原状况：只发出 `remove_session_from_group`，因此移出后条目按原有 `order` 落在未分组区的某个位置，而不是松手的地方。
 
-要改需要在 `list.ondrop` 里补一次 reorder，但拖到空白区域时没有参照条目可用。倾向的做法是取未分组区最后一个条目的 `order` 加 1，即「移出即置末」，语义清楚。
+**采纳了原先倾向的做法。** `list.ondrop` 在确认该条目原本属于某个组之后补发一次 `reorder_session`，取未分组区最后一条的 `order` 加 1。依据是拖到空白区域时没有任何参照条目，「松手的地方」在那里本来就没有明确含义，而置末是唯一不需要猜测用户意图的语义。
+
+**查询用 `:scope > .session-item`，这个限定不能去掉。** 组内条目是各自 `gBody` 的孩子而不是 `list` 的孩子；不加限定会把组内会话的 `order` 一起算进最大值，于是移出的条目可能落在某个分组的位置区间内——表现为「移出成功但位置莫名靠前」。
+
+另外补掉了同一条链路上的一个真实缺陷，它是「组内既不能排序也不能移出」的根因：`gDiv.ondragstart` 没有检查 `e.target`，而组内每个 `.session-item` 自己也 `draggable`，它的 `dragstart` 会冒泡到组容器，于是会话行刚写好的 `{type:'session'}` 载荷被 `{type:'group'}` 覆盖同一个 `text/plain` 键。三条下游路径因此同时静默失效。**症状里有个不需要读代码就能验证的旁证**：拖动组内会话时整个分组一起变半透明而不是只有那一行，因为同一个处理器还执行了那句 `opacity`。
 
 ### 后端 `is_processing` / `autopilot_active` 可能一直为真
 
@@ -368,9 +408,9 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 
 ## 五、验证方法
 
-这个项目没有构建步骤。现在有两层保障：`tests/` 下的 171 个 item（130 个纯 Python 用例，加 41 个浏览器内 DOM 用例），加上下面这些静态检查。
+这个项目没有构建步骤。现在有两层保障：`tests/` 下的 169 个 item（128 个纯 Python 用例，加 41 个浏览器内 DOM 用例），加上下面这些静态检查。
 
-**那 41 条 DOM 用例已在 Windows 上全部通过**，包括几条解析 `color-mix()` 计算样式的。所以 `getComputedStyle` 对 CSS Color 4 的序列化格式在 Windows 与 Linux 的 Chromium 构建上**一致**——那曾是一个被担心的平台风险，现已排除。排除一个风险与修一个缺陷同样值得记录：它省掉的是下一个人重新怀疑一遍的时间。
+**那 41 条 DOM 用例已在 Windows 上全部通过**，实测 16.81 秒、零跳过。这个耗时值得记一句：它意味着 DOM 用例是可以随手跑的，不需要当成需要专门安排的长任务。其中包括几条解析 `color-mix()` 计算样式的。所以 `getComputedStyle` 对 CSS Color 4 的序列化格式在 Windows 与 Linux 的 Chromium 构建上**一致**——那曾是一个被担心的平台风险，现已排除。排除一个风险与修一个缺陷同样值得记录：它省掉的是下一个人重新怀疑一遍的时间。
 
 在 Windows 上让 DOM 用例跑起来需要往**跑测试的那个解释器**装 playwright 并下对应 revision 的 Chromium，见第六节。
 

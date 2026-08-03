@@ -179,14 +179,27 @@ def test_missing_deep_think_prompt_is_empty_not_an_exception(host, no_defaults):
 
 # ------------------------------------------------ 打包清单
 
-def test_packaging_manifests_ship_defaults_not_user_overrides(read_text):
-    """app.py 的两处清单必须指向 prompts/。
+def test_packaging_never_ships_user_overrides(read_text):
+    """打包清单里永远不能出现 data/ 下的提示词。
 
     更新包里的每一项都会被自动生成的 update.py 按相同相对路径 copy2 覆写，因此清单
-    中出现 data/ 下的提示词等于一条静默覆盖用户改动的通道。这个用例的作用是让
-    「后来又加回去」变成一次失败而非一次意外。
+    中出现 data/ 下的提示词等于一条静默覆盖用户改动的通道。
+
+    **这个用例换过形态，值得说明原因。** 它原先还断言 `'prompts/<name>'` 必须出现在
+    app.py 里，而 export_release 与 export_snapshot 两处清单已随自动更新功能整体移除，
+    于是那半条断言指向一段不存在的代码。
+
+    直接删掉整条用例是错的：它记录的危险是真实的，只是暂时无处发生。所以禁止 data/
+    那一半保持无条件（永远适用，成本为零），而要求 prompts/ 那一半改成条件式，以
+    `import zipfile` 作为「这个文件里有打包代码」的探针——任何打包实现都需要它。
+
+    结果是守卫在功能缺席期间静默，在它回来的那一刻自动重新武装，不依赖下一个人
+    记得手工恢复一条断言。
     """
     src = read_text('app.py')
+    packs = 'import zipfile' in src
     for name in PROMPT_NAMES:
         assert "'data/%s'" % name not in src, 'app.py 仍在打包 data/%s' % name
-        assert "'prompts/%s'" % name in src, 'app.py 未打包 prompts/%s' % name
+        if packs:
+            assert "'prompts/%s'" % name in src, (
+                'app.py 有打包代码但未打包 prompts/%s' % name)
