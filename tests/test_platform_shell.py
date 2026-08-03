@@ -299,18 +299,11 @@ def test_interrupt_sends_sigint_on_posix(posix):
     assert sent == [_s.SIGINT]
 
 
-def test_interrupt_signal_is_sigint_on_posix(posix):
-    import signal
-    assert ps.interrupt_signal() == signal.SIGINT
-
-
-def test_interrupt_signal_is_ctrl_break_on_windows(nt):
-    """CTRL_C_EVENT 无法定向到单个进程组，所以只能用 CTRL_BREAK_EVENT。
-
-    比的是模块常量而不是 signal.CTRL_BREAK_EVENT：后者在 Linux 上根本不存在，直接
-    引用会让这条用例以 AttributeError 失败——原实现也因此在模拟 Windows 下走不到。
-    """
-    assert ps.interrupt_signal() == ps.CTRL_BREAK_EVENT
+# test_interrupt_signal_is_ctrl_break_on_windows 与它的 posix 对偶曾在这里。它们随
+# interrupt_signal() 一起删除，而前者正是本次会话反复引为反例的那条：它断言「返回了哪个
+# 信号值」，因此在信号已被实测证明为空操作之后照旧绿着。替代它的是
+# test_interrupt_sends_sigint_on_posix 与 test_interrupt_never_sends_a_signal_on_windows
+# ——两者断言的是「有没有真的发出信号」，而不是「返回了什么」。这个区别就是那条教训。
 
 
 # ------------------------------------------------ 交互式终端

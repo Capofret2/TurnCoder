@@ -302,29 +302,7 @@ def interrupt_process(proc) -> str:
     return '已终止子进程 %s（共 %d 个候选）' % (','.join(killed) or '无', len(kids))
 
 
-def interrupt_signal():
-    """中断当前解释器该用哪个信号。
-
-    Windows 上没有 SIGINT 可发：send_signal 在那里只接受 CTRL_C_EVENT 与
-    CTRL_BREAK_EVENT，而前者无法定向到单个进程组。因此用 CTRL_BREAK_EVENT，它与
-    new_process_group_kwargs 是一对——去掉那个创建标志，这个信号就送不到。
-
-    **实测：这个信号在 pwsh 7 的持久化终端上是静默空操作。** 探针记录到 `Start-Sleep 20`
-    在收到 CTRL_BREAK_EVENT 之后仍然跑满 20 秒；send_signal 正常返回、shell 存活、终端此后
-    仍可执行新命令——但那条命令完全没被中断。这是本项目在 Windows 上遇到的第三个「不报错、
-    假装成功」的失败。
-
-    别把测试全绿当成这个功能可用：那些用例断言的是「返回了哪个信号值」，而不是「信号送达
-    后命令真的停了」。后者只能在真机上用带时长的命令测。
-
-    两个候选根因尚未分辨（见 docs/HANDOVER.md 第三节第 7 项）：CREATE_NO_WINDOW 可能与
-    GenerateConsoleCtrlEvent 互斥（那是「可见窗口 vs 可用中断」的真取舍），或 pwsh 的
-    `-Command -` 从管道读 stdin 时不装能中止当前流水线的控制台处理器。
-
-    还有一个结构性区分比根因更重要：Start-Sleep 是 cmdlet、跑在 pwsh 进程内部、没有子进程；
-    而实际需要中断的几乎都是外部命令（跑测试、构建、训练），那些是 pwsh 的子进程。后者可以
-    靠 kill_process_tree 中断，cmdlet 不行——所以即便根因无解，覆盖实际场景的修法仍然存在。
-    """
-    if is_windows():
-        return CTRL_BREAK_EVENT
-    return signal.SIGINT
+# interrupt_signal() 曾在这里。它返回「该发哪个信号」，Windows 上给 CTRL_BREAK_EVENT。
+# 删掉的理由不只是零引用：那个信号已被实测证明是静默空操作（详见 interrupt_process 的
+# docstring），所以一个名字与返回值都在宣称它有效的函数，等于在代码里放一个看起来权威
+# 的错误答案。CTRL_BREAK_EVENT 常量本身留着——它是 ABI 数值，别处的注释会引用它。
