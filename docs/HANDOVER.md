@@ -66,7 +66,7 @@ cp settings.example.json settings.json
 
 新增 `api/platform_shell.py` 作为**唯一知道 `os.name` 的模块**。其余模块调用它的函数，因此新增平台、调整解释器回退链或改动编码对齐都是单点改动。
 
-设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 33 条用例正是靠这一点成立的——它们用对称的 `nt` / `posix` 两个 fixture 覆盖两条分支，而不是靠在两台机器上各跑一遍。
+设计上有一条不能动的取向：**这些函数一律返回数据（argv 列表、Popen 关键字字典）而不自己起进程。** 理由不是风格——开发机是 Linux，如果 Windows 分支只存在于 `Popen` 调用内部，它在那台机器上就是永远无法被执行的死区，而它恰好是最容易写错的部分。返回数据意味着两个平台的分支都能在任意平台上被断言，`tests/test_platform_shell.py` 的 39 条用例正是靠这一点成立的——它们用对称的 `nt` / `posix` 两个 fixture 覆盖两条分支，而不是靠在两台机器上各跑一遍。
 
 三个 Win32 常量（`CREATE_NEW_PROCESS_GROUP`、`CREATE_NO_WINDOW`、`CTRL_BREAK_EVENT`）写成字面量而非 `getattr(subprocess, ...)`：那些名字只在 Windows 的 `subprocess` / `signal` 里存在，Linux 上取不到，而本模块要在两个平台都能被导入。
 
@@ -78,7 +78,7 @@ cp settings.example.json settings.json
 - **写死的 `/tmp`。** Windows 上该目录不存在，症状是每条命令在 `open()` 阶段抛 `FileNotFoundError`，而那个异常里没有任何线索指向平台。改用 `tempfile.gettempdir()`。
 - **`terminal.py` 的解释器写死 `cmd.exe`**，因此 Windows 用户从持久化终端里永远拿不到 PowerShell。改为 pwsh → powershell.exe → cmd.exe 回退链。
 - **`Popen(text=True)` 缺 `encoding`。** 默认走 `locale.getpreferredencoding()`，中文 Windows 上是 GBK，而 PowerShell 的输出编码由 `$OutputEncoding` 决定。两端不对齐的症状是**中文乱码而非报错**，没有任何东西会提示你编码不对。
-- **`interrupt()` 的 Windows 分支原先整条为空**，点中断毫无反应且不报错——看起来像命令还没跑完。改用 `CTRL_BREAK_EVENT`，它与 `CREATE_NEW_PROCESS_GROUP` 是一对：缺了那个创建标志，信号会打到 ChatApp 自己身上。
+- **`interrupt()` 的 Windows 分支原先整条为空**，点中断毫无反应且不报错——看起来像命令还没跑完。**现在的实现不发信号**：`CTRL_BREAK_EVENT` 已实测为静默空操作，改为枚举 shell 的直接子进程、滤掉 `conhost.exe` 这类基础设施进程、对剩下的调 `taskkill /T /F`。这只覆盖外部命令，cmdlet 无解——详见第三节第 7 项，那里记了三个被排除的假设，别重走。
 - **禁用命令名单是纯 bash 词汇。** `cat` 与 `ls` 在 PowerShell 里恰好是别名所以原名单部分生效，缺的是 `Get-Content` / `Select-String` / `findstr` 这类原生写法。同时改为大小写与 `.exe` 归一化——PowerShell 大小写无关，精确匹配使整份名单形同虚设。**递归列目录单独特判而不进名单**：bash 里 `ls` 与 `find` 是两个命令，PowerShell 里是同一个 cmdlet 的两种用法，直接入名单会拦掉系统提示词明确要求的裸 `ls`。这是平台间唯一一处无法靠加词解决的不对称。
 - **`file_path.split("/")[-1]` 取文件名。** 反斜杠路径上找不到任何 `/`，`[-1]` 因此返回**整条路径**。后果不只是摘要变长：过时读取的「已省略，概括为：…」替换文本会进入模型上下文，而标记旧读取为过时的那几处会遍历整个会话历史逐条重写，所以同一条绝对路径在上下文里出现的是多次而非一次。改用 `os.path.basename`（Windows 的 ntpath 把两种分隔符都认，Linux 的 posixpath 只认 `/` 而那里本来就用 `/`，所以是严格改进）。有 `test_no_file_path_is_split_on_forward_slash_only` 守着，因为这个写法在 Linux 上完全正确、下一个人不会收到任何提示。
 - **裸 `pip install`。** PDF 分支在 PyMuPDF 缺失时自动装包，原先调 PATH 上的 `pip`——而它未必属于跑应用的那个解释器。装进错误环境之后 `import fitz` 照旧失败，报出的是「安装失败」或第二次 ImportError，两者都不指向「装到别处去了」。改用 `sys.executable -m pip`，有 `test_pip_is_never_invoked_as_a_bare_executable` 守着。这条与本文档第三节第 5 项的解释器教训是同一件事。
@@ -229,9 +229,9 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 | `test_cross_language_consistency.py` | 4 个，前后端分类逻辑的一致性 |
 | `test_static_assets.py` | 7 个（5 个函数 + 两处 parametrize），CSS 花括号、令牌引用、缓存版本号 |
 | `test_prompt_resolution.py` | 14 个用例，`prompts/` 默认值与 `data/` 覆写的解析顺序、缓存失效、零写入 |
-| `test_platform_shell.py` | 33 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
-| `test_dom_render.py` | 31 个浏览器内 DOM 用例，跑 `harness/render.html`。**在 Windows 上尚未真正执行过**（见第六节：包已装但 `launch()` 失败，逐条跳过） |
-| `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js`。同上，Windows 上未执行 |
+| `test_platform_shell.py` | 39 个用例，两平台分支各自的 argv 与 Popen kwargs、label 与 prelude 的链路一致性、中断与进程交接；另含两条**扫全仓**的守卫（路径分隔符、裸 pip），它们作用范围超出本文件名所示 |
+| `test_dom_render.py` | 31 个浏览器内 DOM 用例，跑 `harness/render.html`。**已在 Windows 与 Linux 上各自跑过并全绿** |
+| `test_dom_sidebar.py` | 10 个用例，跑 `harness/sidebar.html`，覆盖 `main.js`。同上，两平台均已通过 |
 | `test_action_api.py` | 12 个用例，Flask test client 覆盖 `/api/action` |
 
 **后两个文件各自打开了一片此前完全无覆盖的区域，而「此前为什么测不了」是最值得记下的部分。**
@@ -278,7 +278,7 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 
 **中断（`CTRL_BREAK_EVENT`）：已确证失效，是静默空操作。** 探针记录到 `Start-Sleep 20` 在收到信号后仍然跑满 20 秒；`send_signal` 正常返回、shell 存活、终端此后仍能执行新命令——但那条命令完全没被中断。这是本项目在 Windows 上遇到的第三个「不报错、假装成功」的失败。
 
-**别把测试全绿当成这个功能可用。** `test_interrupt_signal_is_ctrl_break_on_windows` 断言的是「返回了哪个信号值」，不是「信号送达后命令真的停了」。后者只能在真机上用带时长的命令测——用 `Start-Sleep 1` 之类的短命令测不出来，因为它自己就结束了。
+**别把测试全绿当成这个功能可用。** 当时那条用例（`test_interrupt_signal_is_ctrl_break_on_windows`，已随 `interrupt_signal()` 一起删除）断言的是「返回了哪个信号值」，不是「信号送达后命令真的停了」。**一个断言返回值的用例可以永远绿着，而它守护的行为早已失效**——这是本次会话最值得记住的一条。行为只能在真机上用带时长的命令测，用 `Start-Sleep 1` 之类的短命令测不出来，因为它自己就结束了。
 
 原先担心的风险**不存在**：`CREATE_NEW_PROCESS_GROUP` 在真机上生效，信号既没打死探针脚本也没杀掉 shell。所以试这一项是安全的，不需要「用无害命令」那种防护。
 
@@ -298,7 +298,9 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 
 过滤名单 `INFRA_PROCESS_NAMES` 是 `frozenset`，目前含 `conhost.exe` 与 `werfault.exe`（崩溃报告）。有 `test_conhost_is_in_the_infra_list` 与 `test_parse_child_lines_drops_infra_processes` 守着。
 
-**另有一条反向守卫 `test_interrupt_never_sends_a_signal_on_windows`。** 理由与 `DETACHED_PROCESS` 那条相同：`CTRL_BREAK_EVENT` 与 `CREATE_NEW_PROCESS_GROUP` 成对出现看起来完全合理，把信号「恢复」回去的动机很强，而症状是中断静默失效——同时 `test_interrupt_signal_is_ctrl_break_on_windows`（断言返回哪个信号值的那条）照旧绿着。
+**另有一条反向守卫 `test_interrupt_never_sends_a_signal_on_windows`。** 理由与 `DETACHED_PROCESS` 那条相同：`CTRL_BREAK_EVENT` 与 `CREATE_NEW_PROCESS_GROUP` 成对出现看起来完全合理，把信号「恢复」回去的动机很强，而症状是中断静默失效。
+
+那条断言返回值的旧用例已随 `interrupt_signal()` 一起删除。留着它比没有更糟：它在行为失效期间**照旧绿着**，等于为一个错误答案作伪证。新守卫断言的是「有没有真的发出信号」——这个区别是本次会话最值得记住的一条。
 
 **后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
 
