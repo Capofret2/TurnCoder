@@ -31,6 +31,11 @@ function openSettingsModal() {
     // backend behaves as on. Same reading as main.js uses for the per-session
     // field, and the two have to agree or one state shows two ways.
     if (document.getElementById('set-default-thinking-visible')) document.getElementById('set-default-thinking-visible').checked = globalSettings.default_thinking_visible !== false;
+    // !! here, !== false above, and the difference is deliberate: this one defaults
+    // to off, so an absent key must read as unchecked. Unifying the two either way
+    // flips one of their defaults, and the symptom is "the switch does not match
+    // what the docs say" on a fresh install.
+    if (document.getElementById('set-approval-tool')) document.getElementById('set-approval-tool').checked = !!globalSettings.enable_approval_tool;
     if (document.getElementById('set-bulk-logging')) document.getElementById('set-bulk-logging').checked = globalSettings.enable_bulk_logging;
 
 
@@ -78,6 +83,7 @@ function saveSettings() {
     if (document.getElementById('set-anthropic-protocol')) globalSettings.enable_anthropic_protocol = document.getElementById('set-anthropic-protocol').checked;
     if (document.getElementById('set-cc-inject')) globalSettings.enable_tool_inject = document.getElementById('set-cc-inject').checked;
     if (document.getElementById('set-default-thinking-visible')) globalSettings.default_thinking_visible = document.getElementById('set-default-thinking-visible').checked;
+    if (document.getElementById('set-approval-tool')) globalSettings.enable_approval_tool = document.getElementById('set-approval-tool').checked;
     if (document.getElementById('set-bulk-logging')) globalSettings.enable_bulk_logging = document.getElementById('set-bulk-logging').checked;
 
     if (document.getElementById('set-billing-sync-button')) globalSettings.enable_billing_sync_button = document.getElementById('set-billing-sync-button').checked;

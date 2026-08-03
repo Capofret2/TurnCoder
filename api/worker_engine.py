@@ -657,8 +657,14 @@ class WorkerEngineMixin:
         if use_anthropic_protocol:
             # 加载外部工具定义和系统提示词（受 enable_tool_inject 开关控制）
             if settings.get('enable_tool_inject', False):
-                _tools_filename = "tools.json" if settings.get('enable_tool_simulate', False) else "tools_external.json"
-                _tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), _tools_filename)
+                # tools.json 无条件加载。原先按 enable_tool_simulate 在 tools.json 与
+                # tools_external.json 之间二选一，而后者是交给真 Claude Code CLI 执行时用的
+                # 定义、仓库里根本不存在：开关关掉时 os.path.exists 为假、
+                # _tools_text_for_prompt 保持空串，模型一个工具定义都拿不到，而且不报错。
+                # 非开发者模式下 applySettingsUI 强制该开关为真，所以普通用户碰不到；开发者
+                # 关掉它就会得到一个没有任何工具的会话，症状是「模型不写工具调用了」，看起来
+                # 像模型的问题。CC 直连移除后本地执行是唯一执行方式，这个二选一已无意义。
+                _tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools.json")
                 _tools_text_for_prompt = ""
                 if os.path.exists(_tools_path):
                     try:
@@ -666,7 +672,7 @@ class WorkerEngineMixin:
                             _cc_tools_list = json.load(_tf)
                         _tools_text_for_prompt = self._format_tools_as_text(_cc_tools_list)
                     except Exception as _te:
-                        print(f"加载 {_tools_filename} 失败: {_te}")
+                        print(f"加载 tools.json 失败: {_te}")
                 # chatapp system prompt → Anthropic system 字段；tool_system.json → user 字段开头
                 if not is_pure_enabled and _system_portion_end > 0:
                     _sys_text = full_context[:_system_portion_end]
@@ -770,8 +776,9 @@ class WorkerEngineMixin:
 
         # 非 Claude 模型的 CC 注入模式（如 Gemini）：将 system 内容放入 message 开头
         if not use_anthropic_protocol and _is_cc and not is_pure_enabled:
-            _tools_filename2 = "tools.json" if settings.get('enable_tool_simulate', False) else "tools_external.json"
-            _tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), _tools_filename2)
+            # 同上：非 Claude 模型走这条注入路径，两处都要改。只改一处的症状是「换某些
+            # 模型有工具、换另一些又没有」，几乎不可能被联想成同一个文件名判断。
+            _tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools.json")
             _tools_text_for_prompt = ""
             if os.path.exists(_tools_path):
                 try:
@@ -779,7 +786,7 @@ class WorkerEngineMixin:
                         _cc_tools_list = json.load(_tf)
                     _tools_text_for_prompt = self._format_tools_as_text(_cc_tools_list)
                 except Exception as _te:
-                    print(f"加载 tools_external.json 失败: {_te}")
+                    print(f"加载 tools.json 失败: {_te}")
 
             if _system_portion_end > 0:
                 _sys_text = full_context[:_system_portion_end]

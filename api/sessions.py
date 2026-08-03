@@ -33,7 +33,10 @@ class SessionMixin:
             # 会话在 worker_engine 的消费点回落到这一项。因此改这个开关对既有会话立即
             # 生效。若「顺手」改成建会话时写死初值，症状是改了开关对现有会话毫无反应，
             # 而那看起来像是没保存成功。
-            'default_thinking_visible': True
+            'default_thinking_visible': True,
+            # 默认关闭不是保守起见：申请审批会让托管停下来等人，而托管的全部价值是无人
+            # 值守连续推进几十步。给不给模型这个能力属于用户决定，不该由模型自行判断。
+            'enable_approval_tool': False
         }
 
         # 兼容并迁移旧版单一文件

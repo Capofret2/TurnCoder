@@ -14,6 +14,15 @@ class AnthropicMixin:
     def _format_tools_descriptor_text(self, tools):
         """生成描述符格式的工具使用说明（开关ON时替代旧JSON标记格式）"""
         _planned_mode = getattr(self, 'global_settings', {}).get('enable_planned_tools', False)
+        # 申请审批会让托管停下来等人，而托管的价值是无人值守连续推进，所以这个能力
+        # 默认不给模型。**关闭时的做法是让它不出现在清单里，而不是调用后拒绝**：后者
+        # 白费一次完整的 API 调用，而且模型收到的是一个失败的工具结果，它无从区分
+        # 「这个工具被禁用了」与「我参数写错了」，下一轮很可能重试同样的调用。
+        #
+        # 过滤必须在下面 len(tools) 之前完成。那个数字会写进「共 N 个」，在别处过滤
+        # 会让模型看到的计数与实际列出的条数不一致，而模型对此的反应是怀疑自己漏读。
+        if not getattr(self, 'global_settings', {}).get('enable_approval_tool', False):
+            tools = [t for t in tools if t.get('name') != '申请审批']
         lines = []
         lines.append(f"\n[可用工具 - 共 {len(tools)} 个]")
         lines.append("当你需要执行操作时，在回复正文中使用以下描述符格式调用工具（可在一次回复中包含多个）。")
