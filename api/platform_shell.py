@@ -41,6 +41,49 @@ _PS_UTF8 = '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8'
 _PS_ANSI_OFF = "if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }"
 
 
+# 不是命令、不该被杀的子进程名。conhost 是控制台主机：CREATE_NO_WINDOW 下 pwsh 仍会
+# 分配一个，而它作为**直接子进程**出现在枚举结果里。实测枚举到的是
+# [(57468, 'conhost.exe'), (34412, 'python.exe')]，只有后者是命令。
+#
+# 杀掉 conhost 的症状特别容易误判：proc.poll() 返回 None（进程确实还活着），但
+# proc.stdin.write(...) 抛 OSError [Errno 22] Invalid argument——控制台句柄被破坏，
+# 管道跟着废了。那个表象看起来像 subprocess 用法有问题，而不像「杀错了进程」。
+#
+# frozenset 而非可变集合：它是常量，被意外改动的后果是终端在某次中断后损坏。
+INFRA_PROCESS_NAMES = frozenset({'conhost.exe', 'werfault.exe'})
+
+
+def child_query_argv(pid: int):
+    """返回「枚举 pid 的直接子进程」所需的 argv。
+
+    用 Get-CimInstance 而不是 wmic：后者在 Windows 11 24H2（build 26100）上**已被移除**，
+    调用得到 FileNotFoundError [WinError 2]，而那条信息里没有任何线索指向「这个工具在新
+    系统上没了」。
+    """
+    exe = shutil.which('pwsh') or shutil.which('powershell') or 'powershell.exe'
+    query = ("Get-CimInstance Win32_Process -Filter 'ParentProcessId=%d' "
+             '| ForEach-Object { "$($_.ProcessId) $($_.Name)" }' % pid)
+    return [exe, '-NoProfile', '-NonInteractive', '-Command', query]
+
+
+def parse_child_lines(text: str):
+    """把枚举输出解析成 [(pid, name)]，滤掉基础设施进程。
+
+    纯函数，因此这条过滤逻辑能在任意平台上被断言——而它正是「中断会不会把终端弄坏」的
+    唯一分界。
+    """
+    out = []
+    for line in (text or '').splitlines():
+        head = line.strip().split(' ', 1)
+        if not head or not head[0].isdigit():
+            continue
+        name = (head[1].strip() if len(head) > 1 else '')
+        if name.lower() in INFRA_PROCESS_NAMES:
+            continue
+        out.append((int(head[0]), name))
+    return out
+
+
 def is_windows() -> bool:
     """单点平台判定。测试用 monkeypatch.setattr(os, 'name', 'nt') 翻转它。"""
     return os.name == 'nt'
@@ -217,6 +260,46 @@ def environment_facts() -> dict:
         '{SHELL}': default_shell(),
         '{OS_VERSION}': platform.platform(),
     }
+
+
+def interrupt_process(proc) -> str:
+    """中断 proc 正在执行的命令。返回一句描述做了什么，供调用方打印。
+
+    POSIX 上发 SIGINT：bash 中止当前命令并继续从 stdin 读下一条，这是它一直以来的行为。
+
+    **Windows 上不发信号。** 实测 CTRL_BREAK_EVENT 是静默空操作：`Start-Sleep 20` 收到它
+    之后仍然跑满 20 秒，`send_signal` 正常返回、shell 存活、终端此后仍可用——但那条命令
+    完全没被中断。三个候选解释已被逐一实测排除（`CREATE_NO_WINDOW` 互斥、只有 cmdlet
+    受影响、wmic 可用来枚举），见 docs/HANDOVER.md 第三节第 7 项，别重走。
+
+    改为枚举 shell 的直接子进程并 taskkill 掉。**这只覆盖外部命令。** cmdlet（Start-Sleep、
+    Get-Content 之类）跑在 pwsh 进程内部、没有子进程可杀，那一类无解——实测枚举结果过滤后
+    是空列表。实际需要中断的几乎都是外部命令（跑测试、构建、训练），所以覆盖面够用。
+
+    返回描述而不是 None：cmdlet 那种情形下没有任何可杀之物，若不把这件事说出来，调用方无从
+    区分「中断成功」与「什么都没做」，而后者正是用户看到「点了中断没反应」的情形。
+
+    **杀掉子进程之后不需要手动改 state。** stdin 里那条哨兵 echo 已经排在命令后面，命令一死
+    它立刻被执行，state 顺着既有路径回到 idle——实测 0.24 秒。手动置 idle 反而会与哨兵的
+    到达竞争。
+    """
+    if not is_windows():
+        proc.send_signal(signal.SIGINT)
+        return 'SIGINT 已发送'
+
+    try:
+        r = subprocess.run(child_query_argv(proc.pid), capture_output=True, text=True,
+                           timeout=30, encoding='utf-8', errors='replace',
+                           creationflags=CREATE_NO_WINDOW)
+    except Exception as e:
+        return '子进程枚举失败: %r' % (e,)
+
+    kids = parse_child_lines(r.stdout)
+    if not kids:
+        return ('没有可中断的子进程。cmdlet 跑在解释器内部、没有子进程可杀，'
+                '这一类无法中断，只能等它自己结束')
+    killed = [str(k) for k, _n in kids if kill_process_tree(k)]
+    return '已终止子进程 %s（共 %d 个候选）' % (','.join(killed) or '无', len(kids))
 
 
 def interrupt_signal():

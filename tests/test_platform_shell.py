@@ -227,6 +227,78 @@ def test_windows_kill_uses_taskkill_with_the_tree_flag(nt, monkeypatch):
     assert seen['kw'].get('creationflags', 0) & ps.CREATE_NO_WINDOW
 
 
+def test_conhost_is_in_the_infra_list(nt):
+    """conhost.exe 必须被排除，它是「中断会不会弄坏终端」的唯一分界。
+
+    CREATE_NO_WINDOW 下 pwsh 仍分配一个控制台主机进程，而它作为直接子进程出现在枚举结果
+    里。杀它的症状极易误判：poll() 返回 None（进程活着）而 stdin.write 抛 OSError
+    [Errno 22]——看起来像 subprocess 用法有问题，不像杀错了进程。
+    """
+    assert 'conhost.exe' in ps.INFRA_PROCESS_NAMES
+
+
+def test_child_query_uses_cim_not_wmic(nt):
+    """wmic 在 Windows 11 24H2（build 26100）上已被移除，调用得到 FileNotFoundError
+    [WinError 2]，而那条信息里没有任何线索指向「这个工具在新系统上没了」。"""
+    argv = ps.child_query_argv(1234)
+    joined = ' '.join(argv)
+    assert 'Get-CimInstance' in joined
+    assert 'wmic' not in joined.lower()
+    assert 'ParentProcessId=1234' in joined
+
+
+def test_parse_child_lines_drops_infra_processes():
+    """纯函数，因此这条过滤能在任意平台上被断言。"""
+    text = '57468 conhost.exe\n34412 python.exe\n999 WerFault.exe\ngarbage line\n'
+    assert ps.parse_child_lines(text) == [(34412, 'python.exe')]
+
+
+def test_parse_child_lines_handles_empty_and_junk():
+    assert ps.parse_child_lines('') == []
+    assert ps.parse_child_lines(None) == []
+    assert ps.parse_child_lines('no digits here') == []
+
+
+def test_interrupt_never_sends_a_signal_on_windows(nt, monkeypatch):
+    """Windows 上必须不发信号。
+
+    CTRL_BREAK_EVENT 已实测为静默空操作：Start-Sleep 20 收到它之后照旧跑满 20 秒。这条是
+    反向守卫，理由同 test_windows_detach_never_uses_detached_process——`CTRL_BREAK_EVENT`
+    与 `CREATE_NEW_PROCESS_GROUP` 成对出现看起来完全合理，把它「恢复」回去的动机很强，而
+    症状是中断静默失效、而且断言返回值的那条用例照旧绿着。
+    """
+    sent = []
+
+    class _Proc:
+        pid = 4242
+
+        def send_signal(self, sig):
+            sent.append(sig)
+
+    class _R:
+        stdout = ''
+
+    monkeypatch.setattr(ps.subprocess, 'run', lambda *a, **k: _R())
+    msg = ps.interrupt_process(_Proc())
+    assert sent == [], '不该发信号，实测它是空操作'
+    assert 'cmdlet' in msg, '无子进程时要说明原因，否则用户只看到「没反应」'
+
+
+def test_interrupt_sends_sigint_on_posix(posix):
+    """POSIX 分支不变：bash 收到 SIGINT 会中止当前命令并继续读 stdin。"""
+    import signal as _s
+    sent = []
+
+    class _Proc:
+        pid = 1
+
+        def send_signal(self, sig):
+            sent.append(sig)
+
+    ps.interrupt_process(_Proc())
+    assert sent == [_s.SIGINT]
+
+
 def test_interrupt_signal_is_sigint_on_posix(posix):
     import signal
     assert ps.interrupt_signal() == signal.SIGINT

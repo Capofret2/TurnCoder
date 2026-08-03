@@ -286,7 +286,17 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 2. **只有 cmdlet 中断不了、外部命令可以。** 用 `python -c "time.sleep(20)"` 测，同样跑满。所以不是「cmdlet 跑在进程内部」这个结构问题。
 3. **`wmic` 可以用来枚举子进程。** 它在 Windows 11 24H2（build 26100）上**已被移除**，调用会得到 `FileNotFoundError: [WinError 2]`，而那条信息里没有任何线索指向「这个工具在新系统上没了」。要枚举进程树请用 `Get-CimInstance Win32_Process -Filter 'ParentProcessId=N'`。
 
-剩下的候选修法是绕开信号：`interrupt()` 在 Windows 上改为枚举 shell 的子进程并 `taskkill /T /F`。它只覆盖外部命令（cmdlet 跑在 pwsh 进程内部、没有子进程可杀），但实际需要中断的几乎都是外部命令。这条路尚未验证。
+**已改为绕开信号，并在真机验证通过。** `interrupt_process` 在 Windows 上枚举 shell 的直接子进程、滤掉基础设施进程、对剩下的调 `taskkill /T /F`。实测：杀掉命令进程后哨兵在 **0.24 秒**出现、shell 存活、终端此后仍能执行新命令。
+
+**已知限制：cmdlet 无法中断。** `Start-Sleep`、`Get-Content` 这类跑在 pwsh 进程内部，没有子进程可杀——实测枚举结果过滤后是空列表。用户会看到「点了中断没反应」，而日志里会打印一句说明原因，所以 `interrupt_process` 返回描述而不是 `None`：否则调用方无从区分「中断成功」与「什么都没做」。实际需要中断的几乎都是外部命令（跑测试、构建、训练），所以覆盖面够用。
+
+**过滤 `conhost.exe` 那一步不要删掉，它是这条修法能否成立的分界。** `CREATE_NO_WINDOW` 下 pwsh 仍然分配一个控制台主机进程，而它作为直接子进程出现在枚举结果里——实测枚举到的是 `[(57468, 'conhost.exe'), (34412, 'python.exe')]`，只有后者是命令。
+
+杀掉 conhost 的症状特别容易误判：`proc.poll()` 返回 `None`（进程确实还活着），但 `proc.stdin.write(...)` 抛 `OSError: [Errno 22] Invalid argument`——控制台句柄被破坏，管道跟着废了。那个表象看起来像 Python 的 subprocess 用法有问题，而不像「杀错了进程」。这个坑我踩过一次：第一版没过滤，结果误判为「修法不成立」，白花一轮才发现是杀错了进程。
+
+过滤名单 `INFRA_PROCESS_NAMES` 是 `frozenset`，目前含 `conhost.exe` 与 `werfault.exe`（崩溃报告）。有 `test_conhost_is_in_the_infra_list` 与 `test_parse_child_lines_drops_infra_processes` 守着。
+
+**另有一条反向守卫 `test_interrupt_never_sends_a_signal_on_windows`。** 理由与 `DETACHED_PROCESS` 那条相同：`CTRL_BREAK_EVENT` 与 `CREATE_NEW_PROCESS_GROUP` 成对出现看起来完全合理，把信号「恢复」回去的动机很强，而症状是中断静默失效——同时 `test_interrupt_signal_is_ctrl_break_on_windows`（断言返回哪个信号值的那条）照旧绿着。
 
 **后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
 

@@ -5,7 +5,7 @@ import threading
 import time
 
 from .platform_shell import (interactive_prelude, interactive_shell_argv,
-                             interrupt_signal, new_process_group_kwargs)
+                             interrupt_process, new_process_group_kwargs)
 
 
 class TerminalProcess:
@@ -84,14 +84,22 @@ class TerminalProcess:
     def interrupt(self):
         """中断当前正在执行的命令。
 
-        Windows 上原先整条分支是空的：点中断毫无反应且不报错，看起来像命令还没跑完。
-        现在走 CTRL_BREAK_EVENT，它与创建时的 CREATE_NEW_PROCESS_GROUP 是一对——缺
-        了那个创建标志，这个信号会打到 ChatApp 自己身上。
+        POSIX 上发 SIGINT。Windows 上**不发信号**——CTRL_BREAK_EVENT 已实测为静默空操作
+        （`Start-Sleep 20` 收到它之后照旧跑满 20 秒），改为枚举 shell 的子进程并终止它们。
+        细节与被排除的假设都在 platform_shell.interrupt_process 的 docstring 里。
+
+        **已知限制：cmdlet 无法中断。** Start-Sleep、Get-Content 这类跑在解释器进程内部，
+        没有子进程可杀。用户会看到「点了中断没反应」，而日志里那行描述会说明原因——所以
+        这里打印返回的描述而不是一句固定文字。
+
+        不手动重置 state：stdin 里那条哨兵 echo 已排在命令后面，命令一死它立刻执行，state
+        顺着既有路径回到 idle（实测 0.24 秒）。手动置 idle 会与哨兵的到达竞争。
         """
         if not self.process or self.process.poll() is not None:
             return
         try:
-            self.process.send_signal(interrupt_signal())
+            _what = interrupt_process(self.process)
+            print(f'[TERMINAL] 中断 ({getattr(self, "shell_label", "?")}): {_what}', flush=True)
         except Exception as e:
             print(f'[TERMINAL] 中断失败 ({getattr(self, "shell_label", "?")}): {e}', flush=True)
 
