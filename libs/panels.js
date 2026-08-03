@@ -52,38 +52,47 @@ function updateTokenEst() {
     if ((iLen/3) < 300) iLen *= 3;
     var finalTokens = ((total + iLen) / 3000) + codeTokens;
     tokenEst.innerText = finalTokens.toFixed(1) + 'k ▾';
-    if (isHeavyPanelOpen) renderHeavyPanel();
+    if (isHeavyPanelOpen) _refreshCtxPanel();
 }
 
+/* Name kept on purpose. frontend.html's token-est button and scrollToMsg in
+   editops.js both call it; renaming buys a more accurate name at the cost of
+   keeping three call sites in step. */
 function toggleHeavyPanel() {
-    isHeavyPanelOpen = !isHeavyPanelOpen;
-    document.getElementById('heavy-panel').style.display = isHeavyPanelOpen ? 'block' : 'none';
-    if (isHeavyPanelOpen) renderHeavyPanel();
+    openContextPanel();
 }
 
-function renderHeavyPanel() {
-    var panel = document.getElementById('heavy-panel');
+/**
+ * Heavy-bubble list, rendered into a container.
+ *
+ * The header strip and the two footer buttons this used to emit are gone: the
+ * title is now the unified panel's section heading, and those buttons pointed
+ * at what are now adjacent sections of the same card — a button that scrolls
+ * to itself.
+ *
+ * @param {Element} container emptied and refilled
+ */
+function _renderHeavyList(container) {
+    if (!container) return;
     heavyMessages.sort(function(a, b) { return b.originalK - a.originalK; });
-    var html = '';
     if (heavyMessages.length === 0) {
-        html += '<div style="padding:15px; text-align:center; color:#999; font-size:12px;">无 >5k Token 的气泡记录</div>';
-    } else {
-        html += '<div style="padding:var(--md-sys-spacing-3) var(--md-sys-spacing-4); font-size:var(--md-sys-typescale-title-small-size); font-weight:var(--md-sys-typescale-title-small-weight); color:var(--md-sys-color-on-surface); background:var(--md-sys-color-surface-container-high);">高负载气泡清单 (原尺寸 >5k)</div>';
-        heavyMessages.forEach(function(hm) {
-            var summaryText = hm.summary || '无概括';
-            html += '<div class="hp-row">' +
-                '<span onclick="scrollToMsg(' + (hm.scrollId || hm.id) + ')" style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:var(--md-sys-spacing-3); cursor:pointer; color:var(--md-sys-color-primary);" title="点击跳转到该气泡">[ID: ' + hm.id + '] ' + summaryText + '</span>' +
-                '<div style="display:flex; gap:var(--md-sys-spacing-1); align-items:center;">' +
-                '<button class="md-icon-button md-icon-button--compact" onclick="openEditSummaryModal(' + hm.index + ')" title="编辑概括">' + mdIcon('edit', 16) + '</button>' +
-                '<button class="md-button md-button--compact ' + (hm.is_omitted ? 'md-button--tonal' : 'md-button--outlined') + '" onclick="postAction({action: \'toggle_mode\', index: ' + hm.index + ', mode_type: \'omit\'})" style="min-width:56px;">' + (hm.is_omitted ? '全文' : '概括') + '</button>' +
-                '</div></div>';
-        });
+        container.innerHTML = '<div style="padding:var(--md-sys-spacing-3); text-align:center;'
+            + 'color:var(--md-sys-color-on-surface-variant);'
+            + 'font-size:var(--md-sys-typescale-body-small-size);">无 &gt;5k Token 的气泡</div>';
+        return;
     }
-    html += '<div style="padding: var(--md-sys-spacing-3); background: var(--md-sys-color-surface-container-high); display:flex; flex-direction:column; gap:var(--md-sys-spacing-2);">' +
-        '<button class="md-button md-button--filled md-button--compact md-button--block" onclick="openContextManager()">' + mdIcon('settings', 16) + ' 管理上下文</button>' +
-        '<button class="md-button md-button--tonal md-button--compact md-button--block" onclick="renderContextVisualization()">' + mdIcon('bar_chart', 16) + ' 上下文构成可视化</button>' +
-        '</div>';
-    panel.innerHTML = html;
+    var html = '';
+    heavyMessages.forEach(function(hm) {
+        var summaryText = hm.summary || '无概括';
+        html += '<div class="hp-row">' +
+            '<span onclick="closeContextPanel();scrollToMsg(' + (hm.scrollId || hm.id) + ')" style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:var(--md-sys-spacing-3); cursor:pointer; color:var(--md-sys-color-primary);" title="点击跳转到该气泡">[ID: ' + hm.id + '] ' + summaryText + '</span>' +
+            '<span style="flex:0 0 auto; margin-right:var(--md-sys-spacing-2); color:var(--md-sys-color-on-surface-variant); font-size:var(--md-sys-typescale-label-small-size);">' + hm.originalK.toFixed(1) + 'k</span>' +
+            '<div style="display:flex; gap:var(--md-sys-spacing-1); align-items:center;">' +
+            '<button class="md-icon-button md-icon-button--compact" onclick="openEditSummaryModal(' + hm.index + ')" title="编辑概括">' + mdIcon('edit', 16) + '</button>' +
+            '<button class="md-button md-button--compact ' + (hm.is_omitted ? 'md-button--tonal' : 'md-button--outlined') + '" onclick="postAction({action: \'toggle_mode\', index: ' + hm.index + ', mode_type: \'omit\'})" style="min-width:56px;">' + (hm.is_omitted ? '全文' : '概括') + '</button>' +
+            '</div></div>';
+    });
+    container.innerHTML = html;
 }
 
 /**
@@ -111,23 +120,73 @@ function setComposerTone(enabled) {
         : 'var(--md-sys-color-on-surface-variant)';
 }
 
-function openContextManager() {
-    var existing = document.getElementById('ctx-mgr-overlay');
-    if (existing) { existing.remove(); return; }
+/* Unified context panel.
+ *
+ * Three separate top-level surfaces used to answer one question — what is my
+ * context made of, and what can I compress: a 340px popover above the composer
+ * (the heavy list), a 460px dialog (batch management) and an 85%-wide
+ * fullscreen overlay (the composition chart). Reaching the third took two
+ * clicks through the first two, and none of them could be read next to another.
+ *
+ * They are now three sections of one card sharing one scroll container, which
+ * is the actual gain: the composition and the controls that change it are
+ * visible together.
+ *
+ * 640px rather than the chart's old 85%: bars laid out by share of total do not
+ * need the viewport, and 640 still fits the two-column button grid below.
+ *
+ * Every cm- element id is unchanged, so getContextManagerFilters,
+ * matchesContextFilter, updateContextManagerPreview and batchContextAction all
+ * keep working untouched.
+ */
+function closeContextPanel() {
+    var ov = document.getElementById('ctx-panel-overlay');
+    if (ov) ov.remove();
+    isHeavyPanelOpen = false;
+}
+
+/** Repaint the two data-driven sections. Both read the same currentHistory. */
+function _refreshCtxPanel() {
+    if (!document.getElementById('ctx-panel-overlay')) return;
+    if (typeof renderContextComposition === 'function') {
+        renderContextComposition(document.getElementById('ctx-comp-body'));
+    }
+    _renderHeavyList(document.getElementById('ctx-heavy-body'));
+    updateContextManagerPreview();
+}
+
+function openContextPanel() {
+    if (document.getElementById('ctx-panel-overlay')) { closeContextPanel(); return; }
     var ov = document.createElement('div');
-    ov.id = 'ctx-mgr-overlay';
+    ov.id = 'ctx-panel-overlay';
     ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
         + 'background:color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);'
         + 'display:flex;justify-content:center;align-items:center;z-index:var(--md-sys-z-overlay);';
-    ov.onclick = function(e) { if (e.target === this) this.remove(); };
+    ov.onclick = function(e) { if (e.target === this) closeContextPanel(); };
     var box = document.createElement('div');
-    box.style.cssText = 'width:460px;background:var(--md-sys-color-surface-container-high);'
+    box.style.cssText = 'width:640px;max-width:94vw;max-height:86vh;'
+        + 'background:var(--md-sys-color-surface-container-high);'
         + 'color:var(--md-sys-color-on-surface);'
         + 'border-radius:var(--md-sys-shape-corner-extra-large);'
-        + 'padding:var(--md-sys-spacing-6);box-shadow:var(--md-sys-elevation-level3);';
+        + 'box-shadow:var(--md-sys-elevation-level3);'
+        + 'display:flex;flex-direction:column;overflow:hidden;';
     var thChecked = (typeof thinkingVisible !== 'undefined' && thinkingVisible) ? 'checked' : '';
-    box.innerHTML = '<h3 style="margin:0 0 var(--md-sys-spacing-4) 0;font-size:var(--md-sys-typescale-title-large-size);font-weight:var(--md-sys-typescale-title-large-weight);display:flex;align-items:center;gap:var(--md-sys-spacing-2);">' + mdIcon('settings', 22) + ' 上下文批量管理</h3>' +
-        '<div style="margin-bottom:var(--md-sys-spacing-3);"><b>筛选类型</b>' +
+    var _sec = 'font-size:var(--md-sys-typescale-title-small-size);'
+        + 'font-weight:var(--md-sys-typescale-title-small-weight);'
+        + 'color:var(--md-sys-color-on-surface);margin:0 0 var(--md-sys-spacing-2) 0;'
+        + 'display:flex;align-items:center;gap:var(--md-sys-spacing-2);';
+    var _card = 'background:var(--md-sys-color-surface-container-lowest);'
+        + 'border-radius:var(--md-sys-shape-corner-medium);'
+        + 'padding:var(--md-sys-spacing-3);margin-bottom:var(--md-sys-spacing-3);';
+    box.innerHTML = '<div class="md-modal-header"><h3>' + mdIcon('bar_chart', 18) + ' 上下文</h3>'
+        + '<button class="md-modal-close" data-overlay-close onclick="closeContextPanel()" title="关闭">' + mdIcon('close', 18) + '</button></div>'
+        + '<div class="md-modal-body">'
+        + '<div style="' + _card + '"><h4 style="' + _sec + '">' + mdIcon('bar_chart', 16) + ' 构成</h4>'
+        + '<div id="ctx-comp-body"></div></div>'
+        + '<div style="' + _card + '"><h4 style="' + _sec + '">' + mdIcon('inventory', 16) + ' 高负载气泡（原尺寸 &gt;5k）</h4>'
+        + '<div id="ctx-heavy-body" style="max-height:180px;overflow-y:auto;"></div></div>'
+        + '<div style="' + _card + '"><h4 style="' + _sec + '">' + mdIcon('settings', 16) + ' 批量管理</h4>'
+        + '<div style="margin-bottom:var(--md-sys-spacing-3);"><b>筛选类型</b>' +
         '<div style="display:flex;flex-wrap:wrap;gap:var(--md-sys-spacing-2);margin-top:var(--md-sys-spacing-2);">' +
         '<label class="md-chip"><input type="checkbox" id="cm-type-thinking">' + mdIcon('psychology', 16) + ' 思维链</label>' +
         '<label class="md-chip"><input type="checkbox" id="cm-type-assistant">' + mdIcon('smart_toy', 16) + ' 回复</label>' +
@@ -135,12 +194,12 @@ function openContextManager() {
         '<label class="md-chip"><input type="checkbox" id="cm-type-tool">' + mdIcon('settings', 16) + ' 工具返回</label>' +
         '<label class="md-chip"><input type="checkbox" id="cm-type-image">' + mdIcon('image', 16) + ' 含有图片</label>' +
         '</div></div>' +
-        '<div style="margin-bottom:12px;"><b>ID 范围</b> ' +
-        '<input type="number" id="cm-id-min" placeholder="最小" style="width:80px;"> ~ ' +
-        '<input type="number" id="cm-id-max" placeholder="最大" style="width:80px;"></div>' +
-        '<div style="margin-bottom:12px;"><b>长度范围</b> ' +
-        '<input type="number" id="cm-size-min" value="0" step="0.1" style="width:60px;"> ~ ' +
-        '<input type="number" id="cm-size-max-modal" value="" step="0.1" style="width:60px;" placeholder="不限"> k</div>' +
+        '<div class="ctl-group" style="margin-bottom:var(--md-sys-spacing-3);"><b>ID 范围</b> ' +
+        '<input type="number" id="cm-id-min" class="md-num" placeholder="最小" style="width:72px;"> ~ ' +
+        '<input type="number" id="cm-id-max" class="md-num" placeholder="最大" style="width:72px;"></div>' +
+        '<div class="ctl-group" style="margin-bottom:var(--md-sys-spacing-3);"><b>长度范围</b> ' +
+        '<input type="number" id="cm-size-min" class="md-num" value="0" step="0.1" style="width:60px;"> ~ ' +
+        '<input type="number" id="cm-size-max-modal" class="md-num" value="" step="0.1" style="width:60px;" placeholder="不限"> k</div>' +
         '<div id="cm-preview" style="margin-bottom:var(--md-sys-spacing-4);padding:var(--md-sys-spacing-3);background:var(--md-sys-color-surface-container);border-radius:var(--md-sys-shape-corner-small);font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);">计算中...</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--md-sys-spacing-2);">' +
         '<button id="cm-btn-omit" class="md-button md-button--tonal md-button--compact" onclick="batchContextAction(\'omit\')">' + mdIcon('inventory', 16) + ' 概括 (0)</button>' +
@@ -149,15 +208,17 @@ function openContextManager() {
         '<button id="cm-btn-unhide" class="md-button md-button--outlined md-button--compact" onclick="batchContextAction(\'unhide\')">' + mdIcon('visibility', 16) + ' 取消隐藏 (0)</button>' +
         '<button id="cm-btn-purge" class="md-button md-button--danger md-button--compact" onclick="batchContextAction(\'purge\')" style="grid-column:span 2;">' + mdIcon('delete_sweep', 16) + ' 彻底删除已隐藏 (0)</button></div>' +
         '<div style="border-top:1px solid var(--md-sys-color-outline-variant);padding-top:var(--md-sys-spacing-3);margin-top:var(--md-sys-spacing-3);">' +
-        '<label style="display:flex;align-items:center;gap:var(--md-sys-spacing-2);cursor:pointer;"><input type="checkbox" id="cm-thinking-toggle" ' + thChecked + ' onchange="postAction({action:\'toggle_thinking_visible\'});showToast(\'已切换（仅影响新产生的思维链）\',\'success\')">' + mdIcon('psychology', 16) + ' 新思维链默认可见（不影响已有气泡）</label></div>' +
-        '<div style="text-align:right;margin-top:var(--md-sys-spacing-4);"><button class="md-button md-button--text" onclick="document.getElementById(\'ctx-mgr-overlay\').remove()">关闭</button></div>';
+        '<label class="settings-label" style="cursor:pointer;"><span class="settings-title">' + mdIcon('psychology', 16) + ' 本会话新思维链可见</span><input type="checkbox" id="cm-thinking-toggle" ' + thChecked + ' onchange="postAction({action:\'toggle_thinking_visible\'});showToast(\'已切换（仅影响新产生的思维链）\',\'success\')"></label>' +
+        '<div class="settings-desc">只影响本会话之后新产生的思维链，已有气泡不变。未在此切换过的会话取全局设置里「新思维链默认可见」的值。</div></div>' +
+        '</div></div>';
     ov.appendChild(box);
     document.body.appendChild(ov);
     ['cm-type-thinking','cm-type-assistant','cm-type-user','cm-type-tool','cm-type-image','cm-id-min','cm-id-max','cm-size-min','cm-size-max-modal'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) { el.addEventListener('change', updateContextManagerPreview); el.addEventListener('input', updateContextManagerPreview); }
     });
-    updateContextManagerPreview();
+    isHeavyPanelOpen = true;
+    _refreshCtxPanel();
 }
 
 function getContextManagerFilters() {

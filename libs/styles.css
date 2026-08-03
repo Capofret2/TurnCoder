@@ -305,14 +305,10 @@
             z-index: var(--md-sys-z-input-area); position: relative;
         }
         #controls { display: flex; align-items: center; gap: var(--md-sys-spacing-2); }
-        #heavy-panel {
-            position: absolute; bottom: calc(100% + var(--md-sys-spacing-1)); left: var(--md-sys-spacing-4);
-            width: 340px; max-height: 450px; overflow-y: auto;
-            background: var(--md-sys-color-surface-container); border: none;
-            border-radius: var(--md-sys-shape-corner-extra-small);
-            box-shadow: var(--md-sys-elevation-level2);
-            display: none; z-index: var(--md-sys-z-heavy-panel);
-        }
+        /* #heavy-panel 的规则曾在这里。那个 340px 浮层已并入统一上下文面板
+           （panels.js 的 openContextPanel），容器也从 frontend.html 删除。
+           CSS 里的死规则比 JS 里的更隐蔽：不报错、不影响渲染、静态检查抓不到，
+           只会在下一个人调查「这个浮层怎么定位」时给出一个完全过时的答案。 */
         /* Filled text field: tonal fill plus a bottom activity indicator. */
         #user-input {
             flex: 1; padding: var(--md-sys-spacing-2) var(--md-sys-spacing-4);
@@ -430,6 +426,32 @@
             white-space: pre-wrap; word-wrap: break-word;
         }
 
+/* ==========================================================================
+   Kanban scroll container.
+   --------------------------------------------------------------------------
+   Was overflow:hidden, which is why the view could not be moved in either
+   direction. Columns take their left and width straight from .bottom-tab's
+   offsetLeft / offsetWidth — content coordinates inside #bottom-tabs-container,
+   which is itself overflow-x:auto. So once the tabs overflow, the later columns
+   were being drawn outside the box and clipped away.
+
+   The horizontal offset is therefore **shared with the tab bar**, not
+   independent: kanban.js keeps the two scrollLeft values in step. Letting them
+   drift would put a tab above someone else's column, and clicking that column
+   would switch to the wrong session — worse than not scrolling at all.
+
+   Vertical extent comes from the inner content div, whose height kanban.js
+   writes from the compressed timeline length.
+   ========================================================================== */
+#kanban-view { overflow: auto; scrollbar-width: thin; }
+#kanban-view::-webkit-scrollbar { width: 8px; height: 8px; }
+#kanban-view::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+/* Fills the scrollable area; kanban.js sets both dimensions inline. */
+#kanban-content { position: relative; }
+
 /* Bottom tab bar */
 #bottom-tab-bar {
     background: var(--md-sys-color-surface-container);
@@ -501,7 +523,6 @@
     #input-area { padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px)); }
     .modal-content { width:95% !important; height:90% !important; }
     #settings-modal .modal-content { width:95% !important; }
-    #heavy-panel { width:calc(100% - 24px); left:12px; }
     #model-dropdown { right:5px !important; left:5px !important; max-height:50vh; overflow-y:auto; }
     .content pre { max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
     .cb-btn { min-height:32px; padding:0 var(--md-sys-spacing-3); font-size:var(--md-sys-typescale-label-large-size); }

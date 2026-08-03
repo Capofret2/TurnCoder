@@ -1256,12 +1256,31 @@ function _doHandleStateUpdate(data) {
                 try {
                     var payload = JSON.parse(e.dataTransfer.getData('text/plain'));
                     if (payload.type === 'session') {
+                        var _wasGrouped = false;
                         Object.keys(sessionGroups).forEach(function(gid) {
                             var sids = sessionGroups[gid].session_ids || [];
                             if (sids.indexOf(payload.sid) >= 0) {
+                                _wasGrouped = true;
                                 postAction({action: 'remove_session_from_group', group_id: gid, sid: payload.sid});
                             }
                         });
+                        // Move-out lands at the end. Dropping on blank space offers no
+                        // reference row, so "where you let go" has no meaning there;
+                        // last order + 1 is the one semantics that needs no guess about
+                        // the intent. Without this the row keeps its old order and
+                        // reappears somewhere in the middle of the ungrouped list.
+                        //
+                        // :scope > limits this to direct children. Grouped rows are
+                        // children of a gBody, not of the list, so counting them in
+                        // would let the moved row settle inside a group's span.
+                        if (_wasGrouped) {
+                            var _maxOrd = 0;
+                            list.querySelectorAll(':scope > .session-item').forEach(function(r) {
+                                var o = parseFloat(r.dataset.order) || 0;
+                                if (o > _maxOrd) _maxOrd = o;
+                            });
+                            postAction({action: 'reorder_session', sid: payload.sid, new_order: _maxOrd + 1});
+                        }
                     }
                 } catch(ex) {}
             };
@@ -1548,7 +1567,8 @@ function _doHandleStateUpdate(data) {
             }
         }, 1000);
 
-        // renderContextVisualization -> /libs/editops.js
+        // 上下文面板：入口 openContextPanel -> /libs/panels.js
+        // 构成图区段 renderContextComposition -> /libs/editops.js
 
         // Subagent: subagentSend, subagentAdopt -> /libs/editops.js
 

@@ -124,14 +124,32 @@ async function subagentAdopt(subagentId, responseMsgId) {
     }
 }
 
-function renderContextVisualization() {
-    var existing = document.getElementById('ctx-viz-overlay');
-    if (existing) { existing.remove(); return; }
+/**
+ * Draw the context composition into a container as four horizontal bars.
+ *
+ * This was a separate 85%-wide fullscreen overlay of four vertical columns.
+ * Two things were wrong with that shape: it needed the whole viewport to be
+ * legible, and it was a third top-level surface for one question — what is my
+ * context made of — that the heavy-bubble list beside it already half answers.
+ * It now renders inline in the unified context panel.
+ *
+ * Colours are the semantic roles the main view already gives these four kinds
+ * of bubble (UI_CONVENTIONS section two), so a block here and the bubble it
+ * points at read as the same thing rather than two unrelated palettes.
+ *
+ * Every fill carries its on-* pair. The old code hardcoded color:#fff, which
+ * under the dark scheme puts white text on warning's light yellow — the exact
+ * trap section two describes, and one that survives the light theme by luck.
+ *
+ * @param {Element} container emptied and refilled; no-op when absent
+ */
+function renderContextComposition(container) {
+    if (!container) return;
     var cats = [
-        { name: '思维链', color: '#9c27b0', items: [] },
-        { name: '回复正文', color: '#1565c0', items: [] },
-        { name: '用户消息', color: '#2e7d32', items: [] },
-        { name: '工具返回', color: '#ef6c00', items: [] }
+        { name: '思维链', bg: 'var(--md-sys-color-tertiary)', fg: 'var(--md-sys-color-on-tertiary)', items: [] },
+        { name: '回复正文', bg: 'var(--md-sys-color-primary)', fg: 'var(--md-sys-color-on-primary)', items: [] },
+        { name: '用户消息', bg: 'var(--md-sys-color-success)', fg: 'var(--md-sys-color-on-success)', items: [] },
+        { name: '工具返回', bg: 'var(--md-sys-color-warning)', fg: 'var(--md-sys-color-on-warning)', items: [] }
     ];
     currentHistory.forEach(function(m, idx) {
         if (m.is_hidden || m.is_outdated_read) return;
@@ -149,50 +167,65 @@ function renderContextVisualization() {
     });
     var totalK = 0;
     cats.forEach(function(c) { c.totalK = c.items.reduce(function(s, i) { return s + i.tk; }, 0); totalK += c.totalK; });
-    if (totalK === 0) { showToast('无可见消息', 'error'); return; }
-    var ov = document.createElement('div');
-    ov.id = 'ctx-viz-overlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:2000;';
-    ov.onclick = function(e) { if (e.target === this) this.remove(); };
-    var box = document.createElement('div');
-    box.style.cssText = 'width:85%;height:75%;background:#fff;border-radius:8px;display:flex;overflow:hidden;position:relative;';
-    var hdr = document.createElement('div');
-    hdr.style.cssText = 'position:absolute;top:0;left:0;right:0;height:32px;background:rgba(255,255,255,0.95);display:flex;align-items:center;padding:0 12px;font-size:12px;border-bottom:1px solid #eee;z-index:1;gap:12px;';
-    hdr.innerHTML = '<b>上下文构成</b> 总: ' + totalK.toFixed(1) + 'k | ' + cats.map(function(c) { return '<span style="color:' + c.color + '">■</span>' + c.name + ' ' + c.totalK.toFixed(1) + 'k (' + (c.totalK/totalK*100).toFixed(0) + '%)'; }).join(' | ');
-    var closeBtn = document.createElement('span');
-    closeBtn.style.cssText = 'position:absolute;right:10px;top:4px;cursor:pointer;font-size:20px;color:#999;';
-    closeBtn.innerHTML = '&times;'; closeBtn.onclick = function() { ov.remove(); };
-    hdr.appendChild(closeBtn);
-    box.appendChild(hdr);
+    if (totalK === 0) {
+        // Written into the container, not raised as a toast. This renders inline
+        // now; a toast plus an empty box reads as the panel being broken.
+        container.innerHTML = '<div style="color:var(--md-sys-color-on-surface-variant);'
+            + 'font-size:var(--md-sys-typescale-body-small-size);">无可见消息</div>';
+        return;
+    }
+    container.innerHTML = '<div style="font-size:var(--md-sys-typescale-body-small-size);'
+        + 'color:var(--md-sys-color-on-surface-variant);margin-bottom:var(--md-sys-spacing-2);">'
+        + '总计 <b style="color:var(--md-sys-color-on-surface);">' + totalK.toFixed(1) + 'k</b>'
+        + '　点击色块跳转到对应气泡</div>';
     cats.forEach(function(cat) {
         if (cat.totalK === 0) return;
-        var col = document.createElement('div');
-        col.style.cssText = 'width:' + (cat.totalK / totalK * 100) + '%;height:100%;padding-top:32px;display:flex;flex-direction:column;box-sizing:border-box;border-right:1px solid #eee;overflow:hidden;';
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:var(--md-sys-spacing-2);'
+            + 'margin-bottom:var(--md-sys-spacing-1);';
+        var lb = document.createElement('span');
+        lb.style.cssText = 'flex:0 0 104px;font-size:var(--md-sys-typescale-label-small-size);'
+            + 'color:var(--md-sys-color-on-surface-variant);white-space:nowrap;';
+        lb.textContent = cat.name + ' ' + cat.totalK.toFixed(1) + 'k ('
+            + (cat.totalK / totalK * 100).toFixed(0) + '%)';
+        row.appendChild(lb);
+        // The bar takes the category's share of the total width, so the four rows
+        // stay comparable with each other instead of each filling its own line.
+        var bar = document.createElement('div');
+        bar.style.cssText = 'flex:0 0 ' + (cat.totalK / totalK * 100).toFixed(2) + '%;'
+            + 'display:flex;height:22px;gap:1px;min-width:3px;';
         var largeItems = cat.items.filter(function(item) { return item.tk >= 1.0; });
         var smallItems = cat.items.filter(function(item) { return item.tk < 1.0; });
         var smallTotal = smallItems.reduce(function(s, i) { return s + i.tk; }, 0);
         largeItems.forEach(function(item) {
             var blk = document.createElement('div');
-            blk.style.cssText = 'flex:' + Math.max(0.001, item.tk).toFixed(4) + ';min-height:1px;background:' + cat.color + ';margin:1px;border-radius:2px;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;opacity:0.8;transition:opacity 0.15s;';
-            blk.onmouseover = function() { this.style.opacity = '1'; this.style.outline = '2px solid #fff'; };
-            blk.onmouseout = function() { this.style.opacity = '0.8'; this.style.outline = 'none'; };
+            blk.style.cssText = 'flex:' + Math.max(0.001, item.tk).toFixed(4) + ';min-width:3px;'
+                + 'background:' + cat.bg + ';color:' + cat.fg + ';'
+                + 'border-radius:var(--md-sys-shape-corner-extra-small);cursor:pointer;'
+                + 'display:flex;align-items:center;justify-content:center;overflow:hidden;'
+                + 'font-size:9px;white-space:nowrap;';
             blk.title = '[ID:' + item.id + '] ' + item.tk.toFixed(2) + 'k | ' + item.sum;
-            blk.onclick = function(e) { e.stopPropagation(); ov.remove(); scrollToMsg(item.scrollTarget || item.id); };
-            var lb = document.createElement('span');
-            lb.style.cssText = 'color:#fff;font-size:9px;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;';
-            lb.textContent = item.tk.toFixed(1) + 'k';
-            blk.appendChild(lb); col.appendChild(blk);
+            blk.textContent = item.tk.toFixed(1);
+            // Close first: the panel覆盖 the chat area, so jumping without closing
+            // scrolls to a bubble the user cannot see.
+            blk.onclick = function(e) {
+                e.stopPropagation();
+                if (typeof closeContextPanel === 'function') closeContextPanel();
+                scrollToMsg(item.scrollTarget || item.id);
+            };
+            bar.appendChild(blk);
         });
         if (smallItems.length > 0) {
+            // Mixed toward transparent rather than given a different colour, so it
+            // still reads as belonging to this category.
             var smBlk = document.createElement('div');
-            smBlk.style.cssText = 'flex:' + Math.max(0.001, smallTotal).toFixed(4) + ';min-height:1px;background:' + cat.color + ';margin:1px;border-radius:2px;display:flex;align-items:center;justify-content:center;overflow:hidden;opacity:0.5;';
-            smBlk.title = smallItems.length + ' 个小气泡 (各<1k), 合计 ' + smallTotal.toFixed(2) + 'k';
-            var smLb = document.createElement('span');
-            smLb.style.cssText = 'color:#fff;font-size:8px;padding:0 2px;white-space:nowrap;';
-            smLb.textContent = smallItems.length + '个<1k=' + smallTotal.toFixed(1) + 'k';
-            smBlk.appendChild(smLb); col.appendChild(smBlk);
+            smBlk.style.cssText = 'flex:' + Math.max(0.001, smallTotal).toFixed(4) + ';min-width:3px;'
+                + 'background:color-mix(in srgb, ' + cat.bg + ' 45%, transparent);'
+                + 'border-radius:var(--md-sys-shape-corner-extra-small);';
+            smBlk.title = smallItems.length + ' 个小气泡（各 <1k），合计 ' + smallTotal.toFixed(2) + 'k';
+            bar.appendChild(smBlk);
         }
-        box.appendChild(col);
+        row.appendChild(bar);
+        container.appendChild(row);
     });
-    ov.appendChild(box); document.body.appendChild(ov);
 }

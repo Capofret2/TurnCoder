@@ -72,10 +72,14 @@ function _kanbanRecordEnter(sid) {
 function enterKanban() {
     _kanbanActive = true;
     var kanbanView = document.getElementById('kanban-view');
-    var kanbanZoom = document.getElementById('kanban-zoom');
+    // The wrapper, not the input. Setting display on an element inside a
+    // display:none ancestor reveals nothing, so pointing this at #kanban-zoom
+    // leaves the control entirely absent — the quiet half-wired failure.
+    // flex rather than block: the wrapper's flex-direction:column needs it.
+    var kanbanZoom = document.getElementById('kanban-zoom-wrap');
     var inputArea = document.getElementById('input-area');
     if (kanbanView) kanbanView.style.display = 'block';
-    if (kanbanZoom) kanbanZoom.style.display = 'block';
+    if (kanbanZoom) kanbanZoom.style.display = 'flex';
     if (inputArea) inputArea.style.display = 'none';
     // Fetch presence history from backend
     try {
@@ -148,13 +152,24 @@ function enterKanban() {
     // Deactivate sidebar active session
     document.querySelectorAll('.session-item.active').forEach(function(el) { el.classList.remove('active'); });
     renderKanban();
+    // Both after the render: content height is written by it, so before this
+    // point scrollHeight equals the viewport and there is nowhere to scroll to.
+    // Bottom is where "now" is, and what just happened is why the view is open.
+    if (kanbanView) {
+        kanbanView.scrollTop = kanbanView.scrollHeight;
+        var _tc0 = document.getElementById('bottom-tabs-container');
+        if (_tc0) kanbanView.scrollLeft = _tc0.scrollLeft;
+    }
     _kanbanTimer = setInterval(renderKanban, 1000);
 }
 
 function exitKanban() {
     _kanbanActive = false;
     var kanbanView = document.getElementById('kanban-view');
-    var kanbanZoom = document.getElementById('kanban-zoom');
+    // Paired with enterKanban. Fixing only the entry side leaves the control
+    // unhideable: it floats over the chat and dragging it drives a render loop
+    // that has already been stopped.
+    var kanbanZoom = document.getElementById('kanban-zoom-wrap');
     var inputArea = document.getElementById('input-area');
     if (kanbanView) kanbanView.style.display = 'none';
     if (kanbanZoom) kanbanZoom.style.display = 'none';
@@ -174,14 +189,125 @@ function exitKanban() {
     }
 }
 
+/* ==========================================================================
+   Timeline compression.
+   --------------------------------------------------------------------------
+   The old mapping was Y = viewHeight - age * pxPerMs: linear, and measured
+   from the height of the viewport. That single expression caused all three of
+   the problems reported against this view:
+
+     - anything older than one screenful resolved to a negative Y and was
+       clipped away, with no scroll to reach it;
+     - an idle stretch was stretched to its real duration, so a night with no
+       activity pushed the whole conversation off the top;
+     - the content had no computable height, so no scrollbar could exist.
+
+   Segments fix all three at once. Stretches shared by every session where
+   nothing happened for longer than the threshold collapse to a fixed band; the
+   rest expands linearly at pxPerHour. Total height then falls out of the
+   segment list, which is what #kanban-content needs in order to scroll.
+
+   `now` is pushed into the timestamp list, and that is load-bearing rather
+   than incidental: without it the stretch between the last message and the
+   present moment is never a candidate for collapsing, so a machine left
+   running overnight opens to several thousand pixels of blank column — the one
+   gap most in need of folding.
+
+   A time inside a gap resolves to the middle of the band. There is no
+   proportion left to interpolate against inside a collapsed band, and
+   pretending otherwise would show two messages three hours apart as visibly
+   ordered within 48px.
+   ========================================================================== */
+var _kanbanGapThreshold = 1800000; // 30 min
+var _kanbanGapPixels = 48;
+var _kanbanSegments = [];
+var _kanbanContentH = 0;
+
+/** Every timestamp any column will draw, in ms, ascending. */
+function _kanbanCollectTimes(tabs, now) {
+    var out = [];
+    for (var i = 0; i < tabs.length; i++) {
+        var sid = tabs[i];
+        var hist = _kanbanHistoryFor(sid);
+        for (var b = 0; b < hist.length; b++) {
+            var m = hist[b];
+            if (m.is_hidden) continue;
+            var ts = m.started_at || m.created_at;
+            if (ts) out.push(ts * 1000);
+            if (m.completed_at) out.push(m.completed_at * 1000);
+        }
+        var ap = (_kanbanAutopilotCache[sid] || {}).history || [];
+        for (var a = 0; a < ap.length; a++) {
+            if (ap[a].started) out.push(ap[a].started * 1000);
+            if (ap[a].ended) out.push(ap[a].ended * 1000);
+        }
+    }
+    for (var p = 0; p < _kanbanPresenceLog.length; p++) {
+        var pr = _kanbanPresenceLog[p];
+        if (pr.enter) out.push(pr.enter);
+        if (pr.leave) out.push(pr.leave);
+    }
+    out.push(now);
+    out.sort(function(x, y) { return x - y; });
+    return out;
+}
+
+function _kanbanBuildSegments(times, now, pxPerMs) {
+    _kanbanSegments = [];
+    _kanbanContentH = 0;
+    if (!times.length) return;
+    var y = 0;
+    var segStart = times[0];
+    for (var i = 1; i < times.length; i++) {
+        if (times[i] - times[i - 1] <= _kanbanGapThreshold) continue;
+        var h = (times[i - 1] - segStart) * pxPerMs;
+        _kanbanSegments.push({t0: segStart, t1: times[i - 1], y0: y, y1: y + h, gap: false});
+        y += h;
+        _kanbanSegments.push({t0: times[i - 1], t1: times[i], y0: y, y1: y + _kanbanGapPixels, gap: true});
+        y += _kanbanGapPixels;
+        segStart = times[i];
+    }
+    var lastH = (now - segStart) * pxPerMs;
+    _kanbanSegments.push({t0: segStart, t1: now, y0: y, y1: y + lastH, gap: false});
+    _kanbanContentH = y + lastH;
+}
+
+function _kanbanTimeToY(t) {
+    var segs = _kanbanSegments;
+    if (!segs.length) return 0;
+    if (t <= segs[0].t0) return segs[0].y0;
+    for (var i = 0; i < segs.length; i++) {
+        var s = segs[i];
+        if (t < s.t0 || t > s.t1) continue;
+        if (s.gap) return s.y0 + _kanbanGapPixels / 2;
+        var span = s.t1 - s.t0;
+        return s.y0 + (span > 0 ? (t - s.t0) / span : 0) * (s.y1 - s.y0);
+    }
+    return segs[segs.length - 1].y1;
+}
+
+/** The one place column history is resolved, so the time sweep and the draw
+    pass cannot disagree about which bubbles exist. */
+function _kanbanHistoryFor(sid) {
+    if (sid === window.currentSessionId && typeof currentHistory !== 'undefined' && currentHistory) {
+        return currentHistory;
+    }
+    if (typeof _sessionHistoryCache !== 'undefined' && _sessionHistoryCache[sid]) {
+        return _sessionHistoryCache[sid];
+    }
+    if (typeof window._sessionHistoryCache !== 'undefined' && window._sessionHistoryCache[sid]) {
+        return window._sessionHistoryCache[sid];
+    }
+    return [];
+}
+
 function renderKanban() {
-    var container = document.getElementById('kanban-view');
-    if (!container) return;
-    var rawHeight = container.clientHeight || window.innerHeight - 80;
-    var bottomPadding = 30; // Reserve space at bottom so "now" isn't at the very edge
-    var viewHeight = rawHeight - bottomPadding;
+    var outer = document.getElementById('kanban-view');
+    var container = document.getElementById('kanban-content');
+    if (!outer || !container) return;
     var now = Date.now();
     var pxPerMs = _kanbanPixelsPerHour / 3600000;
+    var topPad = 20;
 
     // Grid and label colours, hoisted because the color-mix expressions are long
     // and appear four times below.
@@ -207,7 +333,15 @@ function renderKanban() {
         tabs = _openedTabs.slice();
     }
     if (tabs.length === 0) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--md-sys-color-on-surface-variant);">无已打开的标签页</div>';
+        // Into the content div with a temporary full height, **not** by rewriting
+        // the outer box. outer.innerHTML would destroy #kanban-content and leave
+        // the replacement as a sibling of this message; the populated branch only
+        // rewrites the content div and never touches that sibling, so the placard
+        // would stay in the corner alongside the real columns forever.
+        container.style.height = '100%';
+        container.style.width = '100%';
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;'
+            + 'height:100%;color:var(--md-sys-color-on-surface-variant);">无已打开的标签页</div>';
         return;
     }
 
@@ -219,6 +353,17 @@ function renderKanban() {
         tabPositions.push({left: tabEls[ti].offsetLeft, width: tabEls[ti].offsetWidth});
         tabColors.push(getComputedStyle(tabEls[ti]).backgroundColor);
     }
+
+    _kanbanBuildSegments(_kanbanCollectTimes(tabs, now), now, pxPerMs);
+    // Width has to reach past the rightmost column's right edge. Columns are
+    // positioned from .bottom-tab offsets, which live in the tab bar's content
+    // coordinates, so a content div sized to the viewport clips the later
+    // columns exactly the way overflow:hidden used to — same symptom, harder to
+    // attribute once a scrollbar is present.
+    var _lastTab = tabPositions[tabs.length - 1];
+    var _contentW = _lastTab ? (_lastTab.left + _lastTab.width) : outer.clientWidth;
+    container.style.width = Math.max(_contentW, outer.clientWidth) + 'px';
+    container.style.height = (_kanbanContentH + topPad + 40) + 'px';
 
     var html = '';
     for (var i = 0; i < tabs.length; i++) {
@@ -234,36 +379,63 @@ function renderKanban() {
 
         html += '<div class="kanban-col" style="position:absolute;left:' + colLeft + 'px;top:0;width:' + colW + 'px;height:100%;background:' + colBg + ';border-right:1px solid var(--md-sys-color-outline-variant);overflow:hidden;">';
 
-        // Hour lines + sub-hour lines when zoomed in
-        var hoursToShow = Math.ceil(viewHeight / _kanbanPixelsPerHour) + 2;
-        var nowDate = new Date(now);
-        var currentHourStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), nowDate.getHours(), 0, 0).getTime();
-        for (var h = 0; h <= hoursToShow; h++) {
-            var lineTime = currentHourStart - h * 3600000;
-            var lineAge = now - lineTime;
-            var lineY = viewHeight - (lineAge * pxPerMs);
-            var hourLineH = _kanbanPixelsPerHour > 500 ? 2 : 1;
-            html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + lineY + 'px;height:' + hourLineH + 'px;background:' + gridColor + ';"></div>';
-            // Time label on first column
-            if (i === 0) {
-                var lineDate = new Date(lineTime);
-                var timeLabel = ('0' + lineDate.getHours()).slice(-2) + ':' + ('0' + lineDate.getMinutes()).slice(-2);
-                html += '<div style="position:absolute;left:2px;top:' + (lineY - 14) + 'px;font-size:10px;color:' + labelColor + ';pointer-events:none;white-space:nowrap;">' + timeLabel + '</div>';
+        // Grid, walked per segment. The old form counted hours back from now and
+        // stopped at the viewport height; under a compressed axis the same pixel
+        // distance means different durations in different segments, so counting
+        // back from a single origin no longer resolves to the right place.
+        var hourLineH = _kanbanPixelsPerHour > 500 ? 2 : 1;
+        for (var sgi = 0; sgi < _kanbanSegments.length; sgi++) {
+            var sg = _kanbanSegments[sgi];
+            if (sg.gap) {
+                // A collapsed stretch has to say so. Left blank, two messages a
+                // night apart read as consecutive — a worse error than not being
+                // able to reach the older one at all.
+                if (i === 0) {
+                    var gapH = (sg.t1 - sg.t0) / 3600000;
+                    html += '<div style="position:absolute;left:0;right:0;top:' + (topPad + sg.y0)
+                        + 'px;height:' + _kanbanGapPixels + 'px;font-size:9px;color:' + labelColor
+                        + ';line-height:' + _kanbanGapPixels + 'px;padding-left:4px;white-space:nowrap;'
+                        + 'background:repeating-linear-gradient(0deg,var(--md-sys-color-surface-container-high),var(--md-sys-color-surface-container-high) 1px,transparent 1px,transparent 4px);'
+                        + 'border-top:1px solid ' + gridColor + ';border-bottom:1px solid ' + gridColor + ';">'
+                        + '空闲 ' + gapH.toFixed(1) + ' 小时</div>';
+                } else {
+                    html += '<div style="position:absolute;left:0;right:0;top:' + (topPad + sg.y0)
+                        + 'px;height:' + _kanbanGapPixels + 'px;'
+                        + 'background:repeating-linear-gradient(0deg,var(--md-sys-color-surface-container-high),var(--md-sys-color-surface-container-high) 1px,transparent 1px,transparent 4px);'
+                        + 'border-top:1px solid ' + gridColor + ';border-bottom:1px solid ' + gridColor + ';"></div>';
+                }
+                continue;
             }
-            // 10-minute sub-lines when zoom is high enough (>120 px/h = each 10min > 20px)
-            if (_kanbanPixelsPerHour > 120) {
-                for (var m = 1; m < 6; m++) {
-                    var subTime = lineTime + m * 600000;
-                    var subAge = now - subTime;
-                    var subY = viewHeight - (subAge * pxPerMs);
-                    var subLineH = _kanbanPixelsPerHour > 1000 ? 2 : 1;
-                    html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + subY + 'px;height:' + subLineH + 'px;background:' + subGridColor + ';"></div>';
-                    if (i === 0 && _kanbanPixelsPerHour > 300) {
-                        var subDate = new Date(subTime);
-                        var subLabel = ('0' + subDate.getHours()).slice(-2) + ':' + ('0' + subDate.getMinutes()).slice(-2);
-                        html += '<div style="position:absolute;left:2px;top:' + (subY - 12) + 'px;font-size:9px;color:' + subLabelColor + ';pointer-events:none;">' + subLabel + '</div>';
+            var d0 = new Date(sg.t0);
+            var hourT = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), d0.getHours(), 0, 0).getTime();
+            // Density judged on the segment's own scale: pxPerHour and "is ten
+            // minutes worth a line here" stopped being the same question once the
+            // axis could compress.
+            var subOn = (_kanbanPixelsPerHour > 120);
+            while (hourT <= sg.t1) {
+                if (hourT >= sg.t0) {
+                    var lineY = topPad + _kanbanTimeToY(hourT);
+                    html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + lineY + 'px;height:' + hourLineH + 'px;background:' + gridColor + ';"></div>';
+                    if (i === 0) {
+                        var ld = new Date(hourT);
+                        html += '<div style="position:absolute;left:2px;top:' + (lineY - 14) + 'px;font-size:10px;color:' + labelColor + ';pointer-events:none;white-space:nowrap;">'
+                            + ('0' + ld.getHours()).slice(-2) + ':' + ('0' + ld.getMinutes()).slice(-2) + '</div>';
                     }
                 }
+                if (subOn) {
+                    for (var m = 1; m < 6; m++) {
+                        var subTime = hourT + m * 600000;
+                        if (subTime < sg.t0 || subTime > sg.t1) continue;
+                        var subY = topPad + _kanbanTimeToY(subTime);
+                        html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + subY + 'px;height:1px;background:' + subGridColor + ';"></div>';
+                        if (i === 0 && _kanbanPixelsPerHour > 300) {
+                            var sd = new Date(subTime);
+                            html += '<div style="position:absolute;left:2px;top:' + (subY - 12) + 'px;font-size:9px;color:' + subLabelColor + ';pointer-events:none;">'
+                                + ('0' + sd.getHours()).slice(-2) + ':' + ('0' + sd.getMinutes()).slice(-2) + '</div>';
+                        }
+                    }
+                }
+                hourT += 3600000;
             }
         }
 
@@ -286,10 +458,11 @@ function renderKanban() {
         for (var p = 0; p < _kanbanPresenceLog.length; p++) {
             var pr = _kanbanPresenceLog[p];
             if (pr.sid !== sid) continue;
-            var enterAge = now - pr.enter;
-            var leaveAge = now - pr.leave;
-            var enterY = viewHeight - (enterAge * pxPerMs);
-            var leaveY = viewHeight - (leaveAge * pxPerMs);
+            // Both ends mapped, then subtracted. duration * pxPerMs is wrong the
+            // moment an interval spans a collapsed band: it yields far more height
+            // than the band actually occupies and the bar buries its neighbours.
+            var enterY = topPad + _kanbanTimeToY(pr.enter);
+            var leaveY = topPad + _kanbanTimeToY(pr.leave);
             var barTop = Math.min(enterY, leaveY);
             var barH = Math.abs(leaveY - enterY);
             if (barH < 6) barH = 6;
@@ -301,9 +474,8 @@ function renderKanban() {
         }
         // Current presence (this device only)
         if (_kanbanCurrentEnter && _kanbanCurrentEnter.sid === sid && !_kanbanIsIdle) {
-            var curAge = now - _kanbanCurrentEnter.time;
-            var curY = viewHeight - (curAge * pxPerMs);
-            var curH = curAge * pxPerMs;
+            var curY = topPad + _kanbanTimeToY(_kanbanCurrentEnter.time);
+            var curH = (topPad + _kanbanTimeToY(now)) - curY;
             if (curH < 6) curH = 6;
             var selfIdx = _deviceList.indexOf(_kanbanDeviceId);
             var selfLeft = 2 + (selfIdx >= 0 ? selfIdx : 0) * 14;
@@ -318,14 +490,16 @@ function renderKanban() {
         var apHistory = apCache.history || (sessData && sessData._autopilot_history ? sessData._autopilot_history : []);
         for (var ap = 0; ap < apHistory.length; ap++) {
             var apEntry = apHistory[ap];
-            var apStartAge = now - apEntry.started * 1000;
-            var apEndAge = now - apEntry.ended * 1000;
-            var apStartY = viewHeight - (apStartAge * pxPerMs);
-            var apEndY = viewHeight - (apEndAge * pxPerMs);
+            var apStartY = topPad + _kanbanTimeToY(apEntry.started * 1000);
+            var apEndY = topPad + _kanbanTimeToY(apEntry.ended * 1000);
             var apTop = Math.min(apStartY, apEndY);
             var apH = Math.abs(apEndY - apStartY);
             if (apH < 6) apH = 6;
-            html += '<div style="position:absolute;right:2px;width:6px;top:' + apTop + 'px;height:' + apH + 'px;background:color-mix(in srgb, var(--md-sys-color-error) 40%, transparent);border-radius:3px;border:1px solid color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);" title="托管 ' + (apH / pxPerMs / 60000).toFixed(0) + '分钟"></div>';
+            // Minutes from the timestamps, not back-computed from pixel height:
+            // apH / pxPerMs was only ever valid on a uniform axis, and it now
+            // under-reports any run that crosses a collapsed band.
+            var apMin = Math.abs(apEntry.ended - apEntry.started) / 60;
+            html += '<div style="position:absolute;right:2px;width:6px;top:' + apTop + 'px;height:' + apH + 'px;background:color-mix(in srgb, var(--md-sys-color-error) 40%, transparent);border-radius:3px;border:1px solid color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);" title="托管 ' + apMin.toFixed(0) + '分钟"></div>';
         }
         // Currently active autopilot: detect transitions
         // autopilot_active flag might stay true even after all work is done (backend bug)
@@ -348,9 +522,8 @@ function renderKanban() {
             }
         }
         if (_apActive && _apStartedAt) {
-            var apNowStartAge = now - _apStartedAt * 1000;
-            var apNowStartY = viewHeight - (apNowStartAge * pxPerMs);
-            var apNowH = Math.max(6, viewHeight - apNowStartY);
+            var apNowStartY = topPad + _kanbanTimeToY(_apStartedAt * 1000);
+            var apNowH = Math.max(6, (topPad + _kanbanTimeToY(now)) - apNowStartY);
             // steps(2) is gone: styles.css already replaced the blink with a
             // breathing keyframe, and passing a step function here re-imposed the
             // hard switch locally, undoing that fix. Now identical to the tab
@@ -359,14 +532,11 @@ function renderKanban() {
         }
 
         // Bubble bars - duration-based rendering with lifecycle phases
-        var history = [];
-        if (sid === window.currentSessionId && typeof currentHistory !== 'undefined') {
-            history = currentHistory;
-        } else if (typeof _sessionHistoryCache !== 'undefined' && _sessionHistoryCache[sid]) {
-            history = _sessionHistoryCache[sid];
-        } else if (typeof window._sessionHistoryCache !== 'undefined' && window._sessionHistoryCache[sid]) {
-            history = window._sessionHistoryCache[sid];
-        }
+        // One resolver, shared with the time sweep above. Two copies would drift,
+        // and the drift is quiet: the sweep sees a session's history while the
+        // draw pass does not, so its messages land at a time no segment covers and
+        // _kanbanTimeToY's fallback piles them at the very bottom.
+        var history = _kanbanHistoryFor(sid);
         for (var b = 0; b < history.length; b++) {
             var msg = history[b];
             if (msg.is_hidden) continue;
@@ -376,8 +546,7 @@ function renderKanban() {
                 msgCreatedAt = (now / 1000) - (history.length - b) * 120;
             }
             var msgStartMs = msgCreatedAt * 1000;
-            var msgStartAge = now - msgStartMs;
-            var msgStartY = viewHeight - (msgStartAge * pxPerMs);
+            var msgStartY = topPad + _kanbanTimeToY(msgStartMs);
 
             var msgDate = new Date(msgStartMs);
             var timeStr = ('0' + msgDate.getHours()).slice(-2) + ':' + ('0' + msgDate.getMinutes()).slice(-2) + ':' + ('0' + msgDate.getSeconds()).slice(-2);
@@ -387,8 +556,7 @@ function renderKanban() {
             if (msg.is_tool_result || msg.is_auto_read) {
                 var toolTs = msg.created_at;
                 if (toolTs) {
-                    var toolAge = now - toolTs * 1000;
-                    var toolY = viewHeight - (toolAge * pxPerMs);
+                    var toolY = topPad + _kanbanTimeToY(toolTs * 1000);
                     html += '<div class="kanban-bubble" title="tool ' + timeStr + '" style="position:absolute;left:50%;top:' + toolY + 'px;width:4px;height:4px;margin-left:-2px;background:var(--md-sys-color-outline);border-radius:50%;pointer-events:none;"></div>';
                 }
                 continue;
@@ -455,15 +623,80 @@ function renderKanban() {
     container.innerHTML = html;
 }
 
+/* Zoom, on a log scale.
+ *
+ * The slider carries a dimensionless 0–1000 position, not px/h. 720 is the full
+ * range's ratio (3600 / 5), so v=0 gives 5 px/h and v=1000 gives 3600 — the same
+ * endpoints as before — while the feel in between changes from a constant
+ * 24 px/h per pixel of travel to a constant ~2.5% per pixel.
+ *
+ * The inverse is provided rather than open-coded at the two call sites that need
+ * it (the readout and the initial slider position). Two copies of a conversion
+ * drift, and the symptom here is a readout that disagrees with the slider — the
+ * user believes the number and concludes the slider is broken.
+ */
+var _KZ_MIN = 5, _KZ_RATIO = 720;
+
+function _kanbanZoomToPph(v) {
+    return _KZ_MIN * Math.pow(_KZ_RATIO, v / 1000);
+}
+
+function _kanbanPphToZoom(pph) {
+    return Math.round(1000 * Math.log(pph / _KZ_MIN) / Math.log(_KZ_RATIO));
+}
+
+/** Format for the readout. Sub-hour scales need a finer unit than "N/h". */
+function _kanbanZoomLabel(pph) {
+    if (pph >= 60) return Math.round(pph) + '/h';
+    return (pph * 60).toFixed(0) + '/d';
+}
+
 // Initialize presence tracking on page load
 document.addEventListener('DOMContentLoaded', function() {
     var zoomEl = document.getElementById('kanban-zoom');
+    var readoutEl = document.getElementById('kanban-zoom-readout');
     if (zoomEl) {
+        // Position the slider from the current scale rather than trusting the
+        // markup's default, so the two cannot start out disagreeing.
+        zoomEl.value = _kanbanPphToZoom(_kanbanPixelsPerHour);
         zoomEl.addEventListener('input', function() {
-            _kanbanPixelsPerHour = parseInt(this.value) || 100;
+            _kanbanPixelsPerHour = _kanbanZoomToPph(parseFloat(this.value) || 0);
+            if (readoutEl) readoutEl.textContent = _kanbanZoomLabel(_kanbanPixelsPerHour);
             if (_kanbanActive) renderKanban();
         });
     }
+    /* Horizontal scroll, shared with the tab bar.
+     *
+     * Not an independent axis. Columns are positioned from .bottom-tab's
+     * offsetLeft, which is a coordinate inside #bottom-tabs-container's own
+     * scrollable content, so the two boxes have to hold the same horizontal
+     * offset or a tab ends up above someone else's column — and clicking that
+     * column switches to the wrong session.
+     *
+     * The guard flag is required, not defensive: without it A's scroll event
+     * writes B's scrollLeft, B's scroll event writes A's, and sub-pixel rounding
+     * keeps them nudging each other forever. The visible result is a kanban that
+     * drifts sideways on its own.
+     *
+     * Vertical is deliberately not synced — the tab bar has no vertical scroll,
+     * and the kanban's vertical offset is the user's reading position.
+     */
+    var kv = document.getElementById('kanban-view');
+    var tc = document.getElementById('bottom-tabs-container');
+    if (kv && tc) {
+        var _syncing = false;
+        var _mirror = function(from, to) {
+            if (_syncing) return;
+            _syncing = true;
+            to.scrollLeft = from.scrollLeft;
+            // Released on the next task, after the assignment's own scroll event
+            // has been dispatched and swallowed.
+            setTimeout(function() { _syncing = false; }, 0);
+        };
+        kv.addEventListener('scroll', function() { if (_kanbanActive) _mirror(kv, tc); }, {passive: true});
+        tc.addEventListener('scroll', function() { if (_kanbanActive) _mirror(tc, kv); }, {passive: true});
+    }
+
     // Record initial presence after a short delay
     setTimeout(function() {
         var sid = window.localSid || window.currentSessionId;

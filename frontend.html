@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" href="/libs/katex.min.css">
     <link rel="stylesheet" href="/libs/tokens.css?v=3">
-    <link rel="stylesheet" href="/libs/styles.css?v=20">
+    <link rel="stylesheet" href="/libs/styles.css?v=21">
     <script>
     /* Theme bootstrap — inline and synchronous on purpose. Every libs/ script
        loads at the end of <body>, so applying the stored scheme from there
@@ -64,7 +64,12 @@
             </div>
         </div>
         <div id="chat-minimap" aria-hidden="true"></div>
-        <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;overflow:hidden;background:var(--md-sys-color-surface-container-low);z-index:var(--md-sys-z-kanban);"></div>
+        <!-- overflow 刻意不写在内联里：内联样式压过类选择器，而 #kanban-view 的
+             overflow:auto 定义在 styles.css。这是 UI_CONVENTIONS 第五节第 3 条那个
+             陷阱，本项目已因此出过三次可见缺陷。 -->
+        <div id="kanban-view" style="display:none;position:absolute;top:0;left:0;right:0;bottom:33px;background:var(--md-sys-color-surface-container-low);z-index:var(--md-sys-z-kanban);">
+            <div id="kanban-content"></div>
+        </div>
         <div id="queue-area"></div>
         <div id="tab-context-menu" style="display:none; position:fixed; background:var(--md-sys-color-surface-container); border:none; border-radius:var(--md-sys-shape-corner-extra-small); box-shadow:var(--md-sys-elevation-level2); z-index:var(--md-sys-z-context-menu); padding:var(--md-sys-spacing-1) 0; min-width:180px;">
             <div class="tab-ctx-item" onclick="tabCtxRename()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l4 4"/></svg> 重命名</div>
@@ -73,7 +78,6 @@
             <div class="tab-ctx-item" onclick="tabCtxClose()"><svg class="md-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg> 关闭标签</div>
         </div>
         <div id="input-area">
-            <div id="heavy-panel"></div>
             <div id="controls">
                 <button class="md-button md-button--outlined md-button--compact" style="min-height:32px; min-width:64px;" id="token-est" onclick="toggleHeavyPanel()" title="点击查看大于5k Token的大型气泡">0.00k ▾</button>
                 <span id="spending-display" style="font-size: var(--md-sys-typescale-label-medium-size); color: var(--md-sys-color-success); font-weight: var(--md-sys-typescale-label-medium-weight); padding: 0 var(--md-sys-spacing-1); cursor: default;" title="累计API调用消费">$0.00</span>
@@ -208,6 +212,13 @@
                     </label>
                     <div class="settings-desc">新产生的思维链气泡是否默认计入上下文。某个会话在「上下文管理」里单独切换过之后以该会话的设置为准，这里只决定未单独切换过的会话取什么值。</div>
                 </div>
+                <div class="settings-item">
+                    <label class="settings-label">
+                        <input type="checkbox" id="set-approval-tool" onchange="saveSettings()">
+                        <span class="settings-title">允许使用申请审批工具</span>
+                    </label>
+                    <div class="settings-desc">默认关闭。该工具会让托管停下来等人手动通过或拒绝，而托管的意义正是无人值守连续推进，所以是否给模型这个能力应当由你决定而非由模型判断。关闭时它不会出现在注入给模型的工具清单里，而不是调用后被拒绝——后者会白费一次调用，且模型无从区分「工具被禁用」与「参数写错了」。</div>
+                </div>
 
                 <div class="settings-item adv-opt" style="display:none;">
                     <label class="settings-label">
@@ -221,7 +232,7 @@
                         <input type="checkbox" id="set-bulk-logging" onchange="saveSettings()">
                         <span class="settings-title">启用批量日志记录</span>
                     </label>
-                <div class="settings-desc">开启后将记录 API 请求转储(raw_dumps)、响应转储(resp_dumps)和子代理转储(subagent_dumps)。关闭时这些大量文件不会生成，但诊断日志(cc_diag.log)等单文件日志不受影响。</div>
+                <div class="settings-desc">开启后将记录 API 请求转储(raw_dumps)、响应转储(resp_dumps)和子代理转储(subagent_dumps)。关闭时这些文件不会生成，控制台日志不受影响。</div>
                 </div>
 
                 <div class="settings-item adv-opt" style="display:none;">
@@ -250,9 +261,9 @@
                 <div class="settings-item dev-only-setting">
                     <label class="settings-label">
                         <input type="checkbox" id="set-cc-simulate" onchange="saveSettings()">
-                        <span class="settings-title">CC模拟（本地执行 Read/Write/Edit/Bash）</span>
+                        <span class="settings-title">本地执行工具调用</span>
                     </label>
-                    <div class="settings-desc">开启后 Read/Write/Edit/Bash 四种工具调用在 ChatApp 内部直接执行，无需链接 Claude Code。使用 cc_tools_simulate.json 作为工具定义。</div>
+                    <div class="settings-desc">工具调用在 ChatApp 内部直接执行。Claude Code CLI 直连链路已移除，本地执行是唯一路径，因此这一项已无实际分支——保留它只是为了兼容既有 global.json 里的字段，下一次清理会一并删除。</div>
                 </div>
                 <div class="settings-item dev-only-setting">
                     <label class="settings-label">
@@ -352,9 +363,9 @@
                 <div class="settings-item dev-only-setting">
                     <label class="settings-label">
                         <input type="checkbox" id="set-cc-inject" onchange="saveSettings()">
-                        <span class="settings-title">注入CC工具和系统提示词</span>
+                        <span class="settings-title">注入工具定义和系统提示词</span>
                     </label>
-                    <div class="settings-desc">开启后自动加载 cc_tools.json 和 cc_system.json 注入请求上下文。Anthropic 协议走 system 字段，OpenAI 协议走 messages 开头。不依赖任何其他开关。</div>
+                    <div class="settings-desc">开启后自动加载 tools.json 与 tool_system.json 注入请求上下文，也就是模型能看到哪些工具由这一项决定。Anthropic 协议走 system 字段，OpenAI 协议走 messages 开头。不依赖任何其他开关。</div>
                 </div>
                 <div id="adv-opt-toggle" style="margin-top: var(--md-sys-spacing-2); text-align: center; border-top: 1px solid var(--md-sys-color-outline-variant); padding-top: var(--md-sys-spacing-3); grid-column: 1 / -1;">
                     <button class="md-button md-button--text md-button--compact" onclick="document.querySelectorAll('.adv-opt').forEach(function(el){el.style.display=el.style.display==='none'?'':'none'});this.textContent=this.textContent.indexOf('展开')>=0?'收起更多选项 ▴':'展开更多选项 ▾'">展开更多选项 ▾</button>
@@ -480,7 +491,16 @@
         </div>
     </div>
 
-    <input type="range" id="kanban-zoom" min="5" max="3600" value="200" step="5" style="display:none;position:fixed;right:20px;top:50%;transform:translateY(-50%) rotate(-90deg);width:150px;z-index:300;">
+    <!-- 对数档位，不是 px/h 本身。原先 150px 轨道直接承载 5→3600 的线性量程，
+         每像素约 24 px/h——在 200 px/h 附近移动 1px 就改变 12% 的时间尺度，移动
+         4px 就翻倍，这是「稍微移动就大幅缩放」的确切根因。
+         现在 kanban.js 按 5 * 720^(v/1000) 换算（720 = 3600/5 是整个量程的倍率），
+         每像素的比例变化在全量程恒定为约 2.5%。轨道同时加长到 260px。
+         默认 561 对应 200 px/h，即改动前的默认尺度，既有视图逐像素不变。 -->
+    <div id="kanban-zoom-wrap" style="display:none;position:fixed;right:8px;top:50%;transform:translateY(-50%);z-index:300;flex-direction:column;align-items:center;gap:var(--md-sys-spacing-2);">
+        <input type="range" id="kanban-zoom" min="0" max="1000" value="561" step="1" style="width:260px;transform:rotate(-90deg);transform-origin:center;margin:126px 0;">
+        <span id="kanban-zoom-readout" style="font-size:var(--md-sys-typescale-label-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);padding:2px var(--md-sys-spacing-1);border-radius:var(--md-sys-shape-corner-extra-small);white-space:nowrap;">200/h</span>
+    </div>
     <script src="/libs/marked.min.js"></script>
     <script src="/libs/highlight.min.js"></script>
     <script src="/libs/katex.min.js"></script>
@@ -491,14 +511,14 @@
     <script src="/libs/codeblocks.js?v=4"></script>
     <script src="/libs/settings.js?v=4"></script>
     <script src="/libs/providers.js?v=2"></script>
-    <script src="/libs/models.js?v=1"></script>
+    <script src="/libs/models.js?v=2"></script>
     <script src="/libs/codemonitor.js?v=1"></script>
-    <script src="/libs/editops.js?v=1"></script>
-    <script src="/libs/panels.js?v=2"></script>
+    <script src="/libs/editops.js?v=2"></script>
+    <script src="/libs/panels.js?v=3"></script>
     <script src="/libs/actions.js?v=2"></script>
-    <script src="/libs/kanban.js?v=2"></script>
+    <script src="/libs/kanban.js?v=3"></script>
     <script src="/libs/minimap.js?v=6"></script>
     <script src="/libs/chat.js?v=11"></script>
-    <script src="/libs/main.js?v=15"></script>
+    <script src="/libs/main.js?v=16"></script>
 </body>
 </html>
