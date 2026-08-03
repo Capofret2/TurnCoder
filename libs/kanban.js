@@ -345,37 +345,83 @@ function renderKanban() {
         return;
     }
 
-    // Read actual tab positions and colors from DOM
+    /* Tab geometry, keyed by sid — **not** by array index.
+     *
+     * This is what made the columns sit under the wrong tabs. renderBottomTabs
+     * skips any opened tab whose session is absent from _lastSessionsMap
+     * (`if (!sess) return;`), so the DOM can hold fewer .bottom-tab elements
+     * than _openedTabs has entries. Reading tabPositions[i] then handed column i
+     * some other session's coordinates, and everything from that entry rightward
+     * shifted — while clicking such a column switched to the wrong session.
+     *
+     * Keyed lookup makes the correspondence carried by the id, so a count
+     * mismatch can no longer produce an offset. A sid with no tab element draws
+     * no column, which is correct: it is not visible in the bar either.
+     */
+    var tabGeom = {};
     var tabEls = document.querySelectorAll('.bottom-tab');
-    var tabPositions = [];
-    var tabColors = [];
     for (var ti = 0; ti < tabEls.length; ti++) {
-        tabPositions.push({left: tabEls[ti].offsetLeft, width: tabEls[ti].offsetWidth});
-        tabColors.push(getComputedStyle(tabEls[ti]).backgroundColor);
+        var _gsid = tabEls[ti].dataset.sid;
+        if (!_gsid) continue;
+        tabGeom[_gsid] = {
+            left: tabEls[ti].offsetLeft,
+            width: tabEls[ti].offsetWidth,
+            bg: getComputedStyle(tabEls[ti]).backgroundColor
+        };
     }
 
     _kanbanBuildSegments(_kanbanCollectTimes(tabs, now), now, pxPerMs);
-    // Width has to reach past the rightmost column's right edge. Columns are
-    // positioned from .bottom-tab offsets, which live in the tab bar's content
-    // coordinates, so a content div sized to the viewport clips the later
-    // columns exactly the way overflow:hidden used to — same symptom, harder to
-    // attribute once a scrollbar is present.
-    var _lastTab = tabPositions[tabs.length - 1];
-    var _contentW = _lastTab ? (_lastTab.left + _lastTab.width) : outer.clientWidth;
-    container.style.width = Math.max(_contentW, outer.clientWidth) + 'px';
     container.style.height = (_kanbanContentH + topPad + 40) + 'px';
+    /* Width matched to the tab bar's own scrollWidth, not to the rightmost
+     * column's right edge.
+     *
+     * The bar carries three more controls after the tabs (new / manager /
+     * kanban), so its scrollable range is wider than the columns are. With
+     * different ranges, assigning one scrollLeft to the other gets clamped at
+     * the shorter end and the two drift apart — the second half of the
+     * misalignment report.
+     *
+     * Height is written first on purpose: it decides whether a vertical
+     * scrollbar appears, and that scrollbar narrows the visible width here but
+     * not in the bar — so outer.clientWidth below has to be read after it.
+     *
+     * **The width is solved for equal maximum scrollLeft, not copied from the
+     * bar's scrollWidth.** Each box's maximum is scrollWidth - clientWidth, and
+     * the two clientWidths differ by the scrollbar, so matching scrollWidth does
+     * not match the ranges. Copying it leaves the kanban able to scroll ~16px
+     * further; at that extreme the mirror writes a value the bar clamps, and the
+     * two part company again — in exactly the place a user drags to.
+     *
+     * Solving it instead gives a simpler expression: content width = the bar's
+     * own maximum plus this box's visible width, after which
+     * contentW - outer.clientWidth is identically the bar's maximum.
+     */
+    var _tcEl = document.getElementById('bottom-tabs-container');
+    var _barMax = _tcEl ? Math.max(0, _tcEl.scrollWidth - _tcEl.clientWidth) : 0;
+    container.style.width = (_barMax + outer.clientWidth) + 'px';
 
     var html = '';
+    // Which column carries the time ruler. Was `i === 0`, which assumed the
+    // first sid always draws; now that a sid without a tab is skipped, that
+    // assumption would silently drop every time label — symptom is "the kanban
+    // has no time markings", which reads as the ruler logic being broken.
+    var _labelDrawn = false;
     for (var i = 0; i < tabs.length; i++) {
         var sid = tabs[i];
-        // Column positioning from actual tab DOM
-        var colLeft = tabPositions[i] ? tabPositions[i].left : (i * (container.clientWidth / tabs.length));
-        var colW = tabPositions[i] ? tabPositions[i].width : (container.clientWidth / tabs.length);
-        // Fallback uses the same formula as an inactive tab, so the two paths —
-        // computed tab colour available or not — look alike. The old 83%
-        // lightness made a fallback column a bright slab under the dark scheme.
-        var colBg = tabColors[i] || ('color-mix(in srgb, hsl(' + ((i * 60) % 360)
+        var _g = tabGeom[sid];
+        // No tab element, no column. Falling back to an even share would draw a
+        // column that exists nowhere in the bar, and its position could not
+        // align with any real tab — that is more misalignment, not less.
+        if (!_g) continue;
+        var colLeft = _g.left;
+        var colW = _g.width;
+        // Fallback for a tab whose computed background is transparent, matching
+        // the inactive-tab formula so both paths look alike. The old 83%
+        // lightness made such a column a bright slab under the dark scheme.
+        var colBg = _g.bg || ('color-mix(in srgb, hsl(' + ((i * 60) % 360)
             + ' 60% 50%) 12%, var(--md-sys-color-surface-container-high))');
+        var _isLabelCol = !_labelDrawn;
+        _labelDrawn = true;
 
         html += '<div class="kanban-col" style="position:absolute;left:' + colLeft + 'px;top:0;width:' + colW + 'px;height:100%;background:' + colBg + ';border-right:1px solid var(--md-sys-color-outline-variant);overflow:hidden;">';
 
@@ -390,7 +436,7 @@ function renderKanban() {
                 // A collapsed stretch has to say so. Left blank, two messages a
                 // night apart read as consecutive — a worse error than not being
                 // able to reach the older one at all.
-                if (i === 0) {
+                if (_isLabelCol) {
                     var gapH = (sg.t1 - sg.t0) / 3600000;
                     html += '<div style="position:absolute;left:0;right:0;top:' + (topPad + sg.y0)
                         + 'px;height:' + _kanbanGapPixels + 'px;font-size:9px;color:' + labelColor
@@ -416,7 +462,7 @@ function renderKanban() {
                 if (hourT >= sg.t0) {
                     var lineY = topPad + _kanbanTimeToY(hourT);
                     html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + lineY + 'px;height:' + hourLineH + 'px;background:' + gridColor + ';"></div>';
-                    if (i === 0) {
+                    if (_isLabelCol) {
                         var ld = new Date(hourT);
                         html += '<div style="position:absolute;left:2px;top:' + (lineY - 14) + 'px;font-size:10px;color:' + labelColor + ';pointer-events:none;white-space:nowrap;">'
                             + ('0' + ld.getHours()).slice(-2) + ':' + ('0' + ld.getMinutes()).slice(-2) + '</div>';
@@ -428,7 +474,7 @@ function renderKanban() {
                         if (subTime < sg.t0 || subTime > sg.t1) continue;
                         var subY = topPad + _kanbanTimeToY(subTime);
                         html += '<div class="kanban-hour-line" style="position:absolute;left:0;right:0;top:' + subY + 'px;height:1px;background:' + subGridColor + ';"></div>';
-                        if (i === 0 && _kanbanPixelsPerHour > 300) {
+                        if (_isLabelCol && _kanbanPixelsPerHour > 300) {
                             var sd = new Date(subTime);
                             html += '<div style="position:absolute;left:2px;top:' + (subY - 12) + 'px;font-size:9px;color:' + subLabelColor + ';pointer-events:none;">'
                                 + ('0' + sd.getHours()).slice(-2) + ':' + ('0' + sd.getMinutes()).slice(-2) + '</div>';
