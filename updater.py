@@ -6,6 +6,7 @@ update.py 负责覆写/新增/删除文件，最后删除更新包自身。
 
 用法：python updater.py  （替代直接运行 python app.py）
 """
+import importlib.util
 import json
 import os
 import sys
@@ -15,6 +16,17 @@ import shutil
 import subprocess
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 按文件路径直接加载 platform_shell，**不走 `from api.platform_shell import`**：后者会先
+# 执行 api/__init__.py，而那里导入了 requests 等第三方包。updater.py 的全部意义是在依赖
+# 装好之前就能跑——它自己的 check_remote_version 也把 import requests 放在函数内部并用
+# except 兜住。走包导入等于给启动器加一个它本来不需要的硬依赖，症状是「依赖没装好时连
+# 更新器都起不来」。platform_shell 只依赖标准库，所以按路径加载是安全的。
+_ps_spec = importlib.util.spec_from_file_location(
+    '_updater_platform_shell', os.path.join(BASE_DIR, 'api', 'platform_shell.py'))
+_platform_shell = importlib.util.module_from_spec(_ps_spec)
+_ps_spec.loader.exec_module(_platform_shell)
+exec_or_spawn = _platform_shell.exec_or_spawn
 VERSION_FILE = os.path.join(BASE_DIR, 'version.json')
 UPDATE_DIR = os.path.join(BASE_DIR, 'data', 'updates')
 
@@ -245,7 +257,10 @@ def main():
     print('\n[UPDATER] 启动 ChatApp...')
     print('=' * 50)
     os.chdir(BASE_DIR)
-    os.execv(sys.executable, [sys.executable, os.path.join(BASE_DIR, 'app.py')])
+    # 这一句是本文件的本职（起 app.py），不是「更新后重启」——前两处 os.execv 已改成打印
+    # 提示并退出，而对这里那样做是荒谬的：用户刚敲的就是启动命令。平台差异与取舍见
+    # platform_shell.exec_or_spawn 的 docstring。
+    exec_or_spawn([sys.executable, os.path.join(BASE_DIR, 'app.py')])
 
 
 if __name__ == '__main__':

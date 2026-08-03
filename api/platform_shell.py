@@ -262,6 +262,28 @@ def environment_facts() -> dict:
     }
 
 
+def exec_or_spawn(argv):
+    """把控制权交给 argv 描述的那个进程。不返回。
+
+    POSIX 上用 os.execv：替换当前进程映像，PID 不变、不留额外进程。
+
+    **Windows 上没有这个语义。** CPython 的实现是新起一个进程然后让原进程立即退出，于是
+    父进程句柄失效、控制台归属混乱——在被 shell 启动的场景下表现是「命令看起来结束了但
+    服务在后台继续跑」，用户拿回提示符却发现端口被占着。改为 subprocess.call 加
+    sys.exit(返回码)：等子进程结束再退出，shell 因此保持阻塞、控制台归属清晰、Ctrl+C 能
+    正常传到子进程。
+
+    **退出码必须透传。** 启动器的返回码是外层脚本判断应用成败的唯一依据，吞掉它等于让任何
+    包装脚本都无法区分正常退出与崩溃。
+
+    POSIX 上刻意不用等待那条路：那里 execv 不留额外进程，改成等待只是白占一个解释器的内存。
+    Windows 上多留一个进程是这条路径唯一的取舍，换来的是可预测的控制台行为。
+    """
+    if is_windows():
+        sys.exit(subprocess.call(argv))
+    os.execv(argv[0], argv)
+
+
 def interrupt_process(proc) -> str:
     """中断 proc 正在执行的命令。返回一句描述做了什么，供调用方打印。
 

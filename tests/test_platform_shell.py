@@ -284,6 +284,28 @@ def test_interrupt_never_sends_a_signal_on_windows(nt, monkeypatch):
     assert 'cmdlet' in msg, '无子进程时要说明原因，否则用户只看到「没反应」'
 
 
+def test_exec_or_spawn_replaces_the_process_on_posix(posix, monkeypatch):
+    """POSIX 上仍用 os.execv：它替换进程映像、不留额外进程，改成等待只是白占内存。"""
+    seen = {}
+    monkeypatch.setattr(ps.os, 'execv', lambda p, a: seen.update(path=p, argv=a))
+    ps.exec_or_spawn(['/usr/bin/python3', 'app.py'])
+    assert seen == {'path': '/usr/bin/python3', 'argv': ['/usr/bin/python3', 'app.py']}
+
+
+def test_exec_or_spawn_waits_and_forwards_the_exit_code_on_windows(nt, monkeypatch):
+    """Windows 上等子进程结束再退出，并**透传退出码**。
+
+    两件独立的事：等待让 shell 保持阻塞、控制台归属清晰；透传退出码让外层脚本能区分正常
+    退出与崩溃。只做前一件会让所有包装脚本都收到 0——那种失败不报错，只是让判断失去依据。
+    """
+    calls = []
+    monkeypatch.setattr(ps.subprocess, 'call', lambda a: calls.append(a) or 3)
+    with pytest.raises(SystemExit) as ei:
+        ps.exec_or_spawn(['py.exe', 'app.py'])
+    assert calls == [['py.exe', 'app.py']]
+    assert ei.value.code == 3, '退出码必须透传'
+
+
 def test_interrupt_sends_sigint_on_posix(posix):
     """POSIX 分支不变：bash 收到 SIGINT 会中止当前命令并继续读 stdin。"""
     import signal as _s
