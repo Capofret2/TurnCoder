@@ -264,10 +264,21 @@ def test_interactive_falls_back_to_cmd_when_no_powershell(nt, no_powershell):
 
 def test_powershell_prelude_silences_the_prompt():
     """PowerShell 把提示符写进 stdout，与命令输出同流。把 prompt 函数改成返回空串是
-    唯一能从进程内部关掉它的办法。"""
+    唯一能从进程内部关掉它的办法。
+
+    三条语句各修一个不同的问题，缺任何一条都有可见症状：
+      - prompt 抑制：缺了则每条命令后多出提示符行；
+      - OutputRendering：缺了则输出里带 ANSI 转义，气泡显示成 `←[32;1mPath←[0m`；
+      - OutputEncoding：缺了则中文乱码。
+
+    第二条来自真机观测而非推测：pwsh 7 即使 stdout 被重定向到管道也照旧发 ANSI。它被
+    当成冗余删掉时的症状看起来像编码问题（而这个项目里确实有一堆编码处理），很容易把
+    排查引向完全错误的方向。
+    """
     pre = ps.interactive_prelude('pwsh')
     assert any('prompt' in line for line in pre)
     assert any('OutputEncoding' in line for line in pre)
+    assert any('OutputRendering' in line for line in pre)
 
 
 def test_cmd_prelude_disables_echo():

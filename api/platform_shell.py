@@ -31,6 +31,15 @@ CTRL_BREAK_EVENT = 1
 # 乱码而非报错——没有任何东西会提示你编码不对。
 _PS_UTF8 = '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8'
 
+# pwsh 7 即使 stdout 被重定向到管道也照旧输出 ANSI 颜色转义。实测持久化终端里跑
+# Get-Location 收到的是 `\x1b[32;1mPath\x1b[0m`，而 handle_terminal_output 把行原样
+# 拼进 term_content、前端不剥 ANSI，于是气泡里显示成 `←[32;1mPath←[0m` 这种乱码。
+#
+# 用 if 包住不是防御性冗余：$PSStyle 只存在于 PowerShell 7+，5.1 上它是未定义变量
+# 即 $null，直接赋值会抛「无法对 Null 表达式设置属性」，而那条错误会作为终端的第一
+# 行输出出现在用户面前。包在 if 里之后 5.1 上条件为假、无副作用。
+_PS_ANSI_OFF = "if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }"
+
 
 def is_windows() -> bool:
     """单点平台判定。测试用 monkeypatch.setattr(os, 'name', 'nt') 翻转它。"""
@@ -187,7 +196,7 @@ def interactive_prelude(label: str):
     """
     low = (label or '').lower()
     if low.startswith(('pwsh', 'powershell')):
-        return ["function prompt { '' }", _PS_UTF8]
+        return ["function prompt { '' }", _PS_ANSI_OFF, _PS_UTF8]
     if low == 'cmd':
         return ['@echo off', 'chcp 65001>nul']
     return []
@@ -216,6 +225,22 @@ def interrupt_signal():
     Windows 上没有 SIGINT 可发：send_signal 在那里只接受 CTRL_C_EVENT 与
     CTRL_BREAK_EVENT，而前者无法定向到单个进程组。因此用 CTRL_BREAK_EVENT，它与
     new_process_group_kwargs 是一对——去掉那个创建标志，这个信号就送不到。
+
+    **实测：这个信号在 pwsh 7 的持久化终端上是静默空操作。** 探针记录到 `Start-Sleep 20`
+    在收到 CTRL_BREAK_EVENT 之后仍然跑满 20 秒；send_signal 正常返回、shell 存活、终端此后
+    仍可执行新命令——但那条命令完全没被中断。这是本项目在 Windows 上遇到的第三个「不报错、
+    假装成功」的失败。
+
+    别把测试全绿当成这个功能可用：那些用例断言的是「返回了哪个信号值」，而不是「信号送达
+    后命令真的停了」。后者只能在真机上用带时长的命令测。
+
+    两个候选根因尚未分辨（见 docs/HANDOVER.md 第三节第 7 项）：CREATE_NO_WINDOW 可能与
+    GenerateConsoleCtrlEvent 互斥（那是「可见窗口 vs 可用中断」的真取舍），或 pwsh 的
+    `-Command -` 从管道读 stdin 时不装能中止当前流水线的控制台处理器。
+
+    还有一个结构性区分比根因更重要：Start-Sleep 是 cmdlet、跑在 pwsh 进程内部、没有子进程；
+    而实际需要中断的几乎都是外部命令（跑测试、构建、训练），那些是 pwsh 的子进程。后者可以
+    靠 kill_process_tree 中断，cmdlet 不行——所以即便根因无解，覆盖实际场景的修法仍然存在。
     """
     if is_windows():
         return CTRL_BREAK_EVENT

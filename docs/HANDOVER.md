@@ -260,19 +260,33 @@ python -m pytest tests --collect-only -q -p no:cacheprovider
 - **~~`libs/chat.js` 的 `msgHash`~~（已改为双 32 位累加器）。** 字段与采样口径完全不变，因此判定灵敏度不变；省掉的是每条消息每次渲染约两百字符的中间串。**`Math.imul` 是正确性必需而非风格偏好**：32 位乘积会溢出双精度尾数，普通 `*` 静默丢掉的正是低位，也就是哈希唯一依赖的部分——改回 `*` 不会报错，只会让缓存判定偶发失灵。用两个累加器而非一个的理由是单个 32 位摘要按生日界在约 8 万个不同值时开始碰撞；但这里不是生日问题，每条消息只与自己上一次比较，所以 64 位使单次比较的碰撞概率落在 $2^{-64}$ 量级。
 - **~~`libs/chat.js` 的 KaTeX 扫描~~（已加 `_hasMath` 预判）。** 判定读 `msg.content` / `diff_content` / `content_parts` 而非 `bubble.textContent`：后者虽然一定准确，但会为长气泡多分配一份完整副本，把省下的开销又花掉一部分。工具结果与 subagent 正文来自别的消息，主气泡的字段扫描覆盖不到，因此在各自的 append 处单独置标记；subagent 那处取无条件置真，因为它数量极少而漏判的代价是公式永久不渲染，两侧不对称。
 
-### 7. Windows 上未验证的三项与未修的一项
+### 7. Windows 上的验证结果：一项已确证失效，一项待产品判断
 
 一次性命令执行（`execute_bash` 那条链路）已在真机上确认可用：默认解释器走 pwsh 7、stdout 正常回收、中文不乱码、无窗口闪现、摘要带解释器名与真实耗时。
 
-**这一节里有两类事项，别把它们混为一谈。** 前三项是**代码已改但没有真机证据**——它们只能在界面交互中暴露，跑测试证明不了。最后一项（`os.execv`）是**缺陷已定位但刻意没改**，那里没有任何新行为可验，需要的是一个产品判断而不是一次验证。把它当成前三项去「验证」会白花一轮才发现读错了分类。
+**持久化终端已在真机验证通过**（用 `tests/` 之外的独立探针脚本，不经界面）。三项原先标注为「可能失败」的都成立：
 
-**持久化终端。** 开一个终端、执行一条命令。三种失败各有不同表现：
+- **哨兵机制工作。** `Get-Location` 后 0.1 秒回到 idle，说明 `-Command -` 确实逐行执行而非缓冲到 EOF，`echo __TERM_DONE_<name>__` 顺利到达。这曾是最严重的候选失败，它不成立意味着终端功能完整。
+- **提示符被抑制。** 启动后 stdout 收到的是空列表，`function prompt { '' }` 生效。
+- **交互式进程上 `CREATE_NO_WINDOW` 成立。** 长期存活的 pwsh 没有留下可见窗口。
 
-- 终端一直停在「运行中」不回到空闲 → `-Command -` 没有逐行执行而是缓冲到 EOF，哨兵 `__TERM_DONE__` 永远等不到。这一种最严重，等于整个终端功能不可用。
-- 输出正常但每条命令之后多出几行奇怪内容 → `function prompt { '' }` 没把提示符从 stdout 清干净。PowerShell 把提示符写进与命令输出同一条流，这是唯一能从进程内部关掉它的办法。
-- 桌面上多出一个**常驻**的控制台窗口（不是闪一下）→ `CREATE_NO_WINDOW` 在长期存活的交互式进程上不成立。回退办法写在 `new_process_group_kwargs` 的 docstring 里：先摘掉这个标志单独验证，把变量隔离开再判断。
+**为什么用探针而不用界面：** ```terminal 块在 CC 注入模式下**完整失效**，而且是刻意的，前后端各自独立实现了同一判断——`api/response.py:336` 把 CC 模式下的 `correction` 与 `terminal` 块降级为普通文本，`libs/chat.js:522` 以 `!enable_tool_inject` 为条件。也就是说 **CC 注入模式与终端协议互斥**。在 CC 模式下看到终端块不工作不要去修，关掉 `enable_tool_inject` 它就正常。
 
-**中断（`CTRL_BREAK_EVENT`）。** 需要先有一个正在跑的长命令再点中断。**第一次务必用无害命令试，比如 `Start-Sleep 30`。** 风险是明确的：若 `CREATE_NEW_PROCESS_GROUP` 因某种原因没生效，那个信号会打到 ChatApp 自己身上——表现是**整个后端被中断**而不是那条命令被停下。用无害命令试，最坏情况也只是重启一次后端。
+**顺带修掉一个探针发现的缺陷：pwsh 7 即使 stdout 被重定向到管道也照旧发 ANSI 颜色转义。** 实测 `Get-Location` 收到的是 `\x1b[32;1mPath\x1b[0m`，而 `handle_terminal_output` 把行原样拼进 `term_content`、前端不剥 ANSI，于是气泡显示成 `←[32;1mPath←[0m`。前导语句新增 `if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }`——`if` 不是防御性冗余，`$PSStyle` 只存在于 7+，5.1 上直接赋值会抛错并作为终端第一行输出出现在用户面前。
+
+**中断（`CTRL_BREAK_EVENT`）：已确证失效，是静默空操作。** 探针记录到 `Start-Sleep 20` 在收到信号后仍然跑满 20 秒；`send_signal` 正常返回、shell 存活、终端此后仍能执行新命令——但那条命令完全没被中断。这是本项目在 Windows 上遇到的第三个「不报错、假装成功」的失败。
+
+**别把测试全绿当成这个功能可用。** `test_interrupt_signal_is_ctrl_break_on_windows` 断言的是「返回了哪个信号值」，不是「信号送达后命令真的停了」。后者只能在真机上用带时长的命令测——用 `Start-Sleep 1` 之类的短命令测不出来，因为它自己就结束了。
+
+原先担心的风险**不存在**：`CREATE_NEW_PROCESS_GROUP` 在真机上生效，信号既没打死探针脚本也没杀掉 shell。所以试这一项是安全的，不需要「用无害命令」那种防护。
+
+三个假设已被实测排除，别重走：
+
+1. **`CREATE_NO_WINDOW` 与 `GenerateConsoleCtrlEvent` 互斥。** 摘掉它只留 `CREATE_NEW_PROCESS_GROUP`，cmdlet 照旧跑满 18 秒。所以「可见窗口 vs 可用中断」这个取舍**并不存在**——这个方向看起来最有道理，也最容易被重新尝试。
+2. **只有 cmdlet 中断不了、外部命令可以。** 用 `python -c "time.sleep(20)"` 测，同样跑满。所以不是「cmdlet 跑在进程内部」这个结构问题。
+3. **`wmic` 可以用来枚举子进程。** 它在 Windows 11 24H2（build 26100）上**已被移除**，调用会得到 `FileNotFoundError: [WinError 2]`，而那条信息里没有任何线索指向「这个工具在新系统上没了」。要枚举进程树请用 `Get-CimInstance Win32_Process -Filter 'ParentProcessId=N'`。
+
+剩下的候选修法是绕开信号：`interrupt()` 在 Windows 上改为枚举 shell 的子进程并 `taskkill /T /F`。它只覆盖外部命令（cmdlet 跑在 pwsh 进程内部、没有子进程可杀），但实际需要中断的几乎都是外部命令。这条路尚未验证。
 
 **后台命令熬过 ChatApp 重启。** `CREATE_NEW_PROCESS_GROUP` 挡得住发往 ChatApp 进程组的 Ctrl+C（也就是「按 Ctrl+C 重启」这个主要场景），挡不住整个终端窗口被关闭时广播的 `CTRL_CLOSE_EVENT`。这是**接受的取舍**而非缺陷：唯一能同时熬过关窗的标志是 `DETACHED_PROCESS`，而它会让 PowerShell 完全不执行命令（见下一节）。没有输出的后台命令是纯粹的浪费，所以选择保住输出。
 
