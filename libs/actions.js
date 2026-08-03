@@ -7,35 +7,6 @@ function cycleDeepThink() {
     document.getElementById('deep-think-label').textContent = labels[deepThinkLevel];
 }
 
-async function linkCC() {
-    try {
-        showToast('正在寻找存活的 CC 实例...', 'success');
-        var res = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'link_cc', client_sid: window.localSid})
-        });
-        var data = await res.json();
-        if (data.status === 'ok') {
-            showToast(data.message, 'success');
-        } else {
-            showToast(data.message, 'error');
-        }
-        // 第二次调用：等效于连续按两次
-        var res2 = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'link_cc', client_sid: window.localSid})
-        });
-        var data2 = await res2.json();
-        if (data2.status === 'ok') {
-            showToast(data2.message, 'success');
-        } else {
-            showToast(data2.message, 'error');
-        }
-    } catch(e) {
-        showToast('请求异常: ' + e, 'error');
-    }
-}
-
 function send(isOffline) {
     isOffline = isOffline || false;
     var val = userInput.value.trim();
@@ -157,42 +128,6 @@ async function restartServer() {
     }
 }
 
-async function exportSnapshot() {
-    try {
-        showToast('正在打包仓库快照...', 'success');
-        const res = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'export_snapshot'})
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-            showToast(data.message, 'success');
-        } else {
-            showToast('导出失败: ' + data.message, 'error');
-        }
-    } catch(e) {
-        showToast('请求失败: ' + e, 'error');
-    }
-}
-
-async function clearLogs() {
-    try {
-        showToast('正在清理日志...', 'success');
-        const res = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'clear_logs'})
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-            showToast(data.message, 'success');
-        } else {
-            showToast(data.message, 'error');
-        }
-    } catch(e) {
-        showToast('请求异常: ' + e, 'error');
-    }
-}
-
 async function safeRestart() {
     try {
         showToast('正在进行语法预检...', 'success');
@@ -212,20 +147,4 @@ async function safeRestart() {
     }
 }
 
-async function exportSnapshot() {
-    try {
-        showToast('正在打包导出快照，请稍候...', 'success');
-        var res = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'export_snapshot'})
-        });
-        var data = await res.json();
-        if (data.status === 'ok') {
-            showToast(data.message, 'success');
-        } else {
-            showToast(data.message, 'error');
-        }
-    } catch (e) {
-        showToast('导出异常: ' + e, 'error');
-    }
-}
+

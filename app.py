@@ -49,7 +49,6 @@ from datetime import datetime
 import threading
 import time
 import py_compile
-import zipfile
 
 app = Flask(__name__, template_folder='.', static_folder='libs', static_url_path='/libs')
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -114,77 +113,6 @@ def dump_incoming_request():
     except Exception as e:
         print(f'[DUMP ERROR] {e}')
     return None
-
-@app.route('/api/proxy_event', methods=['POST'])
-def handle_proxy_event():
-    data = request.json
-    try:
-        result = backend.handle_proxy_event(data)
-        return jsonify(result if isinstance(result, dict) else {"status": "ok"})
-    except Exception as e:
-        print(f"Proxy event error: {e}")
-    return jsonify({"status": "ok"})
-
-@app.route('/v1/messages/count_tokens', methods=['POST'])
-def cc_count_tokens():
-    """CC token 计数端点。返回格式严格匹配 Anthropic 官方 API。"""
-    try:
-        data = request.json or {}
-        total_chars = len(json.dumps(data, ensure_ascii=False))
-        return jsonify({"input_tokens": max(1, total_chars // 4)})
-    except Exception:
-        return jsonify({"input_tokens": 1000})
-
-@app.route('/v1/messages/count_tokens', methods=['GET'])
-def cc_count_tokens_get():
-    """处理 GET 请求也返回有效 JSON 而非 404 HTML。"""
-    return jsonify({"input_tokens": 0})
-
-@app.route('/v1/messages', methods=['POST'])
-def cc_direct_endpoint():
-    """Claude Code直连端点：ChatApp伪装为Anthropic API，接收CC的/v1/messages请求并代理执行。"""
-    from flask import Response
-    try:
-        from api.cc_diag import cc_diag
-        cc_diag(event="HTTP_RECV", detail=f"content_length={request.content_length}, remote={request.remote_addr}")
-    except Exception:
-        pass
-    data = request.json
-    try:
-        result = backend.handle_cc_direct_request(data)
-        if isinstance(result, str):
-            # 非流式请求返回的 JSON 字符串
-            return Response(result, mimetype='application/json',
-                          headers={'Cache-Control': 'no-cache'})
-        if hasattr(result, '__iter__') and hasattr(result, '__next__'):
-            def _safe_stream(gen):
-                """Wrap generator to catch exceptions during SSE streaming."""
-                try:
-                    yield from gen
-                except GeneratorExit:
-                    return
-                except Exception as stream_err:
-                    import traceback
-                    traceback.print_exc()
-                    print(f"[SSE STREAM ERROR] {stream_err}")
-                    try:
-                        from api.cc_diag import cc_diag
-                        cc_diag(event="SSE_ERROR", detail=str(stream_err)[:200])
-                    except Exception:
-                        pass
-            return Response(_safe_stream(result), mimetype='text/event-stream',
-                          headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
-        elif isinstance(result, bytes):
-            return Response(result, mimetype='text/event-stream',
-                          headers={'Cache-Control': 'no-cache'})
-        else:
-            return Response(str(result or ''), mimetype='text/event-stream',
-                          headers={'Cache-Control': 'no-cache'})
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        err = json.dumps({"type": "error", "error": {"type": "api_error", "message": str(e)}})
-        return Response(err, status=500, mimetype='application/json')
 
 @app.route('/')
 def index():
@@ -463,9 +391,6 @@ def handle_action():
         elif action == 'get_code_context':
             text = backend.get_code_context(sid=data.get('client_sid'))
             return jsonify({"status": "ok", "text": text, "tokens": len(text)/3000})
-        elif action == 'link_cc':
-            res = backend.link_cc(target_sid=data.get('client_sid'))
-            return jsonify(res)
         elif action == 'cc_accept_tool':
             backend.accept_tool(data.get('tool_json'), msg_index=data.get('index'), part_id=data.get('part_id'), is_retry=data.get('is_retry', False))
         elif action == 'cc_accept_all':
@@ -535,62 +460,6 @@ def handle_action():
                 return jsonify({"status": "ok", "message": "语法检查通过。请在终端中 Ctrl+C 后重新运行 python app.py 来重启。"})
             except Exception as e:
                 return jsonify({"status": "error", "message": f"语法检查异常: {e}"})
-        elif action == 'export_release':
-            # 导出发布版仓库：给用户的完整安装包，包含预配置的 update_url
-            try:
-                release_dir = os.path.join(backend.data_dir, 'releases')
-                os.makedirs(release_dir, exist_ok=True)
-                ts = time.strftime('%Y%m%d_%H%M%S')
-                zip_name = f'chatapp_release_{ts}.zip'
-                zip_path = os.path.join(release_dir, zip_name)
-                # 收集发布版文件（源码+配置，不包含用户数据和开发者密钥）
-                _release_files = [
-                    'app.py', 'config.py', 'frontend.html', 'updater.py',
-                    'cc_system.json', 'cc_tools.json', 'cc_tools_simulate.json',
-                    'tool_system.json', 'tools.json',
-                    'requirements.txt',
-                ]
-                _release_dirs = {'api': {'.py'}, 'libs': {'.js', '.css'}}
-                # 随包分发的是 prompts/ 下的默认值，不是 data/ 下的用户覆写：
-                # 后者是用户资产，且发布包解压时会落在同一相对路径上。
-                _release_prompts = ['prompts/system_prompt.txt', 'prompts/deep_think_prompt.txt', 'prompts/deep_think_prompt_medium.txt']
-                all_files = [f for f in _release_files if os.path.exists(f)]
-                for f in _release_prompts:
-                    if os.path.exists(f): all_files.append(f)
-                for d, exts in _release_dirs.items():
-                    if os.path.isdir(d):
-                        for fn in os.listdir(d):
-                            if os.path.splitext(fn)[1] in exts:
-                                all_files.append(os.path.join(d, fn))
-                # 读取当前 version.json 获取 update_url（含下载 token）
-                _ver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
-                _ver_data = {'timestamp': ts, 'version': ts, 'update_url': '', 'description': f'ChatApp Release {ts}'}
-                if os.path.exists(_ver_path):
-                    try:
-                        with open(_ver_path, 'r', encoding='utf-8') as _vf: _ver_data.update(json.load(_vf))
-                    except: pass
-                _ver_data['timestamp'] = ts
-                _ver_data['version'] = ts
-                # 确保不包含 download_url 和 token（用户版本不需要写权限）
-                _ver_data.pop('download_url', None)
-                # 从 update_url 中移除 token 参数（公开仓库不需要 token 即可下载）
-                _release_update_url = _ver_data.get('update_url', '')
-                if '?token=' in _release_update_url:
-                    _ver_data['update_url'] = _release_update_url.split('?token=')[0]
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                    for f in all_files:
-                        zf.write(f, f)
-                    # 写入预配置的 version.json（含 update_url，用户解压即可自动更新）
-                    zf.writestr('version.json', json.dumps(_ver_data, ensure_ascii=False, indent=2))
-                    # 写入空的 .env 模板
-                    zf.writestr('.env', '# ChatApp 环境变量配置\n# API_KEY=your_api_key_here\n')
-                    # 写入空的 settings.json 模板（不包含开发者的 API key）
-                    zf.writestr('settings.json', json.dumps({'env': {}, 'permissions': {'defaultMode': 'dontAsk'}}, indent=2))
-                _file_count = len(all_files) + 3
-                _size_kb = os.path.getsize(zip_path) / 1024
-                return jsonify({'status': 'ok', 'message': f'发布版已导出: data/releases/{zip_name}\n包含 {_file_count} 个文件，{_size_kb:.1f} KB\n用户解压后运行 python app.py 即可，自动更新已预配置。'})
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': f'导出失败: {e}'})
         elif action == 'create_session_group':
             import uuid as _sg_uuid
             _sg_id = str(_sg_uuid.uuid4())[:8]
@@ -683,206 +552,9 @@ def handle_action():
                 })
             _wf_data.sort(key=lambda x: x['order'])
             return jsonify({'status': 'ok', 'waterfall': _wf_data, 'group_name': _sg.get('name', '')})
-        elif action == 'clear_logs':
-            try:
-                import glob
-                cleared_size = 0
-                for d in ['raw_dumps', 'data/resp_dumps', 'data/subagent_dumps']:
-                    target_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), d)
-                    if os.path.exists(target_dir):
-                        for f in glob.glob(os.path.join(target_dir, '*.json')):
-                            cleared_size += os.path.getsize(f)
-                            os.remove(f)
-                return jsonify({"status": "ok", "message": f"已清理历史日志，共释放空间 {cleared_size / 1024 / 1024:.2f} MB"})
-            except Exception as e:
-                return jsonify({"status": "error", "message": f"清理失败: {e}"})
-        elif action == 'export_snapshot':
-            try:
-                snapshot_dir = os.path.join(backend.data_dir, "snapshots")
-                os.makedirs(snapshot_dir, exist_ok=True)
-                ts = time.strftime("%Y%m%d_%H%M%S")
-                zip_name = f"update_{ts}.zip"
-                zip_path = os.path.join(snapshot_dir, zip_name)
-                # 收集所有需要包含的文件
-                _root_files = [
-                    'app.py', 'config.py', 'frontend.html', 'updater.py', 'tool_call_backtest.py',
-                    'cc_system.json', 'cc_tools.json', 'cc_tools_simulate.json',
-                    'tool_system.json', 'tools.json',
-                    'requirements.txt',
-                ]
-                _update_dirs = {
-                    'api': {'.py'},
-                    'libs': {'.js', '.css'},
-                    'tests': {'.py'},
-                }
-                # 更新包里的每一项都会被下方自动生成的 update.py 按相同相对路径
-                # shutil.copy2 覆写。因此清单中一旦出现 data/ 下的文件，一次自动
-                # 更新就会静默覆盖用户自己改过的提示词。只发 prompts/ 默认值。
-                _prompt_files = ['prompts/system_prompt.txt', 'prompts/deep_think_prompt.txt', 'prompts/deep_think_prompt_medium.txt']
-                # 收集文件清单
-                all_files = []
-                for f in _root_files:
-                    if os.path.exists(f):
-                        all_files.append(f)
-                for f in _prompt_files:
-                    if os.path.exists(f):
-                        all_files.append(f)
-                for d, exts in _update_dirs.items():
-                    if os.path.isdir(d):
-                        for fn in os.listdir(d):
-                            if os.path.splitext(fn)[1] in exts:
-                                all_files.append(os.path.join(d, fn))
-                # 自动生成 update.py（覆写所有源文件）
-                _update_py_lines = [
-                    '"""自动生成的更新脚本 — 覆写源代码文件到目标目录。"""',
-                    'import argparse, os, shutil',
-                    '',
-                    'def main():',
-                    '    parser = argparse.ArgumentParser()',
-                    '    parser.add_argument("--base-dir", required=True)',
-                    '    parser.add_argument("--extract-dir", required=True)',
-                    '    args = parser.parse_args()',
-                    '    files = ' + repr(all_files),
-                    '    for f in files:',
-                    '        src = os.path.join(args.extract_dir, f)',
-                    '        dst = os.path.join(args.base_dir, f)',
-                    '        if os.path.exists(src):',
-                    '            os.makedirs(os.path.dirname(dst), exist_ok=True)',
-                    '            shutil.copy2(src, dst)',
-                    '            print(f"  覆写: {f}")',
-                    '    print(f"更新完成，共覆写 {len(files)} 个文件")',
-                    '',
-                    'if __name__ == "__main__":', '    main()',
-                ]
-                # 自动生成 version.json（从本地读取 update_url，去掉 token 后写入更新包）
-                _pkg_update_url = ''
-                _local_ver_path_for_pkg = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
-                if os.path.exists(_local_ver_path_for_pkg):
-                    try:
-                        with open(_local_ver_path_for_pkg, 'r', encoding='utf-8') as _lpf:
-                            _lpv = json.load(_lpf)
-                        _pkg_update_url = _lpv.get('update_url', '')
-                        if '?token=' in _pkg_update_url:
-                            _pkg_update_url = _pkg_update_url.split('?token=')[0]
-                    except Exception:
-                        pass
-                _ver_json = json.dumps({
-                    'timestamp': ts,
-                    'version': ts,
-                    'update_url': _pkg_update_url,
-                    'download_url': '',
-                    'description': f'ChatApp 更新包 {ts}',
-                }, ensure_ascii=False, indent=2)
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                    for f in all_files:
-                        zf.write(f, f)
-                    zf.writestr('update.py', '\n'.join(_update_py_lines))
-                    zf.writestr('version.json', _ver_json)
-                _file_count = len(all_files) + 2
-                _size_kb = os.path.getsize(zip_path) / 1024
-                # 更新本地 version.json 的时间戳（保留原有的 update_url 等字段）
-                _local_ver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
-                try:
-                    # 两端都必须显式 UTF-8：json.dump 带 ensure_ascii=False 会把中文
-                    # description 按 locale 编码写出（中文 Windows 是 GBK），而更新包里
-                    # 的 version.json 是 zf.writestr 写的 UTF-8。缺了 encoding，「下载更新
-                    # 包再读它的 version.json」在中文 Windows 上抛 UnicodeDecodeError，
-                    # 而那个异常发生在自动更新流程里、被外层 except 吞成一行日志。
-                    with open(_local_ver_path, 'r', encoding='utf-8') as _lvf:
-                        _local_ver = json.load(_lvf)
-                    _local_ver['timestamp'] = ts
-                    _local_ver['version'] = ts
-                    with open(_local_ver_path, 'w', encoding='utf-8') as _lvf:
-                        json.dump(_local_ver, _lvf, ensure_ascii=False, indent=2)
-                except Exception:
-                    pass
-                # 自动上传到 Gitee Releases 或自建服务器
-                _upload_msg = ''
-                _ver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
-                try:
-                    with open(_ver_path, 'r', encoding='utf-8') as _vrf:
-                        _ver_info = json.load(_vrf)
-                    _upload_url = _ver_info.get('update_url', '')
-                    if _upload_url and _upload_url.startswith('gitee://'):
-                        # Gitee Releases 上传
-                        import requests as _up_req
-                        _parts = _upload_url.replace('gitee://', '').split('?')
-                        _repo_path = _parts[0]
-                        _gitee_token = ''
-                        # 优先从独立文件读取 token，不再依赖 URL 参数
-                        _gitee_token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'update_admin_token.txt')
-                        if os.path.exists(_gitee_token_path):
-                            # utf-8-sig 而非 utf-8：这个文件由用户手工创建，而 Windows
-                            # 记事本的历史版本会在 UTF-8 文件开头写 BOM。用 utf-8 读会
-                            # 把 BOM 留在字符串首位，strip() 去不掉（它不是空白字符），
-                            # token 因此多出一个不可见前缀，症状是 HTTP 401 而没有任何
-                            # 线索指向编码。无 BOM 时 utf-8-sig 的行为与 utf-8 一致。
-                            with open(_gitee_token_path, 'r', encoding='utf-8-sig') as _gtf:
-                                _gitee_token = _gtf.read().strip()
-                        if not _gitee_token and len(_parts) > 1:
-                            for _param in _parts[1].split('&'):
-                                if _param.startswith('token='):
-                                    _gitee_token = _param[6:]
-                        if not _gitee_token:
-                            _upload_msg = '\nGitee token 未配置'
-                        else:
-                            # 创建 Release
-                            _release_resp = _up_req.post(
-                                f'https://gitee.com/api/v5/repos/{_repo_path}/releases',
-                                json={
-                                    'access_token': _gitee_token,
-                                    'tag_name': ts,
-                                    'name': f'ChatApp v{ts}',
-                                    'body': f'自动更新包 {ts}\n\n```json\n{_ver_json}\n```',
-                                    'target_commitish': 'master',
-                                },
-                                timeout=30,
-                                proxies={'http': None, 'https': None}
-                            )
-                            if _release_resp.status_code in (200, 201):
-                                _release_id = _release_resp.json().get('id')
-                                # 上传 zip 作为 Release Asset
-                                with open(zip_path, 'rb') as _zf:
-                                    _asset_resp = _up_req.post(
-                                        f'https://gitee.com/api/v5/repos/{_repo_path}/releases/{_release_id}/attach_files',
-                                        data={'access_token': _gitee_token},
-                                        files={'file': (zip_name, _zf, 'application/zip')},
-                                        timeout=120,
-                                        proxies={'http': None, 'https': None}
-                                    )
-                                if _asset_resp.status_code in (200, 201):
-                                    _upload_msg = f'\n已上传到 Gitee Releases (tag: {ts})'
-                                else:
-                                    _upload_msg = f'\nAsset 上传失败: HTTP {_asset_resp.status_code} {_asset_resp.text[:200]}'
-                            else:
-                                _upload_msg = f'\nRelease 创建失败: HTTP {_release_resp.status_code} {_release_resp.text[:200]}'
-                    elif _upload_url:
-                        # 自建服务器上传
-                        import requests as _up_req
-                        _admin_token = ''
-                        _admin_token_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'update_admin_token.txt')
-                        if os.path.exists(_admin_token_path):
-                            with open(_admin_token_path, 'r', encoding='utf-8-sig') as _atf:
-                                _admin_token = _atf.read().strip()
-                        with open(zip_path, 'rb') as _zf:
-                            _up_resp = _up_req.post(
-                                f'{_upload_url}/upload',
-                                data=_zf.read(),
-                                headers={'X-Filename': zip_name, 'Content-Type': 'application/octet-stream', 'X-Admin-Token': _admin_token},
-                                timeout=60,
-                                proxies={'http': None, 'https': None}
-                            )
-                        if _up_resp.status_code == 200:
-                            _upload_msg = f'\n已自动上传到更新服务器'
-                        else:
-                            _upload_msg = f'\n上传失败: HTTP {_up_resp.status_code}'
-                    else:
-                        _upload_msg = '\n（未配置 update_url，跳过自动上传）'
-                except Exception as _ue:
-                    _upload_msg = f'\n上传异常: {_ue}'
-                return jsonify({"status": "ok", "message": f"更新包已导出: data/snapshots/{zip_name}\n包含 {_file_count} 个文件，{_size_kb:.1f} KB{_upload_msg}", "file": zip_name})
-            except Exception as e:
-                return jsonify({"status": "error", "message": f"导出失败: {e}"})
+
+
+
         elif action == 'get_providers':
             _gp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'providers.json')
             try:
@@ -974,44 +646,6 @@ if __name__ == '__main__':
     _parser = argparse.ArgumentParser()
     _parser.add_argument('--port', type=int, default=5001)
     _args = _parser.parse_args()
-
-    # 启动前自动检查更新（需要在全局设置中开启 enable_auto_update）
-    if backend.global_settings.get('enable_auto_update', False):
-        try:
-            from updater import get_local_version, check_remote_version, download_update, apply_update, save_local_version
-            _lv = get_local_version()
-            _update_url = _lv.get('update_url', '')
-            if _update_url:
-                print(f'[STARTUP] 检查更新... (当前版本: {_lv.get("timestamp", "?")})')
-                _rv = check_remote_version(_update_url)
-                if _rv and _rv.get('timestamp', '') > _lv.get('timestamp', ''):
-                    print(f'[STARTUP] 发现新版本: {_rv["timestamp"]}')
-                    _dl_url = _rv.get('download_url', '')
-                    if _dl_url:
-                        import os as _su_os
-                        _su_dir = _su_os.path.join(_su_os.path.dirname(_su_os.path.abspath(__file__)), 'data', 'updates')
-                        _su_os.makedirs(_su_dir, exist_ok=True)
-                        _su_path = _su_os.path.join(_su_dir, f'update_{_rv["timestamp"]}.zip')
-                        if download_update(_dl_url, _su_path, base_url=_update_url):
-                            if apply_update(_su_path):
-                                save_local_version(_rv)
-                                # 原先是 os.execv 自我重启，理由见 updater.py 同一处的
-                                # 注释：Windows 上它不替换进程映像而是新起一个再让原
-                                # 进程退出，于是「服务起来了但启动它的命令已经返回」。
-                                # 提示文字与 updater.py 那处逐字一致——它们是同一件事
-                                # 在两个入口的两份实现，措辞不同会让人以为是两种状态。
-                                print('[STARTUP] 更新已应用，请手动重启。')
-                                sys.exit(0)
-                            else:
-                                print('[STARTUP] 更新应用失败，使用当前版本')
-                elif _rv:
-                    print(f'[STARTUP] 已是最新版本')
-            else:
-                print('[STARTUP] 未配置 update_url，跳过更新检查')
-        except Exception as _se:
-            print(f'[STARTUP] 更新检查异常（不影响启动）: {_se}')
-    else:
-        print('[STARTUP] 自动更新已关闭')
 
     print(f"Starting Flask-SocketIO server... Visit http://127.0.0.1:{_args.port}")
     socketio.run(app, host='0.0.0.0', port=_args.port, debug=False, allow_unsafe_werkzeug=True)
