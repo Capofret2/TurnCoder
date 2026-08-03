@@ -5,6 +5,7 @@ import time
 import uuid
 
 from .provider_routes import strip_composite
+from .zh_normalize import to_simplified
 
 
 _KNOWN_DESC_TOOLS = {'Read', 'Write', 'Edit', 'Bash', 'WebSearch', 'WebFetch', '自动审稿', '压缩', '单关卡审稿', '展开气泡', '命名会话', '创建子会话', '结束子会话', '申请审批', '缩减读取'}
@@ -16,13 +17,16 @@ def _detect_unclosed_tools(text):
         return []
     unclosed = []
     lines = text.split('\n')
+    # 归一化后的全文只用于「结束标记在不在」这一个判断。开始写简体、结束写繁体的
+    # 混写是常见情形，拿原文去找会把它误报成未闭合，然后注入一条无意义的提醒。
+    norm_text = to_simplified(text)
     for i, line in enumerate(lines):
-        stripped = line.strip()
+        stripped = to_simplified(line.strip())
         if stripped.startswith('[') and stripped.endswith('开始]') and len(stripped) > 4:
             candidate = stripped[1:-3]
             if candidate in _KNOWN_DESC_TOOLS:
                 end_marker = f'[{candidate}结束]'
-                if end_marker not in text:
+                if end_marker not in norm_text:
                     desc_line = ''
                     for j in range(i + 1, len(lines)):
                         if lines[j].strip():
@@ -135,9 +139,14 @@ class ResponseMixin:
         _sum_end_marker = '[概括结尾]'
         summary_match = None
         if not is_pure:
-            _last_start = clean_content.rfind(_sum_start_marker)
+            # 在归一化副本上找下标、在原文上切片。两者长度相同（见
+            # zh_normalize 的第一条约束），所以下标通用，而提取出的概括
+            # 保持模型的原始用字。三处 find 必须一起换：只换一处会得到
+            # 「开头找到了、结尾没找到」这种比全都不认更糟的中间态。
+            _norm_cc = to_simplified(clean_content)
+            _last_start = _norm_cc.rfind(_sum_start_marker)
             if _last_start >= 0:
-                _end_after = clean_content.find(_sum_end_marker, _last_start)
+                _end_after = _norm_cc.find(_sum_end_marker, _last_start)
                 if _end_after >= 0:
                     _sm_s = _last_start
                     _sm_e = _end_after + len(_sum_end_marker)
@@ -202,7 +211,9 @@ class ResponseMixin:
                 _di = 0
                 _tool_seq_counter = 0
                 while _di < len(_dlines):
-                    _ds = _dlines[_di].strip()
+                    # 归一化只用于判断这一行是不是标记。参数值走下面的
+                    # _dcur_lines.append(_dlines[_dj])，取的始终是原始行。
+                    _ds = to_simplified(_dlines[_di].strip())
                     _dtool = None
                     _d_is_planned = False
                     _d_mode_suffix = '开始]'
@@ -239,7 +250,10 @@ class ResponseMixin:
                     _dfound = False
                     _dj = _di + 1
                     while _dj < len(_dlines):
-                        _djs = _dlines[_dj].strip()
+                        # 同上：_djs 是判据，_dlines[_dj] 是内容。下面两个 append
+                        # 必须继续用后者——参数值里的繁体是用户的原文，转成简体会让
+                        # Edit 的查找替换失败，而那个失败看起来像模型抄错了。
+                        _djs = to_simplified(_dlines[_dj].strip())
                         if _djs == _dend_marker:
                             if _dcur_param is not None:
                                 _dpv = '\n'.join(_dcur_lines)
