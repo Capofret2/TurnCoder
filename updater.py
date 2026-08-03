@@ -203,9 +203,16 @@ def main():
                         # 更新成功，保存新版本号
                         save_local_version(remote_ver)
                         print(f'[UPDATER] 更新成功！新版本: {remote_ver["timestamp"]}')
-                        print('[UPDATER] 正在重新启动...')
-                        # 重新执行自身（递归检查是否需要再次更新）
-                        os.execv(sys.executable, [sys.executable] + sys.argv)
+                        # 原先是 os.execv 自我重启。POSIX 上它替换进程映像、PID 不变，
+                        # 递归检查下一个更新是安全的；Windows 上没有这个语义，CPython
+                        # 的实现是新起一个进程再让原进程立即退出——父进程句柄失效、
+                        # 控制台归属混乱，在被 shell 启动的场景下表现是「命令看起来
+                        # 结束了但服务在后台继续跑」。
+                        # 改为打印并退出：行为在两个平台上一致且可预测。退出码 0 表示
+                        # 更新本身成功；若有外层脚本按「0 就自动重跑」包着它会变成循环，
+                        # 所以提示文字明确要求人来重启。
+                        print('[UPDATER] 更新已应用，请手动重启。')
+                        sys.exit(0)
                     else:
                         print('[UPDATER] 更新应用失败，使用当前版本启动')
                 else:

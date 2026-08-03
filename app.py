@@ -995,8 +995,13 @@ if __name__ == '__main__':
                         if download_update(_dl_url, _su_path, base_url=_update_url):
                             if apply_update(_su_path):
                                 save_local_version(_rv)
-                                print(f'[STARTUP] 更新成功！重新启动...')
-                                _su_os.execv(sys.executable, [sys.executable] + sys.argv)
+                                # 原先是 os.execv 自我重启，理由见 updater.py 同一处的
+                                # 注释：Windows 上它不替换进程映像而是新起一个再让原
+                                # 进程退出，于是「服务起来了但启动它的命令已经返回」。
+                                # 提示文字与 updater.py 那处逐字一致——它们是同一件事
+                                # 在两个入口的两份实现，措辞不同会让人以为是两种状态。
+                                print('[STARTUP] 更新已应用，请手动重启。')
+                                sys.exit(0)
                             else:
                                 print('[STARTUP] 更新应用失败，使用当前版本')
                 elif _rv:
