@@ -16,7 +16,10 @@ class SessionMixin:
             'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': True,
             'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
             'enable_arc3': False, 'enable_stream': True, 'auto_hide_env_obs': False,
-            'enable_anthropic_protocol': False, 'enable_tool_inject': False, 'starred_messages': [],
+            # 这两个键必须是 True，与前端 applySettingsUI 的非开发者模式强制值及下面
+            # _dev_only_defaults 表中的取值一致。初值任何一处不同步，就会在「从未保存过
+            # 设置、data/global.json 不存在」的窗口期里让模型拿不到工具定义注入。
+            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'starred_messages': [],
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_tool_lower_bound': False,
