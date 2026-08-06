@@ -57,7 +57,7 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
             'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': False,
             'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
             'enable_arc3': False, 'enable_stream': True, 'force_no_stream': False, 'auto_hide_env_obs': False,
-            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': False, 'enable_reverse_context': False, 'starred_messages': [],
+            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'enable_reverse_context': False, 'starred_messages': [],
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_webfetch_file_mode': True,

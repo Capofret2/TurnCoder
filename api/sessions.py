@@ -23,7 +23,7 @@ class SessionMixin:
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_tool_lower_bound': False,
-            'enable_descriptor_tool_calls': False,
+            'enable_descriptor_tool_calls': True,
             'enable_webfetch_file_mode': True,
             'enable_custom_websearch': True,
             'enable_custom_webfetch': True,
