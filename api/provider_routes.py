@@ -23,6 +23,7 @@ _PRICE_MAP = {}           # composite_id -> price_per_call
 _SEGMENTED_MAP = {}       # composite_id -> bool (whether to use cache segmentation)
 _SUBAGENT_PROVIDERS = []  # [{name, api_key, url, model}]
 _MODEL_PROVIDER_MAP = {}  # composite_id -> provider_name
+_WEB_SEARCH_CONFIG = {}   # {provider, api_key} from providers.json's web_search block
 
 
 def make_composite_id(provider_name, model_name):
@@ -54,13 +55,14 @@ def strip_composite(name):
 
 def _load_providers():
     """Load providers.json and user_models.json, build routing tables."""
-    global _MODEL_MAP, _ALL_MODELS, _PRICE_MAP, _SEGMENTED_MAP, _SUBAGENT_PROVIDERS, _MODEL_PROVIDER_MAP
+    global _MODEL_MAP, _ALL_MODELS, _PRICE_MAP, _SEGMENTED_MAP, _SUBAGENT_PROVIDERS, _MODEL_PROVIDER_MAP, _WEB_SEARCH_CONFIG
     _MODEL_MAP = {}
     _ALL_MODELS = []
     _PRICE_MAP = {}
     _SEGMENTED_MAP = {}
     _SUBAGENT_PROVIDERS = []
     _MODEL_PROVIDER_MAP = {}
+    _WEB_SEARCH_CONFIG = {}
 
     paths = [p for p in [_PROVIDERS_PATH, _USER_MODELS_PATH] if os.path.exists(p)]
     if not paths:
@@ -69,10 +71,18 @@ def _load_providers():
     for path in paths:
         try:
             with open(path, "r", encoding="utf-8") as f:
-                providers = json.load(f)
+                raw = json.load(f)
         except Exception as e:
             print(f"Failed to load {os.path.basename(path)}: {e}")
             continue
+
+        if isinstance(raw, dict):
+            providers = raw.get("model_providers", raw.get("providers", []))
+            search_cfg = raw.get("web_search", {})
+            if search_cfg:
+                _WEB_SEARCH_CONFIG = search_cfg
+        else:
+            providers = raw
 
         for provider in providers:
             api_key = provider.get("api_key", "")
@@ -169,6 +179,11 @@ def is_model_segmented(model_id):
 def get_subagent_providers():
     """Return the list of subagent provider configs."""
     return list(_SUBAGENT_PROVIDERS)
+
+
+def get_web_search_config():
+    """Return the web_search provider configuration from providers.json."""
+    return dict(_WEB_SEARCH_CONFIG)
 
 
 def get_model_providers():

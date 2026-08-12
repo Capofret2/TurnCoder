@@ -13,13 +13,13 @@ class SessionMixin:
 
     def load_sessions(self):
         self.global_settings = {
-            'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': True,
+            'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': False,
             'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
             'enable_arc3': False, 'enable_stream': True, 'auto_hide_env_obs': False,
             # 这两个键必须是 True，与前端 applySettingsUI 的非开发者模式强制值及下面
             # _dev_only_defaults 表中的取值一致。初值任何一处不同步，就会在「从未保存过
             # 设置、data/global.json 不存在」的窗口期里让模型拿不到工具定义注入。
-            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'starred_messages': [],
+            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_routing_token': False, 'starred_messages': [],
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_tool_lower_bound': False,
@@ -45,7 +45,9 @@ class SessionMixin:
             'default_thinking_visible': True,
             # 默认关闭不是保守起见：申请审批会让托管停下来等人，而托管的全部价值是无人
             # 值守连续推进几十步。给不给模型这个能力属于用户决定，不该由模型自行判断。
-            'enable_approval_tool': False
+            'enable_approval_tool': False,
+            'websearch_total_timeout_s': 300,
+            'webfetch_total_timeout_s': 600
         }
 
         # 兼容并迁移旧版单一文件

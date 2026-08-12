@@ -12,6 +12,8 @@ function openSettingsModal() {
     if (document.getElementById('set-descriptor-tool-calls')) document.getElementById('set-descriptor-tool-calls').checked = globalSettings.enable_descriptor_tool_calls;
 
     if (document.getElementById('set-routing-token')) document.getElementById('set-routing-token').checked = !!globalSettings.enable_routing_token;
+    if (document.getElementById('set-websearch-timeout')) document.getElementById('set-websearch-timeout').value = globalSettings.websearch_total_timeout_s || 300;
+    if (document.getElementById('set-webfetch-timeout')) document.getElementById('set-webfetch-timeout').value = globalSettings.webfetch_total_timeout_s || 600;
 
     if (document.getElementById('set-ttfb-retry')) document.getElementById('set-ttfb-retry').checked = !!globalSettings.enable_ttfb_retry;
     if (document.getElementById('set-cache-control')) document.getElementById('set-cache-control').checked = !!globalSettings.enable_cache_control;
@@ -67,6 +69,8 @@ function saveSettings() {
     if (document.getElementById('set-descriptor-tool-calls')) globalSettings.enable_descriptor_tool_calls = document.getElementById('set-descriptor-tool-calls').checked;
 
     if (document.getElementById('set-routing-token')) globalSettings.enable_routing_token = document.getElementById('set-routing-token').checked;
+    if (document.getElementById('set-websearch-timeout')) globalSettings.websearch_total_timeout_s = parseInt(document.getElementById('set-websearch-timeout').value, 10) || 300;
+    if (document.getElementById('set-webfetch-timeout')) globalSettings.webfetch_total_timeout_s = parseInt(document.getElementById('set-webfetch-timeout').value, 10) || 600;
 
     if (document.getElementById('set-ttfb-retry')) globalSettings.enable_ttfb_retry = document.getElementById('set-ttfb-retry').checked;
     if (document.getElementById('set-cache-control')) globalSettings.enable_cache_control = document.getElementById('set-cache-control').checked;
@@ -116,6 +120,8 @@ function applySettingsUI() {
     globalSettings.enable_webfetch_headless = true;
     globalSettings.enable_webfetch_file_mode = true;
     globalSettings.enable_bottom_tabs = true;
+    if (!(globalSettings.websearch_total_timeout_s > 0)) globalSettings.websearch_total_timeout_s = 300;
+    if (!(globalSettings.webfetch_total_timeout_s > 0)) globalSettings.webfetch_total_timeout_s = 600;
 
     // Developer mode: force settings when OFF
     var devMode = globalSettings.developer_mode;

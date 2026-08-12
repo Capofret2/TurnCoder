@@ -713,27 +713,8 @@ class ToolAcceptMixin:
                                         'auto_read_trigger_id': _tool_use_id,
                                         'created_at': time.time(),
                                     }
-                                    # 构建 tool_use_id → (tool_name, file_path) 映射表
-                                    _ar_tui = {}
-                                    for _atm in session.get('conversation_history', []):
-                                        for _atp in (_atm.get('content_parts') or []):
-                                            if _atp.get('type') == 'tool_use_part':
-                                                try:
-                                                    _atd = json.loads(_atp['content'])
-                                                    if _atd.get('id'):
-                                                        _ar_tui[_atd['id']] = (_atd.get('name', ''), _atd.get('input', {}).get('file_path', ''))
-                                                except Exception:
-                                                    pass
-                                    for _m in session.get('conversation_history', []):
-                                        if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
-                                            if _m.get('is_auto_read') and _m.get('auto_read_file') == _edit_fp:
-                                                _m['is_outdated_read'] = True
-                                                _m['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
-                                            elif not _m.get('is_auto_read'):
-                                                _ar_info = _ar_tui.get(_m.get('tool_use_id', ''))
-                                                if _ar_info and _ar_info[0] == 'Read' and _ar_info[1] == _edit_fp:
-                                                    _m['is_outdated_read'] = True
-                                                    _m['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
+                                    if hasattr(self, '_mark_old_reads_outdated'):
+                                        self._mark_old_reads_outdated(session, _edit_fp)
                                     session['conversation_history'].append(_ar_bubble)
                                     self.save_sessions(push_update=True)
                                 except Exception:
@@ -771,27 +752,8 @@ class ToolAcceptMixin:
                                                     'tool_use_id': _bar_id,
                                                     'created_at': time.time(),
                                                 }
-                                                # 标记旧读取为过时（autoread 和普通 Read 都标记）
-                                                _bcast_tui = {}
-                                                for _btm in _os.get('conversation_history', []):
-                                                    for _btp in (_btm.get('content_parts') or []):
-                                                        if _btp.get('type') == 'tool_use_part':
-                                                            try:
-                                                                _btd = json.loads(_btp['content'])
-                                                                if _btd.get('id'):
-                                                                    _bcast_tui[_btd['id']] = (_btd.get('name', ''), _btd.get('input', {}).get('file_path', ''))
-                                                            except Exception:
-                                                                pass
-                                                for _bm in _os.get('conversation_history', []):
-                                                    if _bm.get('is_tool_result') and not _bm.get('is_outdated_read'):
-                                                        if _bm.get('is_auto_read') and _bm.get('auto_read_file') == _edit_fp:
-                                                            _bm['is_outdated_read'] = True
-                                                            _bm['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
-                                                        elif not _bm.get('is_auto_read'):
-                                                            _bm_info = _bcast_tui.get(_bm.get('tool_use_id', ''))
-                                                            if _bm_info and _bm_info[0] == 'Read' and _bm_info[1] == _edit_fp:
-                                                                _bm['is_outdated_read'] = True
-                                                                _bm['content'] = f"（已省略，概括为：{os.path.basename(_edit_fp)} 的旧版本读取结果，已被更新的读取替代）"
+                                                if hasattr(self, '_mark_old_reads_outdated'):
+                                                    self._mark_old_reads_outdated(_os, _edit_fp)
                                                 _os['conversation_history'].append(_bar_bubble)
                                             self.save_sessions(push_update=True)
                                             print(f'[CROSS-SESSION AR] Broadcast OK: {os.path.basename(_edit_fp)} → {len(_other_sids)} sessions', flush=True)
@@ -1078,6 +1040,7 @@ class ToolAcceptMixin:
             return
         bt = chr(96) * 3
         _injected = 0
+        _dirty_target_sids = set()
         for file_path in changed_files:
             from .tool_executors import _prepare_autoread_content as _pac
             _numbered, _chk_total_lines, _chk_truncated = _pac(file_path)
@@ -1087,6 +1050,7 @@ class ToolAcceptMixin:
             _file_entry = self.file_read_registry.get(file_path, {})
             _all_file_sids = _file_entry.get('sessions', set()) if isinstance(_file_entry, dict) else set()
             for _target_sid in list(_all_file_sids):
+                _dirty_target_sids.add(_target_sid)
                 _target_session = self.sessions.get(_target_sid)
                 if not _target_session or _target_session.get('soft_deleted'):
                     continue
@@ -1140,33 +1104,11 @@ class ToolAcceptMixin:
                     # For other sessions: just append at end
                     _target_session['conversation_history'].append(_ar_bubble)
                 _injected += 1
-                # Mark old reads as outdated, including normal Read tool_results
-                try:
-                    _chk_tui = {}
-                    for _ctm in _target_session.get('conversation_history', []):
-                        for _ctp in (_ctm.get('content_parts') or []):
-                            if _ctp.get('type') == 'tool_use_part':
-                                try:
-                                    _ctd = json.loads(_ctp['content'])
-                                    if _ctd.get('id'):
-                                        _chk_tui[_ctd['id']] = (_ctd.get('name', ''), _ctd.get('input', {}).get('file_path', ''))
-                                except Exception:
-                                    pass
-                    for _m in _target_session.get('conversation_history', []):
-                        if _m is _ar_bubble:
-                            continue
-                        if _m.get('is_tool_result') and not _m.get('is_outdated_read'):
-                            if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
-                                _m['is_outdated_read'] = True
-                                _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
-                            elif not _m.get('is_auto_read'):
-                                _chk_info = _chk_tui.get(_m.get('tool_use_id', ''))
-                                if _chk_info and _chk_info[0] == 'Read' and _chk_info[1] == file_path:
-                                    _m['is_outdated_read'] = True
-                                    _m['content'] = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
-                except Exception:
-                    pass
+                if hasattr(self, '_mark_old_reads_outdated'):
+                    self._mark_old_reads_outdated(_target_session, file_path)
         if _injected > 0:
+            if hasattr(self, '_mark_sessions_dirty'):
+                self._mark_sessions_dirty(_dirty_target_sids)
             self.save_sessions(push_update=True)
             print(f'[FILE CHANGE] Injected autoread for {_injected} file-session pairs', flush=True)
 

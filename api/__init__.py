@@ -1,4 +1,5 @@
 """ChatApp API core - assembles all mixins into the main Api class."""
+import json
 import os
 import time
 import queue
@@ -48,8 +49,6 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
         self.cc_connections = {}     # cc_session_id → {active, model, msg_count, pending_tool, last_seen, is_direct}
         self.subagent_queues = {}    # subagent_id → queue.Queue()
         self.subagent_responses = {} # response_msg_id → raw_sse_string
-        self.subagent_queues = {}    # subagent_id → queue.Queue()
-        self.subagent_responses = {} # response_msg_id → raw_sse_string
         self.file_read_registry = {}  # file_path → {'sessions': set(sids), 'last_access': timestamp} — 跨会话文件读取引用追踪
         self.session_groups = {}  # group_id → {'name': str, 'session_ids': [], 'order': float, 'collapsed': bool}
         self._child_session_events = {}  # child_sid → {'event': Event, 'parent_sid': str, 'result': dict}
@@ -57,7 +56,7 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
             'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': False,
             'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
             'enable_arc3': False, 'enable_stream': True, 'force_no_stream': False, 'auto_hide_env_obs': False,
-            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'enable_reverse_context': False, 'starred_messages': [],
+            'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'enable_reverse_context': False, 'enable_routing_token': False, 'starred_messages': [],
             'developer_mode': False,
             'enable_bulk_logging': False,
             'enable_webfetch_file_mode': True,
@@ -67,7 +66,9 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
             'enable_webfetch_headless': True,
             'webfetch_proxy': '',
             'enable_show_all_autoread': False,
-            'enable_thinking_retry': False
+            'enable_thinking_retry': False,
+            'websearch_total_timeout_s': 300,
+            'webfetch_total_timeout_s': 600
         }
         self.spending = {"total": 0, "by_model": {}}
 
@@ -172,6 +173,50 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
         }
         msg.update(extra)
         return msg
+
+    def _build_tool_use_map(self, session):
+        """Return tool_use_id -> (tool_name, file_path) for every tool part in a session."""
+        _tui = {}
+        for _m in session.get('conversation_history', []):
+            for _p in (_m.get('content_parts') or []):
+                if _p.get('type') != 'tool_use_part':
+                    continue
+                _tid = _p.get('tool_id') or ''
+                _tname = _p.get('tool_name') or ''
+                _tinput = _p.get('tool_input') or {}
+                if not _tid and _p.get('content'):
+                    try:
+                        _td = json.loads(_p['content'])
+                        _tid = _td.get('id') or _tid
+                        _tname = _td.get('name') or _tname
+                        _tinput = _td.get('input') or _tinput
+                    except Exception:
+                        pass
+                if _tid:
+                    _fp = _tinput.get('file_path', '') if isinstance(_tinput, dict) else ''
+                    _tui[_tid] = (_tname, _fp)
+        return _tui
+
+    def _mark_old_reads_outdated(self, session, file_path):
+        """Mark every non-outdated read result for file_path as outdated.
+
+        This replaces five near-identical in-place loops spread across
+        tool_executors and tool_accept. The marker text mirrors the old bubbles'
+        content so context assembly sees exactly the same replacement.
+        """
+        _tui = self._build_tool_use_map(session)
+        _marker = f"（已省略，概括为：{os.path.basename(file_path)} 的旧版本读取结果，已被更新的读取替代）"
+        for _m in session.get('conversation_history', []):
+            if not _m.get('is_tool_result') or _m.get('is_outdated_read'):
+                continue
+            if _m.get('is_auto_read') and _m.get('auto_read_file') == file_path:
+                _m['is_outdated_read'] = True
+                _m['content'] = _marker
+            elif not _m.get('is_auto_read'):
+                _info = _tui.get(_m.get('tool_use_id', ''))
+                if _info and _info[0] == 'Read' and _info[1] == file_path:
+                    _m['is_outdated_read'] = True
+                    _m['content'] = _marker
 
     def _make_autopilot_prompt(self, session, append=""):
         """Build autopilot continuation prompt. Consolidates identical code from response.py and cc_core.py."""

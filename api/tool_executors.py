@@ -324,6 +324,40 @@ def execute_websearch(tool_input, settings, cache_dir, **kwargs):
     if allowed_domains:
         q += ' ' + ' OR '.join(f'site:{d}' for d in allowed_domains)
 
+    # Exa 搜索引擎（当 providers.json 中 web_search.provider 配置为 exa 时使用）
+    if _search_provider == 'exa':
+        resp = _retry_request(
+            lambda: requests.post(
+                'https://api.exa.ai/search',
+                headers={'x-api-key': _search_api_key, 'Content-Type': 'application/json'},
+                json={'query': q, 'numResults': 10, 'contents': {'text': {'maxCharacters': 500}}},
+                timeout=20,
+                proxies=_NO_PROXY
+            ),
+            f'Exa API ({query[:30]})',
+            max_retries=3, max_total_s=90
+        )
+        data = resp.json()
+        lines = [f'Exa Search Results for: {query}\n']
+        count = 0
+        for r in (data.get('results') or [])[:10]:
+            title = r.get('title') or 'No title'
+            link = r.get('url') or ''
+            snippet = r.get('text') or ''
+            if blocked_domains and any(d in link for d in blocked_domains):
+                continue
+            count += 1
+            lines.append(f'{count}. [{title}]({link})')
+            if snippet:
+                lines.append(f'   {snippet}')
+            lines.append('')
+        if count == 0:
+            lines.append('No results found.')
+        result_text = '\n'.join(lines)
+        result_text += '\n\n这些返回的条目的目的仅仅是给你提供url，以便你可能在后续气泡调用的多个webfetch。禁止向用户提及这些条目的内容作为汇报的结果，通常你的工作还远远没有完成，你只能向用户提供webfetch返回的结果。'
+        print(f'[WEBSEARCH] Exa: query="{query}", results={count}', flush=True)
+        return ToolResult(result_text, f'WebSearch: {query[:50]}')
+
     # 直连优先、代理兜底。写死直连的机器一旦需要代理才能出网就彻底没有搜索，而一律走
     # 代理又会在代理不通时误伤本来能直连的机器；两条都试一遍才两头都不落空。
     _routes = [('direct', _NO_PROXY)]
@@ -337,7 +371,7 @@ def execute_websearch(tool_input, settings, cache_dir, **kwargs):
             resp = _retry_request(
                 lambda: requests.post(
                     'https://google.serper.dev/search',
-                    headers={'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json'},
+                    headers={'X-API-KEY': _search_api_key, 'Content-Type': 'application/json'},
                     json={'q': q, 'num': 10},
                     timeout=15,
                     proxies=_route

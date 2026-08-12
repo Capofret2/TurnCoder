@@ -288,6 +288,18 @@
                     <div class="settings-desc">开启后 system prompt 中注入动态路由令牌。关闭后 system 字段保持静态，提升缓存命中率。</div>
                 </div>
 
+                <div class="settings-item adv-opt" style="display:none;">
+                    <div class="settings-title" style="margin-bottom: var(--md-sys-spacing-1);">WebSearch 总超时 (秒)</div>
+                    <input type="number" id="set-websearch-timeout" class="md-num" value="300" min="10" max="1800" step="10" onchange="saveSettings()" style="width:100px;">
+                    <div class="settings-desc">WebSearch/Serper/Exa 所有重试在内的累计最长耗时，超过即停止。默认 300 秒。</div>
+                </div>
+
+                <div class="settings-item adv-opt" style="display:none;">
+                    <div class="settings-title" style="margin-bottom: var(--md-sys-spacing-1);">WebFetch 总超时 (秒)</div>
+                    <input type="number" id="set-webfetch-timeout" class="md-num" value="600" min="10" max="3600" step="10" onchange="saveSettings()" style="width:100px;">
+                    <div class="settings-desc">WebFetch/Jina/PDF 所有重试在内的累计最长耗时，超过即停止。默认 600 秒。</div>
+                </div>
+
                 <div class="settings-item dev-only-setting">
                     <label class="settings-label">
                         <input type="checkbox" id="set-ttfb-retry" onchange="saveSettings()">
@@ -509,13 +521,13 @@
     <script src="/libs/icons.js?v=3"></script>
     <script src="/libs/utils.js?v=2"></script>
     <script src="/libs/codeblocks.js?v=4"></script>
-    <script src="/libs/settings.js?v=5"></script>
-    <script src="/libs/providers.js?v=2"></script>
+    <script src="/libs/settings.js?v=6"></script>
+    <script src="/libs/providers.js?v=3"></script>
     <script src="/libs/models.js?v=2"></script>
     <script src="/libs/codemonitor.js?v=1"></script>
     <script src="/libs/editops.js?v=2"></script>
     <script src="/libs/panels.js?v=3"></script>
-    <script src="/libs/actions.js?v=2"></script>
+    <script src="/libs/actions.js?v=3"></script>
     <script src="/libs/kanban.js?v=4"></script>
     <script src="/libs/minimap.js?v=6"></script>
     <script src="/libs/chat.js?v=11"></script>

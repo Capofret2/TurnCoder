@@ -110,22 +110,7 @@ async function renameSession(sid, oldName) {
 }
 
 async function restartServer() {
-    try {
-        showToast('正在进行语法检查，请稍候...', 'success');
-        const res = await fetch('/api/action', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'restart_server'})
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-            showToast(data.message, 'success');
-            setTimeout(() => window.location.reload(), 2000);
-        } else {
-            showToast('重启被拦截: ' + data.message, 'error');
-        }
-    } catch(e) {
-        showToast('请求失败: ' + e, 'error');
-    }
+    return safeRestart();
 }
 
 async function safeRestart() {

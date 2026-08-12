@@ -177,7 +177,7 @@ class StateMixin:
                 'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': False,
                 'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
                 'enable_arc3': False, 'enable_stream': True, 'auto_hide_env_obs': False, 
-                'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'starred_messages': [],
+                'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'enable_routing_token': False, 'starred_messages': [],
                 'enable_bulk_logging': False,
                 'enable_tool_lower_bound': False,
                 'enable_webfetch_file_mode': True,
@@ -191,7 +191,9 @@ class StateMixin:
                 'enable_truncation_detection': False,
                 'enable_partial_read': False,
                 'default_thinking_visible': True,
-                'enable_approval_tool': False
+                'enable_approval_tool': False,
+                'websearch_total_timeout_s': 300,
+                'webfetch_total_timeout_s': 600
             })
         }
 
@@ -297,6 +299,23 @@ class StateMixin:
             print("[SHUTDOWN] 会话数据已强制同步写入磁盘", flush=True)
         except Exception as e:
             print(f"[SHUTDOWN] 强制保存失败: {e}", flush=True)
+
+    def _mark_sessions_dirty(self, sids):
+        """Explicitly mark one or more sessions dirty for the next _write.
+
+        The general save_sessions() only marks the thread-local active session
+        dirty. Cross-session broadcasts (file-change autoreads, child session
+        results) mutate other sessions and then call save_sessions(), so those
+        must be marked explicitly or their changes stay memory-only until the
+        next force_save_now/shutdown. Accept one sid or an iterable.
+        """
+        if not hasattr(self, '_dirty_sessions'):
+            self._dirty_sessions = set()
+        if isinstance(sids, str):
+            sids = [sids]
+        for _sid in sids:
+            if _sid in self.sessions:
+                self._dirty_sessions.add(_sid)
 
     def save_sessions(self, push_update=False):
         """

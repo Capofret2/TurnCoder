@@ -560,18 +560,26 @@ def handle_action():
             try:
                 with open(_gp_path, 'r', encoding='utf-8') as _gp_f:
                     _gp_data = json.load(_gp_f)
-                return jsonify({"status": "ok", "providers": _gp_data})
+                if isinstance(_gp_data, dict):
+                    return jsonify({
+                        "status": "ok",
+                        "providers": _gp_data.get("model_providers", _gp_data.get("providers", [])),
+                        "web_search": _gp_data.get("web_search", {})
+                    })
+                return jsonify({"status": "ok", "providers": _gp_data, "web_search": {}})
             except FileNotFoundError:
-                return jsonify({"status": "ok", "providers": []})
+                return jsonify({"status": "ok", "providers": [], "web_search": {}})
             except Exception as _gp_e:
                 return jsonify({"status": "error", "message": f"读取 providers.json 失败: {_gp_e}"})
         elif action == 'save_providers':
             _sp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'providers.json')
             _sp_data = data.get('providers', [])
+            _sp_search = data.get('web_search', {})
             try:
                 _sp_tmp = _sp_path + '.tmp'
+                _sp_payload = {"model_providers": _sp_data, "web_search": _sp_search}
                 with open(_sp_tmp, 'w', encoding='utf-8') as _sp_f:
-                    json.dump(_sp_data, _sp_f, ensure_ascii=False, indent=2)
+                    json.dump(_sp_payload, _sp_f, ensure_ascii=False, indent=2)
                 os.replace(_sp_tmp, _sp_path)
                 from api.provider_routes import reload_providers
                 reload_providers()

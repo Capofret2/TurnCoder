@@ -2,6 +2,7 @@
 
 var _providerData = [];
 var _providerTestResults = {};
+var _webSearchConfig = {};
 
 function openProviderModal() {
     fetch('/api/action', {
@@ -13,6 +14,7 @@ function openProviderModal() {
     .then(function(d) {
         if (d.status === 'ok') {
             _providerData = d.providers || [];
+            _webSearchConfig = d.web_search || {};
             _providerTestResults = {};
             renderProviderList();
             document.getElementById('provider-modal').style.display = 'flex';
@@ -29,9 +31,38 @@ function closeProviderModal() {
     document.getElementById('provider-modal').style.display = 'none';
 }
 
+function _renderWebSearchCard(container) {
+    var card = document.createElement('div');
+    card.className = 'provider-card';
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:500; margin-bottom: var(--md-sys-spacing-2);';
+    title.textContent = '搜索供应商';
+    card.appendChild(title);
+
+    var provRow = document.createElement('div');
+    provRow.className = 'prov-row';
+    provRow.innerHTML = '<span class="prov-label">服务</span>' +
+        '<select id="websearch-provider" class="prov-input" style="flex:1; min-height:40px;">' +
+        '<option value="serper">Serper</option><option value="exa">Exa</option></select>';
+    card.appendChild(provRow);
+
+    var keyRow = document.createElement('div');
+    keyRow.className = 'prov-row';
+    keyRow.innerHTML = '<span class="prov-label">Key</span>' +
+        '<input type="password" id="websearch-key" class="prov-input" value="' + _escAttr((_webSearchConfig && _webSearchConfig.api_key) || '') + '" placeholder="搜索 API 密钥">' +
+        '<button onclick="_toggleKeyVis(\'websearch-key\')" class="prov-btn-eye" title="显示/隐藏">' + mdIcon('visibility', 16) + '</button>';
+    card.appendChild(keyRow);
+
+    var sel = document.getElementById('websearch-provider');
+    if (sel && _webSearchConfig && _webSearchConfig.provider) sel.value = _webSearchConfig.provider;
+    container.appendChild(card);
+}
+
 function renderProviderList() {
     var container = document.getElementById('provider-list');
     container.innerHTML = '';
+
+    _renderWebSearchCard(container);
 
     _providerData.forEach(function(prov, idx) {
         var card = document.createElement('div');
@@ -204,6 +235,7 @@ function testProvider(idx) {
 
 function saveProviders() {
     _syncProviderInputs();
+    _syncSearchInputs();
     // Validate: remove providers with empty name AND empty url (accidental adds)
     _providerData = _providerData.filter(function(p) {
         return (p.name || '').trim() || (p.api_url || '').trim();
@@ -211,7 +243,7 @@ function saveProviders() {
     fetch('/api/action', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'save_providers', providers: _providerData})
+        body: JSON.stringify({action: 'save_providers', providers: _providerData, web_search: _webSearchConfig})
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -243,6 +275,17 @@ function _syncProviderInputs() {
         if (nameEl) _providerData[i].name = nameEl.value;
         if (urlEl) _providerData[i].api_url = urlEl.value;
         if (keyEl) _providerData[i].api_key = keyEl.value;
+    }
+}
+
+function _syncSearchInputs() {
+    if (!_webSearchConfig) _webSearchConfig = {};
+    var provEl = document.getElementById('websearch-provider');
+    var keyEl = document.getElementById('websearch-key');
+    if (provEl) _webSearchConfig.provider = provEl.value || 'serper';
+    if (keyEl) _webSearchConfig.api_key = keyEl.value.trim();
+    if (!_webSearchConfig.api_key && !_webSearchConfig.provider) {
+        _webSearchConfig = {};
     }
 }
 
