@@ -177,7 +177,7 @@ class StateMixin:
                 'enable_correction': False, 'enable_queue': False, 'enable_steps': False, 'enable_starred': False,
                 'enable_autopilot': True, 'enable_deep_think_ui': False, 'enable_pure_mode': False,
                 'enable_arc3': False, 'enable_stream': True, 'auto_hide_env_obs': False, 
-                'enable_anthropic_protocol': False, 'enable_tool_inject': False, 'starred_messages': [],
+                'enable_anthropic_protocol': True, 'enable_tool_inject': True, 'enable_descriptor_tool_calls': True, 'starred_messages': [],
                 'enable_bulk_logging': False,
                 'enable_tool_lower_bound': False,
                 'enable_webfetch_file_mode': True,
