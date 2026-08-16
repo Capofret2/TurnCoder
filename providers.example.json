@@ -1,29 +1,22 @@
 [
   {
-    "name": "ExampleProviderA",
-    "api_url": "https://api.example-provider-a.com/v1/chat/completions",
-    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
+    "name": "Sisuo",
+    "api_url": "https://newapi.sisuo.de/v1/chat/completions",
+    "api_key": "sk-xxxxxxxxxx",
     "models": [
-      "claude-opus-4-6",
-      "claude-opus-4-6-thinking",
-      "gpt-5.5"
+      "按次-kiro-claude-opus-4-6-thinking",
+      "按次-kiro-claude-opus-4-8-thinking",
+      "按次-kiro-claude-opus-5-thinking"
     ]
   },
   {
-    "name": "ExampleProviderB",
-    "api_url": "https://api.example-provider-b.com/v1/chat/completions",
-    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
+    "name": "xiaoji",
+    "api_url": "https://68886868.xyz/v1/chat/completions",
+    "api_key": "sk-xxxxxxxxxxxxx",
     "models": [
-      "gemini-3.1-pro-preview",
-      "glm-5.2"
-    ]
-  },
-  {
-    "name": "LocalOrSelfHosted",
-    "api_url": "http://127.0.0.1:8000/v1/chat/completions",
-    "api_key": "sk-REPLACE_WITH_YOUR_KEY",
-    "models": [
-      "your-local-model-name"
+      "[Kiro次] claude-opus-4-8-thinking [不补]",
+      "[Kiro次] claude-opus-4-6-thinking [不补]",
+      "[Kiro次] claude-opus-5-thinking [不补]"
     ]
   }
 ]

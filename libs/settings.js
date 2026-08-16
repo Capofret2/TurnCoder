@@ -42,6 +42,9 @@ function openSettingsModal() {
     if (document.getElementById('set-billing-sync-button')) document.getElementById('set-billing-sync-button').checked = globalSettings.enable_billing_sync_button;
     if (document.getElementById('set-style-filter')) document.getElementById('set-style-filter').checked = globalSettings.enable_style_filter;
     if (document.getElementById('set-planned-tools')) document.getElementById('set-planned-tools').checked = !!globalSettings.enable_planned_tools;
+    // 文本项而非开关，所以读 value。|| '' 不是多余的：既有安装的 global.json 里没有这个
+    // 键，赋 undefined 会让输入框显示字面的 "undefined"，而用户会把它当占位值保存下去。
+    if (document.getElementById('set-webfetch-proxy')) document.getElementById('set-webfetch-proxy').value = globalSettings.webfetch_proxy || '';
     // The rows live inside this dialog, so the applyTheme() call at load time
     // found nothing to fill. Without this the first open shows two empty rows.
     if (typeof _renderThemeControls === 'function') _renderThemeControls();
@@ -89,6 +92,9 @@ function saveSettings() {
     if (document.getElementById('set-billing-sync-button')) globalSettings.enable_billing_sync_button = document.getElementById('set-billing-sync-button').checked;
     if (document.getElementById('set-style-filter')) globalSettings.enable_style_filter = document.getElementById('set-style-filter').checked;
     if (document.getElementById('set-planned-tools')) globalSettings.enable_planned_tools = document.getElementById('set-planned-tools').checked;
+    // trim 让落盘的值本身干净。后端 _detect_proxies 读取时也会 strip，两处不是重复判断：
+    // 一处管「持久化的值不带前后空格」，一处管「读到脏值也能用」。
+    if (document.getElementById('set-webfetch-proxy')) globalSettings.webfetch_proxy = document.getElementById('set-webfetch-proxy').value.trim();
     applySettingsUI();
     postAction({action: 'update_global_settings', settings: globalSettings});
 }

@@ -114,13 +114,33 @@ cp settings.example.json settings.json
 
 清除面：四处装饰器实参、前端设置项与 `settings.js` 三行（读 / 写 / 非开发者模式强制赋值）、四处后端默认值（`sessions.py` 两处、`state.py` 两处），以及 `load_sessions` 里 `_key_migrations` 中指向它的那一半——最后这一处是活代码，留着会让持有旧键 `enable_cc_simulate` 的 `global.json` 在每次启动时把这个键重新种回来。
 
-`setting_check` 机制本身保留：`WebSearch` 与 `WebFetch` 仍在用它，所以看到那四个装饰器不带该参数而相邻的带，不是漏写。
+**`setting_check` 机制本身也已删除，这颗地雷一共炸了三次。** `WebSearch` 与 `WebFetch` 是最后两个带它的执行器，死法与上面那四个完全一样：`enable_custom_websearch` 或两个 `enable_custom_webfetch*` 为假、或在全新安装的机器上根本不存在时，`_use_local` 取假，工具落到 `accept_tool` 末尾那句「不支持的工具」。清除面是 `register_executor` 的 `setting_check` 形参、`EXECUTOR_SETTINGS` 字典、以及 `tool_accept.py` 里求 `_use_local` 的那八行判定。
+
+**删形参而不只是删调用点是刻意的：给某个装饰器加回 `setting_check=...` 现在会在导入阶段抛 `TypeError`**，而不是等到某个工具在用户手里静默失效。这是本次与前两次的区别——前两次留下的是注释，靠人读；这次留下的是一个立刻失败的签名。
+
+`tool_accept.py` 那一层 `if` 保留为恒真并在旁边写明了原因：它下面 190 行在每次工具调用的必经路径上，缩进改写的失败模式是静默掉行，没有测试能发现。**那行不是可以顺手清理的冗余。**
 
 **一次用户可感知的行为变化，请勿误判为回归。** `tool_accept.py` 那两处 Bash 拦截（1k 长度上限、禁用命令名单）的条件都是「未开启该开关」，因此**从未执行过一次**。开关移除后条件必须选一边，选了**生效**——两段拦截文本都在教模型「用 Edit 而不是 sed/awk 改文件」，那是系统提示词 S25 的要求，也是文档一直把这份名单当作在用功能来描述的前提。此前从未见过这两条拦截，第一次遇到最可能被当成新引入的缺陷。
 
+### WebFetch / WebSearch 抓取链路重写
+
+起点是「代理可达但 WebFetch 卡住数小时」。真凶只有一个：`_retry_request` 的默认 `max_retries=999`，而代理探测那处一个 retry 参数都没传。按 1.5 倍退避、单次上限 30 秒，一千次约合八小时——与症状精确吻合。其余现象都是它的放大器。
+
+- **`max_retries` 约束不了时间，`max_total_s` 才行。** 重试次数经过退避曲线之后无法换算成墙钟，所以现在每次退避前先看会不会越过截止时刻。默认 90 秒，所有调用点自动继承：忘记传 retry 上限从此最多浪费一分半。
+- **确定性状态码不重试。** 403 重试三次只会拿到三次 403。`_NO_RETRY_STATUS` 刻意不含 429（配额会恢复）、408/425、以及全部 5xx——Jina 的 503 必须继续享受重试。顺带修掉 `max_429_retries` 那个**从未生效过的** abort：它在 `try` 内部 `raise`，被同一层的 `except Exception` 抓住之后照旧睡下去继续循环，日志里那句 aborting 一直只是空话。
+- **代理端口不写死，活性判据只看 socket 能不能连上。** 原代码写死 7890 而机器监听 7897，并且要求 `https://www.google.com` 必须回 200——健康的 Clash 对这个探针回的是 302，于是正常现象被判成故障，再交给 999 次重试放大。现在的顺序是「`webfetch_proxy` 设置 → `HTTPS_PROXY` 等环境变量 → 扫常见端口」，显式配置也验活，写错端口会立刻退回扫描。
+- **Chromium 不继承 requests 的 proxies。** 它有独立网络栈，也读不到 `settings.json` 里那三个空的 `*_PROXY`。不给 `launch()` 传 `proxy={'server': ...}` 的后果是：唯一能渲染 JS 的路径恰好是唯一到不了被墙站点的路径，而需要 Playwright 的页面往往正是那些。
+- **「内容够不够」不能用长度判断，这条判据在两个方向上都错过。** `example.com` 全文正文约 140 字符，按 `>= 1024` 判定就是一次失败——白跑一次 Jina 而且永远进不了缓存；反过来 2KB 的 Cloudflare 拦截页轻松越线冒充正文。现在的判据是 `_unusable_reason`：空响应、墙的措辞（表在 `_BLOCK_MARKERS`，大小写无关）、以及「文本占原始 HTML 不足 2% 且 HTML 超过 20KB」这个比值。JS 外壳只在比值上露馅（google 首页 444 字符文本对 204KB 标记）。比值判定必须放在 `_fetch_http_fallback` 里，那是全流程唯一同时握着纯文本与原始 HTML 长度的位置。
+- **URL 后缀不是 PDF 的判据，`Content-Type` 才是。** arXiv 的现代链接 `/pdf/1706.03762` 不带扩展名，于是走进 HTML 分支被 `resp.text` 解码成 66 万字符乱码——而那份「内容」长得足以通过任何以长度为准的检查，被当作正文送进模型上下文并写入缓存。同一处还有一条 `except ImportError: return resp.text`，缺 PyMuPDF 时**故意**返回原始字节。缺依赖时正确的输出是一条能被记录的错误。装包逻辑已与 `execute_read` 合并到 `_ensure_fitz`。
+- **全路径失败返回结构化错误，不返回 `None`。** `None` 会落到 `tool_accept.py` 末尾那句「不支持的工具」，把一次网络失败伪装成工具缺失，于是模型看到的错误与真实原因（Jina 503、Playwright 未装）完全脱节，排查方向被带偏。
+- **抓取路径改成有序表**，每条自带重试上限与时间预算，一条失败只记一行原因继续下一条，首个可用即停。`enable_custom_webfetch_jina` 现在只决定 Jina 与直连谁先试。截断与写缓存从 Playwright 的 `try` 里提出来对所有路径生效——原结构下 Jina 命中时缓存从不落盘，15 分钟 TTL 等于没有。
+
+**一处刻意未修的观感缺陷，别当成漏项：** 缓存命中时标题退化成清洗过的 URL（`Example Domain` 显示成 `example.com`），因为缓存文件只存正文。修它要改缓存文件格式，不值得与一批正确性修复捆在一起。
+
 ### 前端视觉体系
 
-新增 `libs/tokens.css` 作为唯一的样式来源，采用 Material Design 3 的令牌命名（`--md-sys-*`）配 Adwaita 取值：主色 `#3584e4`、圆角收紧一档（按钮 6px、卡片 8px、窗口 12px、对话框 16px）、阴影不透明度压到 0.08–0.22 并改由 1px 描边承担分界。明暗双主题的令牌均已备齐。
+新增 `libs/tokens.css` 作为唯一的样式来源，
+[new_string结束]采用 Material Design 3 的令牌命名（`--md-sys-*`）配 Adwaita 取值：主色 `#3584e4`、圆角收紧一档（按钮 6px、卡片 8px、窗口 12px、对话框 16px）、阴影不透明度压到 0.08–0.22 并改由 1px 描边承担分界。明暗双主题的令牌均已备齐。
 
 所有组件样式引用令牌而不写死数值，因此换主题或调色是单点改动。`libs/styles.css` 追加了可复用组件类（按钮四变体、图标按钮、chip、对话框骨架、偏好行等）。
 

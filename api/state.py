@@ -185,6 +185,7 @@ class StateMixin:
                 'enable_custom_webfetch': True,
                 'enable_custom_webfetch_jina': True,
                 'enable_webfetch_headless': True,
+                'webfetch_proxy': '',
                 'enable_bottom_tabs': False,
                 'enable_tool_description_enforcement': False,
                 'enable_truncation_detection': False,

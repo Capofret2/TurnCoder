@@ -206,6 +206,13 @@
                     <div class="settings-desc">开启后自动对 AI 回复执行语言风格后处理，替换中文括号、破折号、感叹号等。</div>
                 </div>
                 <div class="settings-item">
+                    <label class="settings-label" for="set-webfetch-proxy">
+                        <span class="settings-title">WebFetch 代理地址</span>
+                    </label>
+                    <div class="settings-desc">WebFetch 与 WebSearch 的出站代理。留空表示自动探测：先读 HTTPS_PROXY 等环境变量，再扫本机常见代理端口（7897、7890、10809 等）。填错端口不会造成长时间等待——探测发现它没在监听会立刻退回自动扫描。</div>
+                    <input type="text" id="set-webfetch-proxy" onchange="saveSettings()" placeholder="留空 = 自动探测，或填 http://127.0.0.1:7897" style="width:100%;box-sizing:border-box;margin-top:8px;padding:6px 8px;font:inherit;color:inherit;background:transparent;border:1px solid rgba(128,128,128,0.45);border-radius:6px;">
+                </div>
+                <div class="settings-item">
                     <label class="settings-label">
                         <input type="checkbox" id="set-default-thinking-visible" onchange="saveSettings()">
                         <span class="settings-title">新思维链默认可见</span>

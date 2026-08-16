@@ -613,19 +613,24 @@ class ToolAcceptMixin:
             self.save_sessions(push_update=True)
 
         # === 本地执行器路由（在排序约束和 UI 状态更新之后执行） ===
-        from .tool_executors import LOCAL_EXECUTORS, EXECUTOR_SETTINGS, ToolResult, ToolReject, _prepare_autoread_content
+        from .tool_executors import LOCAL_EXECUTORS, ToolResult, ToolReject, _prepare_autoread_content
         _exec_name = tool_block.get('name', '')
         _executor = LOCAL_EXECUTORS.get(_exec_name)
         if _executor:
-            _setting_check = EXECUTOR_SETTINGS.get(_exec_name)
-            _use_local = False
-            if _setting_check is None:
-                _use_local = True
-            elif isinstance(_setting_check, str):
-                _use_local = bool(getattr(self, 'global_settings', {}).get(_setting_check, False))
-            elif callable(_setting_check):
-                _use_local = bool(_setting_check(getattr(self, 'global_settings', {})))
-            if _use_local:
+            # 注册了本地执行器就执行它，没有第二个判据。
+            #
+            # 原先这里从 EXECUTOR_SETTINGS 取该工具的开关求出 _use_local，为假时工具落到
+            # 本方法末尾那句「不支持的工具」。同一种死法发生过三次——enable_tool_simulate
+            # 废掉 Read/Write/Edit/Bash，两个 enable_custom_webfetch* 废掉 WebFetch，
+            # enable_custom_websearch 废掉 WebSearch——而 CC CLI 直连移除后本地执行是唯一
+            # 路径，门控没有第二条分支可选。register_executor 的 setting_check 形参与
+            # EXECUTOR_SETTINGS 字典已一并删除，加回门控会在导入阶段就抛 TypeError。
+            #
+            # 下面这行恒真，只承担缩进，**它不是可以顺手删掉的冗余**：删掉它意味着把它下面
+            # 那 190 行提上一级，而那个块在每一次工具调用的必经路径上（托管并行分支、Edit
+            # 自动读取、跨会话广播，其中一行八百字符），缩进改写的失败模式是静默掉行，没有
+            # 任何测试会发现。要动请连 tests/ 一起跑，并且单独成一个提交。
+            if True:
                 _cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webfetch_cache')
                 # Planned mode: ALL tools run in background thread for true parallelism
                 if _planned_mode:

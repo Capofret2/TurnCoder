@@ -103,20 +103,30 @@ class ToolReject(Exception):
 # Registry: tool_name -> executor_function(tool_input, settings, cache_dir) -> ToolResult | None
 LOCAL_EXECUTORS = {}
 
-# Settings check: tool_name -> setting_key_string | callable(settings_dict) -> bool
-EXECUTOR_SETTINGS = {}
-
 # Fallback registry: executors that only run when CC returns "No such tool" error
 FALLBACK_EXECUTORS = {}
 
 
-def register_executor(tool_name, setting_check=None, fallback_only=False):
+def register_executor(tool_name, fallback_only=False):
     """Decorator to register a local tool executor.
+
+    There used to be a `setting_check` parameter here (a global_settings key or a
+    predicate) plus an EXECUTOR_SETTINGS dict holding it. Both are gone, and the
+    parameter is gone rather than merely unused on purpose.
+
+    The same accident happened three times: enable_tool_simulate gating
+    Read/Write/Edit/Bash, the two enable_custom_webfetch* flags gating WebFetch,
+    enable_custom_websearch gating WebSearch. In every case a false or absent key
+    made tool_accept.py fall through to 「不支持的工具」, and since the Claude Code
+    CLI direct connection was removed there is no second branch for a gate to
+    select — the only thing it could do was switch a tool off and report a reason
+    unrelated to the real one. On a fresh install those keys do not exist at all.
+
+    Passing setting_check= now raises TypeError at import time. That is louder and
+    earlier than a comment, which is the point.
 
     Args:
         tool_name: The CC tool name (e.g. 'WebSearch', 'WebFetch').
-        setting_check: Either a string (global_settings key) or a callable(settings) -> bool
-                       that determines whether to use the local executor.
         fallback_only: If True, executor is only invoked when CC returns 'No such tool' error,
                        not in the normal interception pipeline. Used for tools removed in newer CC versions.
     """
@@ -125,33 +135,48 @@ def register_executor(tool_name, setting_check=None, fallback_only=False):
             FALLBACK_EXECUTORS[tool_name] = func
         else:
             LOCAL_EXECUTORS[tool_name] = func
-            if setting_check is not None:
-                EXECUTOR_SETTINGS[tool_name] = setting_check
         return func
     return decorator
 
 
-def _retry_request(func, description, max_retries=999, initial_delay=2, max_delay=30, max_429_retries=None):
+# 确定性的客户端错误。403 重试三次只会拿到三次 403，唯一的效果是把时间预算烧掉：
+# 实测 r.jina.ai 对 google.com 回 403，三次尝试花了 7 秒。429 不在此列（配额会随
+# 时间恢复），408/425 也不在（超时与过早都值得重试），5xx 同理 —— Jina 的 503 必须
+# 继续享受重试。
+_NO_RETRY_STATUS = frozenset({400, 401, 402, 403, 404, 405, 406, 410, 451})
+
+
+def _retry_request(func, description, max_retries=3, initial_delay=2, max_delay=30,
+                   max_429_retries=None, max_total_s=90):
     """Retry a network request with exponential backoff until HTTP 200.
+
+    The default used to be max_retries=999. With 1.5x backoff capped at 30s that
+    is roughly eight hours of spinning, which is what a caller that forgot to
+    pass a limit actually got. max_total_s is the real guard: retry counts cannot
+    be converted into wall time (the backoff curve decides that), so the deadline
+    is enforced directly and every call site inherits it.
 
     Args:
         func: Callable that makes the request and returns a response object.
         description: Human-readable label for log messages.
-        max_retries: Maximum retry attempts (default 999 ≈ persistent).
+        max_retries: Maximum retry attempts.
         initial_delay: Initial delay in seconds between retries.
         max_delay: Maximum delay in seconds (cap for exponential growth).
         max_429_retries: If set, abort after seeing HTTP 429 this many times (e.g. 1 = abort on 2nd 429).
+        max_total_s: Wall-clock budget for the whole retry sequence. None disables it.
 
     Returns:
         The response object once status_code == 200.
 
     Raises:
-        The last exception if all retries are exhausted.
+        The last exception if all retries are exhausted or the budget runs out.
     """
     delay = initial_delay
     last_error = None
     _429_count = 0
+    _deadline = (time.time() + max_total_s) if max_total_s else None
     for attempt in range(max_retries + 1):
+        _fatal = False  # 本次响应确定性失败，重试无意义
         try:
             resp = func()
             if hasattr(resp, 'status_code') and resp.status_code == 200:
@@ -159,13 +184,17 @@ def _retry_request(func, description, max_retries=999, initial_delay=2, max_dela
                     print(f'[RETRY] {description}: succeeded on attempt {attempt + 1}', flush=True)
                 return resp
             elif hasattr(resp, 'status_code'):
+                last_error = Exception(f'HTTP {resp.status_code}')
                 if resp.status_code == 429:
                     _429_count += 1
                     if max_429_retries is not None and _429_count > max_429_retries:
                         print(f'[RETRY] {description}: HTTP 429 limit ({max_429_retries}) exceeded after {_429_count} hits, aborting', flush=True)
-                        raise Exception(f'HTTP 429 after {_429_count} occurrences')
-                last_error = Exception(f'HTTP {resp.status_code}')
-                if attempt < max_retries:
+                        last_error = Exception(f'HTTP 429 after {_429_count} occurrences')
+                        _fatal = True
+                elif resp.status_code in _NO_RETRY_STATUS:
+                    print(f'[RETRY] {description}: HTTP {resp.status_code} is deterministic, not retrying', flush=True)
+                    _fatal = True
+                if not _fatal and attempt < max_retries:
                     print(f'[RETRY] {description}: HTTP {resp.status_code}, attempt {attempt + 1}, retrying in {delay:.0f}s...', flush=True)
             else:
                 return resp  # Non-HTTP response (e.g. mock), return as-is
@@ -173,23 +202,114 @@ def _retry_request(func, description, max_retries=999, initial_delay=2, max_dela
             last_error = e
             if attempt < max_retries:
                 print(f'[RETRY] {description}: {str(e)[:100]}, attempt {attempt + 1}, retrying in {delay:.0f}s...', flush=True)
+        # 放弃的唯一出口。原先 429 超限走的是 try 内部 raise，被自己的 except 抓住之后
+        # 又睡下去继续重试，日志里的 aborting 从来只是一句空话。
+        if _fatal:
+            break
         if attempt < max_retries:
+            if _deadline is not None and time.time() + delay >= _deadline:
+                print(f'[RETRY] {description}: {max_total_s}s budget exhausted after {attempt + 1} attempts, aborting', flush=True)
+                break
             time.sleep(delay)
             delay = min(delay * 1.5, max_delay)
-    print(f'[RETRY] {description}: all {max_retries + 1} attempts exhausted', flush=True)
-    raise last_error
+    print(f'[RETRY] {description}: giving up (up to {max_retries + 1} attempts)', flush=True)
+    raise last_error if last_error else Exception(f'{description}: no successful response')
+
+
+# ---------------------------------------------------------------------------
+#  Proxy resolution
+# ---------------------------------------------------------------------------
+
+# 显式直连。requests 默认 trust_env=True，proxies=None 意思是「用环境变量」而不是
+# 「不走代理」，想真的直连必须把值置空。
+_NO_PROXY = {'http': None, 'https': None}
+
+# 常见本地代理端口，按命中概率排序：7897 是 ClashVerge 当前默认，7890 是旧默认，
+# 7891 是 Clash 的另一个混合端口，10809/10808 是 v2rayN，1080 通用 socks，
+# 8889 Surge，20171 Netch。
+_COMMON_PROXY_PORTS = (7897, 7890, 7891, 10809, 10808, 1080, 8889, 20171)
+
+_PROXY_CACHE = {'value': None, 'ts': 0.0}
+_PROXY_CACHE_TTL = 60.0
+
+
+def _port_alive(host, port, timeout=0.3):
+    """True when a TCP connect to host:port completes within timeout."""
+    import socket
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _detect_proxies(settings, force=False):
+    """Resolve the proxy to use for outbound fetches.
+
+    Order: settings['webfetch_proxy'] -> HTTPS/HTTP/ALL_PROXY env vars ->
+    TCP scan of _COMMON_PROXY_PORTS on 127.0.0.1.
+
+    Liveness is a listening socket, nothing more. The previous check demanded
+    HTTP 200 from a canary URL, which a healthy proxy fails for reasons that
+    have nothing to do with reachability (302 to a country page, rate limits) —
+    and that false negative was then fed to an unbounded retry loop.
+
+    A hardcoded port is not enough either: the port that is actually listening
+    on this machine right now is 7897, while the code asked for 7890.
+
+    Returns:
+        A requests-style proxies dict, or None when nothing is listening
+        (callers then go direct).
+    """
+    if not force and _PROXY_CACHE['value'] is not None and time.time() - _PROXY_CACHE['ts'] < _PROXY_CACHE_TTL:
+        return _PROXY_CACHE['value'][0]
+    resolved = ((settings or {}).get('webfetch_proxy') or '').strip()
+    if not resolved:
+        for _ev in ('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'):
+            _v = (os.environ.get(_ev) or '').strip()
+            if _v:
+                resolved = _v
+                break
+    if resolved:
+        if '://' not in resolved:
+            resolved = 'http://' + resolved
+        _hp = resolved.split('://', 1)[1].split('/')[0]
+        if '@' in _hp:
+            _hp = _hp.rsplit('@', 1)[1]
+        _h, _, _p = _hp.rpartition(':')
+        if _p.isdigit() and not _port_alive(_h or '127.0.0.1', _p, timeout=1.0):
+            print(f'[WEBFETCH] Configured proxy {resolved} is not listening, autodetecting instead', flush=True)
+            resolved = ''
+    if not resolved:
+        for _port in _COMMON_PROXY_PORTS:
+            if _port_alive('127.0.0.1', _port):
+                resolved = f'http://127.0.0.1:{_port}'
+                print(f'[WEBFETCH] Autodetected local proxy on port {_port}', flush=True)
+                break
+    proxies = {'http': resolved, 'https': resolved} if resolved else None
+    _PROXY_CACHE['value'] = (proxies,)
+    _PROXY_CACHE['ts'] = time.time()
+    return proxies
 
 
 # ---------------------------------------------------------------------------
 #  WebSearch executor
 # ---------------------------------------------------------------------------
 
-@register_executor('WebSearch', setting_check='enable_custom_websearch')
+# WebSearch 刻意不带 setting_check。**不要给它加回门控。**
+#
+# 和 WebFetch 是同一颗地雷：enable_custom_websearch 关掉或在全新安装的机器上根本不存在
+# 时，tool_accept.py 里 _use_local 取到假，WebSearch 落到那句「不支持的工具」。Claude
+# Code CLI 直连移除后本地 Serper 调用是唯一的搜索实现，门控已无第二条分支可选，于是它
+# 唯一的效果就是把工具关掉并且报出一个与原因无关的错误。
+@register_executor('WebSearch')
 def execute_websearch(tool_input, settings, cache_dir, **kwargs):
     """Execute WebSearch using Google Serper API.
 
     Returns top-10 search results including answer box, knowledge graph,
-    organic results, people also ask, and related searches.
+    organic results, people also ask, and related searches. The request goes
+    direct first and falls back to the detected proxy, so a machine that needs
+    a proxy to reach the API is not left without search at all.
     """
     query = tool_input.get('query', '')
     allowed_domains = tool_input.get('allowed_domains', [])
@@ -204,16 +324,38 @@ def execute_websearch(tool_input, settings, cache_dir, **kwargs):
     if allowed_domains:
         q += ' ' + ' OR '.join(f'site:{d}' for d in allowed_domains)
 
-    resp = _retry_request(
-        lambda: requests.post(
-            'https://google.serper.dev/search',
-            headers={'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json'},
-            json={'q': q, 'num': 10},
-            timeout=15,
-            proxies={'http': None, 'https': None}
-        ),
-        f'Serper API ({query[:30]})'
-    )
+    # 直连优先、代理兜底。写死直连的机器一旦需要代理才能出网就彻底没有搜索，而一律走
+    # 代理又会在代理不通时误伤本来能直连的机器；两条都试一遍才两头都不落空。
+    _routes = [('direct', _NO_PROXY)]
+    _px = _detect_proxies(settings)
+    if _px:
+        _routes.append(('proxy', _px))
+    _errs = []
+    resp = None
+    for _label, _route in _routes:
+        try:
+            resp = _retry_request(
+                lambda: requests.post(
+                    'https://google.serper.dev/search',
+                    headers={'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json'},
+                    json={'q': q, 'num': 10},
+                    timeout=15,
+                    proxies=_route
+                ),
+                f'Serper API via {_label} ({query[:30]})',
+                max_retries=2, max_total_s=45
+            )
+            break
+        except Exception as _se:
+            _errs.append(f'{_label}: {str(_se)[:150]}')
+    if resp is None:
+        # 原先这里让 _retry_request 的异常直接穿出执行器，模型看到的是一条框架层报错，
+        # 而不是「搜索失败，这两条路线分别死在哪」。
+        return ToolResult(
+            f'WebSearch failed for query: {query}\nAttempted routes:\n'
+            + '\n'.join(f'- {e}' for e in _errs),
+            f'WebSearch 失败: {query[:30]}', is_error=True
+        )
     data = resp.json()
 
     lines = [f'Google Search Results for: {query}\n']
@@ -302,21 +444,30 @@ def execute_websearch(tool_input, settings, cache_dir, **kwargs):
 #  WebFetch executor
 # ---------------------------------------------------------------------------
 
-@register_executor('WebFetch', setting_check=lambda s: s.get('enable_custom_webfetch', False) or s.get('enable_custom_webfetch_jina', False))
+# WebFetch 刻意不带 setting_check。**不要给它加回门控。**
+#
+# 两个 enable_custom_webfetch* 开关都关掉时 _use_local 取到假，WebFetch 整个落到
+# tool_accept.py 末尾那句「不支持的工具」——和 enable_tool_simulate 门控四个核心
+# 执行器时同一种死法（见本文件下方那段注释）。Claude Code CLI 直连移除后本地执行是
+# WebFetch 唯一的路径，门控已无第二条分支可选，而全新安装的机器上这两个键根本不存在。
+# 开关现在只影响抓取路径的先后顺序。
+@register_executor('WebFetch')
 def execute_webfetch(tool_input, settings, cache_dir, **kwargs):
-    """Execute WebFetch using Jina Reader and/or Playwright Chromium.
+    """Execute WebFetch locally, trying several fetch paths in order.
 
-    Multi-layer fetch strategy:
-    1. Cache check (15min TTL)
-    2. Proxy connectivity check
-    3. PDF detection -> direct download + PyMuPDF
-    4. Jina Reader (if enabled, primary mode)
-    5. Playwright Chromium (if enabled and installed)
-    6. HTTP fallback
-    7. Jina fallback
+    Pipeline:
+    1. Cache check (15min TTL).
+    2. Proxy resolution via _detect_proxies (setting -> env -> port scan).
+       Local URLs bypass the proxy entirely.
+    3. PDF detection -> download (proxy first, then direct) + PyMuPDF.
+    4. HTML paths, each with its own retry cap and wall-clock budget: Jina Reader
+       and direct HTTP (order follows enable_custom_webfetch_jina), then
+       Playwright when installed. The first path yielding >=1KB wins.
+    5. Truncate at 100KB, cache when >1KB.
 
-    Returns None if no local method can handle the fetch (falls through to CC).
-    Raises ToolReject if proxy is unreachable or Jina fails in primary mode.
+    Never returns None. When every path fails it returns an error ToolResult
+    listing what was tried and why, so the real cause is visible instead of
+    being reported as an unsupported tool.
     """
     url = tool_input.get('url', '')
     prompt = tool_input.get('prompt', '')
@@ -326,8 +477,9 @@ def execute_webfetch(tool_input, settings, cache_dir, **kwargs):
     if not url.startswith('http'):
         url = 'https://' + url
 
+    # 只决定 Jina 与直连谁先试，不再决定是否执行。原先还有个 pw_mode 变量，赋值之后
+    # 没有任何分支读它——Playwright 路径从来只看「前面的路径有没有拿到内容」。
     jina_mode = settings.get('enable_custom_webfetch_jina', False)
-    pw_mode = settings.get('enable_custom_webfetch', False)
 
     # Cache check (15 min TTL)
     os.makedirs(cache_dir, exist_ok=True)
@@ -336,6 +488,10 @@ def execute_webfetch(tool_input, settings, cache_dir, **kwargs):
     content = ''
     title = ''
     cached = False
+    # 在 cached 分支外初始化：命中缓存时下面的块整个跳过，而空缓存文件会一路走到
+    # 末尾的错误分支并引用这两个名字。
+    errors = []
+    proxies = None
 
     if os.path.exists(cache_path):
         age = time.time() - os.path.getmtime(cache_path)
@@ -347,107 +503,99 @@ def execute_webfetch(tool_input, settings, cache_dir, **kwargs):
             print(f'[WEBFETCH] Cache hit: {url[:80]} (age={age:.0f}s)', flush=True)
 
     if not cached:
-        # Proxy connectivity check (retries until reachable, 429 breaks early to Jina)
-        import requests
-        _proxy_ok = True
-        try:
-            _retry_request(
-                lambda: requests.get('https://www.google.com', timeout=10,
-                    proxies={'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}),
-                'Proxy connectivity check',
-                max_429_retries=1
-            )
-            print(f'[WEBFETCH] Proxy connectivity OK', flush=True)
-        except Exception as _proxy_err:
-            print(f'[WEBFETCH] Proxy check 429 limit hit ({_proxy_err}), skipping to Jina', flush=True)
-            _proxy_ok = False
-
-        # PDF detection
-        is_pdf = url.lower().rstrip('/').endswith('.pdf') or 'application/pdf' in url.lower()
-        if is_pdf:
-            pdf_content, pdf_title = _fetch_pdf(url)
-            if pdf_content is None:
-                return ToolResult(
-                    f'WebFetch PDF download failed for {url}:\n{pdf_title}',
-                    f'WebFetch PDF 失败: {str(pdf_title)[:30]}',
-                    is_error=True
-                )
-            content = pdf_content
-            title = pdf_title
-
-        # Jina-first mode (retries until HTTP 200)
-        if jina_mode and not is_pdf and not content:
-            import requests
-            print(f'[WEBFETCH] Jina Reader (primary mode)...', flush=True)
-            jina_resp = _retry_request(
-                lambda: requests.get(
-                    f'https://r.jina.ai/{url}',
-                    headers={'Accept': 'text/markdown', 'User-Agent': 'Mozilla/5.0'},
-                    timeout=20,
-                    proxies={'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}
-                ),
-                f'Jina Reader ({url[:50]})'
-            )
-            if len(jina_resp.text) > 1024:
-                content = jina_resp.text
-                title = safe_name
-                print(f'[WEBFETCH] Jina (primary) OK: {len(content)} chars', flush=True)
+        # 代理解析。原先这里是「requests.get('https://www.google.com') 必须回 200」，
+        # 且一个 retry 参数都没传 —— 于是吃到 max_retries=999 的默认值。写死的 7890
+        # 与实际监听的端口不一致时，这个循环按 1.5 倍退避、单次上限 30 秒，能空转八个
+        # 小时，这就是「代理可达但 WebFetch 卡住数小时」的全部来源。
+        _host = url.split('://', 1)[-1].split('/')[0].split('@')[-1].split(':')[0].lower()
+        if (_host in ('localhost', '127.0.0.1', '::1', '0.0.0.0')
+                or _host.startswith('192.168.') or _host.startswith('10.')
+                or _host.endswith('.local')):
+            print(f'[WEBFETCH] {_host} is local, bypassing proxy', flush=True)
+        else:
+            proxies = _detect_proxies(settings)
+            if proxies:
+                print(f'[WEBFETCH] Proxy: {proxies["https"]}', flush=True)
             else:
-                print(f'[WEBFETCH] Jina returned HTTP 200 but only {len(jina_resp.text)} chars - too short, falling back to Playwright', flush=True)
+                errors.append('proxy: no local proxy port is listening, went direct')
+                print('[WEBFETCH] No local proxy detected, going direct', flush=True)
 
-        # Playwright
-        pw_available = bool(not is_pdf and not content)
-        if pw_available:
-            try:
+        # PDF detection。arXiv 的现代链接不带扩展名（/pdf/1706.03762），实测它因此走进
+        # HTML 分支：requests 把 PDF 字节按文本解码得到 66 万字符，长度判据反而认为内容
+        # 充足，于是 97.7KB 的二进制噪声被当作正文返回并写进缓存。
+        _ul = url.lower().rstrip('/')
+        is_pdf = _ul.endswith('.pdf') or 'application/pdf' in _ul or '/pdf/' in _ul
+        if is_pdf:
+            pdf_content, pdf_note = _fetch_pdf(url, proxies=proxies)
+            if pdf_content:
+                content = pdf_content
+                title = pdf_note
+            else:
+                # 猜错不致命：`/pdf/` 这个线索可能命中一个普通页面，所以失败之后复位并
+                # 继续走 HTML 路径，而不是像原先那样直接返回错误。
+                is_pdf = False
+                errors.append(f'PDF: {pdf_note}')
+                print(f'[WEBFETCH] PDF path failed ({pdf_note}), falling back to HTML paths', flush=True)
+
+        # 有序路径表。每条路径自带重试上限与时间预算，任何一条卡住都不会拖住整个工具
+        # 调用；一条失败只记一行原因，继续下一条。第一条拿到**可用**内容就停 —— 判据
+        # 是 _unusable_reason 而不是字符数，否则 example.com 这种本来就只有一百多字符
+        # 的完整页面会被当成失败，白跑一次 Jina 而且永远进不了缓存。
+        if not is_pdf and not content:
+            def _try_jina():
+                _jc = _fetch_jina_fallback(url, proxies=proxies, errors_out=errors)
+                # Jina 的 markdown 头部自带真实标题，比 safe_name（清洗过的 URL）好读。
+                _jt = re.search(r'^Title:\s*(.+)$', _jc[:500], re.MULTILINE)
+                return (_jt.group(1).strip() if _jt else safe_name), _jc
+
+            def _try_direct():
+                return _fetch_http_fallback(url, proxies=proxies, errors_out=errors)
+
+            def _try_playwright():
                 from playwright.sync_api import sync_playwright  # noqa: F401
-            except ImportError:
-                pw_available = False
-                print('[WEBFETCH] Playwright not installed, passing through to CC', flush=True)
+                return _fetch_with_playwright(url, settings, proxies=proxies)
 
-        if pw_available:
-            try:
-                title, content = _fetch_with_playwright(url, settings)
+            paths = ([('Jina Reader', _try_jina), ('Direct HTTP', _try_direct)] if jina_mode
+                     else [('Direct HTTP', _try_direct), ('Jina Reader', _try_jina)])
+            paths.append(('Playwright', _try_playwright))
 
-                # Playwright fallback: HTTP if content too short
-                if len(content) < 1024:
-                    print(f'[WEBFETCH] Playwright content too short ({len(content)} chars), trying HTTP fallback...', flush=True)
-                    http_title, http_content = _fetch_http_fallback(url)
-                    if http_content and len(http_content) > len(content):
-                        content = http_content
-                        title = http_title or title or safe_name
-                        print(f'[WEBFETCH] HTTP fallback OK: {len(content)} chars', flush=True)
+            for _pname, _pfn in paths:
+                _err_mark = len(errors)
+                try:
+                    _pt, _pc = _pfn()
+                except ToolReject:
+                    raise
+                except ImportError:
+                    errors.append(f'{_pname}: not installed')
+                    print(f'[WEBFETCH] {_pname} not installed, skipping', flush=True)
+                    continue
+                except Exception as _pe:
+                    errors.append(f'{_pname}: {str(_pe)[:200]}')
+                    print(f'[WEBFETCH] {_pname} failed: {str(_pe)[:200]}', flush=True)
+                    continue
+                _reason = _unusable_reason(_pc)
+                if _reason:
+                    # 路径自己已经解释过就不重复记：它掌握原始 HTML 长度，理由更准确。
+                    if len(errors) == _err_mark:
+                        errors.append(f'{_pname}: {_reason}')
+                    print(f'[WEBFETCH] {_pname}: {_reason}, trying next path', flush=True)
+                    continue
+                content = _pc
+                title = _pt or safe_name
+                print(f'[WEBFETCH] {_pname} OK: {len(content)} chars', flush=True)
+                break
 
-                # Third-layer fallback: Jina Reader
-                if len(content) < 1024:
-                    print(f'[WEBFETCH] HTTP也太短 ({len(content)} chars), checking Jina connectivity...', flush=True)
-                    jina_content = _fetch_jina_fallback(url)
-                    if jina_content and len(jina_content) > len(content):
-                        content = jina_content
-                        title = title or safe_name
+        # 截断与写缓存对所有路径生效。原先这两步嵌在 Playwright 的 try 里，于是 Jina
+        # 命中时缓存从不落盘，15 分钟 TTL 等于没有。
+        if len(content) > 100000:
+            content = content[:100000] + f'\n\n[Content truncated at 100KB ({len(content)} total chars)]'
 
-                # Truncate large content
-                if len(content) > 100000:
-                    content = content[:100000] + f'\n\n[Content truncated at 100KB ({len(content)} total chars)]'
-
-                # Cache valid content (>1KB) to avoid caching error pages
-                if len(content) > 1024:
-                    with open(cache_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                else:
-                    print(f'[WEBFETCH] Content too short ({len(content)} chars), skipping cache to avoid caching error pages', flush=True)
-
-                kb = len(content) / 1024
-                print(f'[WEBFETCH] Playwright OK: url={url[:80]}, title={title[:50]}, size={kb:.1f}KB', flush=True)
-            except ToolReject:
-                raise
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                return ToolResult(
-                    f'WebFetch (Playwright) failed for {url}:\n{str(e)}',
-                    f'WebFetch 失败: {str(e)[:30]}',
-                    is_error=True
-                )
+        # 走到这里的内容已经过 _unusable_reason 筛查，所以「>1KB 才缓存」那道防错误页
+        # 的门可以撤掉 —— 它的副作用是短页面永远不进缓存，每次调用都重抓一遍。
+        if content:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f'[WEBFETCH] OK: url={url[:80]}, title={str(title)[:50]}, size={len(content) / 1024:.1f}KB', flush=True)
 
     if content:
         kb = len(content) / 1024
@@ -455,52 +603,224 @@ def execute_webfetch(tool_input, settings, cache_dir, **kwargs):
         result_text = f'Fetched: {url}\nTitle: {title}\nSize: {kb:.1f}KB{cache_note}\nPrompt: {prompt}\n\n{content}'
         return ToolResult(result_text, f'WebFetch: {title[:50]}')
 
-    # No content obtained by any method - fall through to CC
-    return None
+    # 所有路径都失败。这里曾经是 return None，而 None 会落到 tool_accept.py 末尾的
+    # 「不支持的工具」——把一次网络失败伪装成工具缺失，模型看到的错误与真实原因无关。
+    _diag = '\n'.join(f'- {e}' for e in (errors or ['no fetch path produced content']))
+    return ToolResult(
+        f'WebFetch failed for {url}\n'
+        f'Proxy: {proxies["https"] if proxies else "none (direct)"}\n'
+        f'Attempted paths:\n{_diag}',
+        f'WebFetch 失败: {url[:40]}', is_error=True
+    )
 
 
 # ---------------------------------------------------------------------------
 #  Internal helper functions for WebFetch
 # ---------------------------------------------------------------------------
 
-def _fetch_pdf(url):
+# 明确属于「机器人墙」的措辞。刻意不含 captcha 这类可能出现在正常文章里的词，判定时
+# 还要求文档很短，避免把一篇讲验证码的文章误判成验证码页面。
+_BLOCK_MARKERS = (
+    'just a moment', 'checking your browser', 'enable javascript and cookies',
+    'performing security verification', 'verify you are human',
+    'attention required', 'access denied', 'unusual traffic from your computer',
+)
+
+
+def _looks_walled(text):
+    """True when text reads like a bot wall or challenge page."""
+    _low = (text or '').lower()
+    return any(_m in _low for _m in _BLOCK_MARKERS)
+
+
+def _unusable_reason(text, raw_len=None):
+    """Explain why `text` cannot serve as page content, or '' when it can.
+
+    Length is the wrong criterion and the old `>= 1024 chars` bar was wrong in
+    both directions: example.com's entire body is ~140 characters, so a complete
+    fetch counted as a failure — it cost a second network round trip and never
+    reached the cache — while a 2KB Cloudflare interstitial sails past 1024 and
+    passes as content.
+
+    A wall states what it is. A JS shell gives itself away by ratio instead: a
+    couple hundred characters of text carved out of tens of KB of markup.
+
+    Args:
+        text: Extracted plain text.
+        raw_len: Length of the source HTML when the caller has it. Without it
+            the ratio test is skipped.
+
+    Returns:
+        A short human-readable reason, or '' when the text is usable.
+    """
+    if not text or not text.strip():
+        return 'empty response'
+    if len(text) < 4096 and _looks_walled(text[:2000]):
+        return f'bot wall or challenge page ({len(text)} chars)'
+    if len(text) >= 1024:
+        return ''
+    if raw_len and raw_len > 20000 and len(text) / raw_len < 0.02:
+        return f'looks JS-rendered ({len(text)} chars of text out of {raw_len // 1024}KB of HTML)'
+    return ''
+
+
+def _html_to_text(html):
+    """Reduce an HTML document to readable plain text.
+
+    Prefers lxml: it drops script/style subtrees and keeps block boundaries as
+    newlines. The regex reduction below is the fallback when lxml is missing —
+    it collapses the whole page into a single line, which is readable but much
+    worse. bs4 and html2text are not assumed to be installed.
+    """
+    if not html:
+        return ''
+    try:
+        from lxml import html as _lxml_html
+        _doc = _lxml_html.fromstring(html)
+        for _bad in _doc.xpath('//script | //style | //noscript | //template | //svg | //iframe'):
+            _parent = _bad.getparent()
+            if _parent is not None:
+                _parent.remove(_bad)
+        _lines = [_ln.strip() for _ln in _doc.text_content().splitlines()]
+        _text = '\n'.join(_ln for _ln in _lines if _ln)
+        if _text:
+            return _text
+    except Exception as _lx_err:
+        print(f'[WEBFETCH] lxml extraction failed ({_lx_err}), using regex reduction', flush=True)
+    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<[^>]+>', ' ', html)
+    html = re.sub(r'&nbsp;', ' ', html)
+    html = re.sub(r'&amp;', '&', html)
+    html = re.sub(r'&lt;', '<', html)
+    html = re.sub(r'&gt;', '>', html)
+    html = re.sub(r'&#\d+;', '', html)
+    return re.sub(r'\s+', ' ', html).strip()
+
+
+def _ensure_fitz():
+    """Import PyMuPDF, installing it into this interpreter on first need.
+
+    The local Read executor and the PDF fetch paths both need it, and both used
+    to carry their own handling. The fetch side's version gave up and returned
+    resp.text — PDF bytes decoded as text, 660k characters of noise for the
+    arXiv paper this was measured on, long enough to clear every length-based
+    check and land in the model's context as if it were the document.
+
+    sys.executable -m pip, never a bare `pip`: the pip on PATH need not belong
+    to the interpreter running the app, and a package installed into the wrong
+    environment fails the next import with a message that says nothing about
+    where it went.
+
+    Returns:
+        The fitz module.
+
+    Raises:
+        ImportError when it is neither importable nor installable.
+    """
+    try:
+        import fitz
+        return fitz
+    except ImportError:
+        pass
+    from .platform_shell import CREATE_NO_WINDOW, is_windows
+    print(f'[PDF] PyMuPDF not found, auto-installing into {sys.executable}...', flush=True)
+    _kw = {'creationflags': CREATE_NO_WINDOW} if is_windows() else {}
+    try:
+        _r = subprocess.run([sys.executable, '-m', 'pip', 'install', 'pymupdf'],
+                            capture_output=True, text=True, timeout=300, **_kw)
+    except Exception as e:
+        raise ImportError(f'PyMuPDF install into {sys.executable} could not start: {e}')
+    if _r.returncode != 0:
+        raise ImportError(f'PyMuPDF install into {sys.executable} failed: '
+                          f'{(_r.stderr or _r.stdout or "")[-300:]}')
+    import importlib
+    importlib.invalidate_caches()
+    import fitz
+    return fitz
+
+
+def _pdf_bytes_to_text(data):
+    """Extract page text from PDF bytes already in memory.
+
+    Args:
+        data: Raw PDF bytes.
+
+    Returns:
+        (text, '') on success, ('', reason) on failure. A PDF with no text
+        layer counts as a failure and says so, because the alternative is
+        handing back an empty document that reads like a fetch that worked.
+    """
+    try:
+        fitz = _ensure_fitz()
+    except Exception as e:
+        return '', str(e)
+    try:
+        doc = fitz.open(stream=data, filetype='pdf')
+        pages = [f'--- Page {i + 1} ---\n{doc[i].get_text()}' for i in range(len(doc))]
+        doc.close()
+    except Exception as e:
+        return '', f'PDF parse failed: {e}'
+    text = '\n\n'.join(pages)
+    if not text.strip():
+        return '', f'PDF has no text layer ({len(pages)} pages, probably scanned images)'
+    print(f'[WEBFETCH] PDF extracted: {len(text)} chars, {len(pages)} pages', flush=True)
+    return text, ''
+
+
+def _fetch_pdf(url, proxies=None):
     """Fetch and extract text from a PDF URL.
+
+    Tries the proxy first when one was detected, then a direct connection: a
+    proxy that cannot reach this particular host should not also take the
+    direct route away. _retry_request raises on any non-200, so there is no
+    status check here.
+
+    Args:
+        url: Target PDF URL.
+        proxies: requests-style proxies dict, or None to go direct only.
 
     Returns:
         (content, title) on success.
         (None, error_message) on failure.
     """
-    try:
-        import requests
-        resp = _retry_request(
-            lambda: requests.get(url, timeout=30, proxies={'http': None, 'https': None},
-                               headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}),
-            f'PDF download ({url.split("/")[-1][:30]})',
-            max_retries=50
-        )
-        if resp.status_code == 200:
-            try:
-                import fitz
-                doc = fitz.open(stream=resp.content, filetype='pdf')
-                texts = [f'--- Page {i + 1} ---\n{doc[i].get_text()}' for i in range(len(doc))]
-                doc.close()
-                content = '\n\n'.join(texts)
-                title = f'PDF: {url.split("/")[-1]}'
-                print(f'[WEBFETCH] PDF extracted: {len(content)} chars, {len(texts)} pages', flush=True)
-                return content, title
-            except ImportError:
-                content = resp.text or resp.content.decode('utf-8', errors='ignore')
-                title = f'PDF (raw): {url.split("/")[-1]}'
-                print('[WEBFETCH] PyMuPDF not installed, returning raw PDF text', flush=True)
-                return content, title
-        else:
-            return None, f'HTTP {resp.status_code}'
-    except Exception as e:
-        return None, str(e)
+    import requests
+    _routes = [proxies, _NO_PROXY] if proxies else [_NO_PROXY]
+    _last = 'no route attempted'
+    for _px in _routes:
+        try:
+            resp = _retry_request(
+                lambda: requests.get(url, timeout=30, proxies=_px,
+                                   headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}),
+                f'PDF download ({url.split("/")[-1][:30]})',
+                max_retries=3, max_total_s=120
+            )
+        except Exception as e:
+            _last = str(e)
+            print(f'[WEBFETCH] PDF route {"proxy" if _px else "direct"} failed: {_last[:120]}', flush=True)
+            continue
+        # 原先这里在 ImportError 分支返回 resp.text —— PDF 字节按文本解码后的乱码。
+        # 那份「内容」长达几十万字符，因此能通过任何以长度为准的检查，然后被当作正文
+        # 送进模型上下文并写入缓存。
+        _text, _err = _pdf_bytes_to_text(resp.content)
+        if _text:
+            return _text, f'PDF: {url.rstrip("/").split("/")[-1]}'
+        return None, _err
+    return None, _last
 
 
-def _fetch_with_playwright(url, settings):
+def _fetch_with_playwright(url, settings, proxies=None):
     """Fetch page content using Playwright Chromium.
+
+    Args:
+        url: Target URL.
+        settings: Global settings dict (reads enable_webfetch_headless).
+        proxies: requests-style proxies dict. Chromium needs its own
+            --proxy-server: the browser has a separate network stack and reads
+            neither the requests-level proxies nor the process environment
+            (settings.json leaves HTTP_PROXY empty). Without this the one path
+            that can render JS is also the one path that cannot reach a blocked
+            host — and pages that need Playwright are usually exactly those.
 
     Returns:
         (title, content) tuple.
@@ -512,10 +832,13 @@ def _fetch_with_playwright(url, settings):
         from playwright.sync_api import sync_playwright
         is_headless = settings.get('enable_webfetch_headless', True)
         pws = sync_playwright().start()
-        br = pws.chromium.launch(
-            headless=is_headless,
-            args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
-        )
+        _launch_kw = {
+            'headless': is_headless,
+            'args': ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+        }
+        if proxies and proxies.get('https'):
+            _launch_kw['proxy'] = {'server': proxies['https']}
+        br = pws.chromium.launch(**_launch_kw)
         ctx = br.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             viewport={'width': 1920, 'height': 1080},
@@ -578,22 +901,20 @@ def _fetch_with_playwright(url, settings):
         except Exception as e:
             print(f'[WEBFETCH] Content extraction failed: {e}', flush=True)
 
-        # Cloudflare detection
-        if c:
-            cf_keywords = ['Just a moment', 'Performing security verification',
-                          'Checking your browser', 'Enable JavaScript and cookies']
-            if len(c) < 500 and any(kw in c for kw in cf_keywords):
-                print(f'[WEBFETCH] Cloudflare challenge detected, waiting up to 15s...', flush=True)
-                for wait in range(15):
-                    try:
-                        pg.wait_for_timeout(1000)
-                        c = pg.inner_text('body')
-                        if len(c) > 500 or not any(kw in c for kw in cf_keywords):
-                            t = pg.title() or t
-                            print(f'[WEBFETCH] Cloudflare passed after {wait+1}s, content={len(c)} chars', flush=True)
-                            break
-                    except Exception:
+        # Cloudflare detection. 措辞表复用 _BLOCK_MARKERS：原先这里另有一份四条目的
+        # 拷贝，而且大小写敏感，页面文案换个大小写就检测不到。
+        if c and len(c) < 500 and _looks_walled(c):
+            print(f'[WEBFETCH] Cloudflare challenge detected, waiting up to 15s...', flush=True)
+            for wait in range(15):
+                try:
+                    pg.wait_for_timeout(1000)
+                    c = pg.inner_text('body')
+                    if len(c) > 500 or not _looks_walled(c):
+                        t = pg.title() or t
+                        print(f'[WEBFETCH] Cloudflare passed after {wait+1}s, content={len(c)} chars', flush=True)
                         break
+                except Exception:
+                    break
 
         for cleanup in [pg.close, ctx.close, br.close, pws.stop]:
             try:
@@ -607,62 +928,88 @@ def _fetch_with_playwright(url, settings):
         return future.result(timeout=60)
 
 
-def _fetch_http_fallback(url):
-    """Simple HTTP fallback when Playwright content is too short.
+def _fetch_http_fallback(url, proxies=None, max_retries=2, errors_out=None):
+    """Fetch a page over plain HTTP(S) and reduce it to text.
+
+    This is a first-class path, not only a fallback: with Playwright absent it
+    is the one route that actually reaches a site the proxy can see. It used to
+    force a direct connection, which cannot work for a blocked host.
+
+    Args:
+        url: Target URL.
+        proxies: requests-style proxies dict, or None for a direct connection.
+        max_retries: Retry budget for the request itself.
+        errors_out: Optional list; the failure reason is appended to it so the
+            caller can surface it instead of leaving it in the console only.
 
     Returns:
-        (title, content) tuple. Empty strings on failure.
+        (title, content) tuple. ('', '') on failure.
     """
     try:
         import requests
         resp = _retry_request(
-            lambda: requests.get(url, timeout=15,
+            lambda: requests.get(url, timeout=20,
                 headers={
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml',
                     'Accept-Language': 'en-US,en;q=0.5'
                 },
-                proxies={'http': None, 'https': None}, allow_redirects=True),
-            f'HTTP fallback ({url[:50]})',
-            max_retries=10
+                proxies=proxies or _NO_PROXY, allow_redirects=True),
+            f'Direct HTTP ({url[:50]})',
+            max_retries=max_retries, max_total_s=45
         )
-        if len(resp.text) > 2000:
-            html = resp.text
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<[^>]+>', ' ', html)
-            html = re.sub(r'&nbsp;', ' ', html)
-            html = re.sub(r'&amp;', '&', html)
-            html = re.sub(r'&lt;', '<', html)
-            html = re.sub(r'&gt;', '>', html)
-            html = re.sub(r'&#\d+;', '', html)
-            html = re.sub(r'\s+', ' ', html).strip()
-            title_m = re.search(r'<title>(.*?)</title>', resp.text, re.IGNORECASE | re.DOTALL)
-            title = title_m.group(1).strip() if title_m else ''
-            return title, html
+        # 内容类型是权威判据，URL 后缀只是猜测：arXiv 的 /pdf/1706.03762 没有扩展名，
+        # 于是 PDF 字节走到这里被 resp.text 解码成 66 万字符乱码，而任何以长度为准的
+        # 检查都会放它过去。字节已经在手上，就地解析不需要第二次请求。
+        _ctype = (resp.headers.get('Content-Type') or '').lower()
+        if 'application/pdf' in _ctype or resp.content[:5] == b'%PDF-':
+            _ptext, _perr = _pdf_bytes_to_text(resp.content)
+            if not _ptext:
+                if errors_out is not None:
+                    errors_out.append(f'Direct HTTP: PDF at this URL, {_perr}')
+                print(f'[WEBFETCH] Direct HTTP: PDF at this URL, {_perr}', flush=True)
+                return '', ''
+            return f'PDF: {url.rstrip("/").split("/")[-1]}', _ptext
+        if _ctype and not any(_t in _ctype for _t in ('text/', 'html', 'xml', 'json', 'javascript')):
+            if errors_out is not None:
+                errors_out.append(f'Direct HTTP: non-text content type {_ctype.split(";")[0]}')
+            print(f'[WEBFETCH] Direct HTTP: non-text content type {_ctype}', flush=True)
+            return '', ''
+        _raw = resp.text or ''
+        _text = _html_to_text(_raw)
+        # 这里是全流程唯一同时掌握纯文本长度与原始 HTML 长度的位置，比值能区分「页面
+        # 本来就短」和「内容由 JS 渲染」，所以判定放在这里而不是调用方。
+        _reason = _unusable_reason(_text, raw_len=len(_raw))
+        if _reason:
+            if errors_out is not None:
+                errors_out.append(f'Direct HTTP: {_reason}')
+            print(f'[WEBFETCH] Direct HTTP: {_reason}', flush=True)
+            return '', ''
+        _title_m = re.search(r'<title[^>]*>(.*?)</title>', _raw, re.IGNORECASE | re.DOTALL)
+        return (_title_m.group(1).strip() if _title_m else ''), _text
     except Exception as e:
-        print(f'[WEBFETCH] HTTP fallback failed: {e}', flush=True)
+        if errors_out is not None:
+            errors_out.append(f'Direct HTTP: {str(e)[:200]}')
+        print(f'[WEBFETCH] Direct HTTP failed: {e}', flush=True)
     return '', ''
 
 
-def _fetch_jina_fallback(url):
-    """Jina Reader fallback when other methods produce too-short content.
+def _fetch_jina_fallback(url, proxies=None, errors_out=None):
+    """Fetch a page as markdown through Jina Reader.
+
+    The old version first required HTTP 200 from google.com through a hardcoded
+    proxy before it would even try. That gate is the same false negative as the
+    old proxy check: the socket probe already established that the proxy is
+    listening, and a healthy proxy answers that canary with a 302.
+
+    Args:
+        url: Target URL.
+        proxies: requests-style proxies dict, or None for a direct connection.
+        errors_out: Optional list to append the failure reason to.
 
     Returns:
         Content string, or empty string on failure.
     """
-    try:
-        import requests
-        _retry_request(
-            lambda: requests.get('https://www.google.com', timeout=3,
-                proxies={'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}),
-            'Jina fallback connectivity',
-            max_retries=5, initial_delay=2, max_delay=10
-        )
-    except Exception:
-        print(f'[WEBFETCH] Jina unreachable after retries, skipping fallback', flush=True)
-        return ''
-
     try:
         import requests
         jina_resp = _retry_request(
@@ -670,16 +1017,18 @@ def _fetch_jina_fallback(url):
                 f'https://r.jina.ai/{url}',
                 headers={'Accept': 'text/markdown', 'User-Agent': 'Mozilla/5.0'},
                 timeout=20,
-                proxies={'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}
+                proxies=proxies or _NO_PROXY
             ),
-            f'Jina fallback ({url[:50]})',
-            max_retries=10
+            f'Jina Reader ({url[:50]})',
+            max_retries=2, max_total_s=45
         )
-        if len(jina_resp.text) > 0:
-            print(f'[WEBFETCH] Jina Reader OK (via proxy): {len(jina_resp.text)} chars', flush=True)
-            return jina_resp.text
+        # 成功日志由调用方的路径循环统一打印。这里再打一遍会让日志里出现两行一模一样的
+        # 「Jina Reader OK: N chars」，读起来像同一个 URL 被抓了两次。
+        return jina_resp.text or ''
     except Exception as e:
-        print(f'[WEBFETCH] Jina Reader request failed after retries: {e}', flush=True)
+        if errors_out is not None:
+            errors_out.append(f'Jina Reader: {str(e)[:200]}')
+        print(f'[WEBFETCH] Jina Reader request failed: {e}', flush=True)
     return ''
 
 
@@ -868,8 +1217,8 @@ def execute_expand_bubbles(tool_input, settings, cache_dir, **kwargs):
 # 错误——一点就废掉整个工具系统。Claude Code CLI 直连移除后本地执行是唯一路径，这个
 # 门控已无第二条分支可选。
 #
-# setting_check 参数本身仍在使用（WebSearch 与 WebFetch），所以看到相邻装饰器带它而
-# 这四个不带不是漏写。
+# 现在没有任何执行器再带 setting_check。WebSearch 与 WebFetch 是最后两个，它们也因为
+# 同一种死法被拆掉了，所以这里不必再解释「为什么相邻的带而这四个不带」——谁都不带。
 @register_executor('Read')
 def execute_read(tool_input, settings, cache_dir, **kwargs):
     """Local Read executor. No line limit; rejects files > 100k tokens."""
@@ -1004,28 +1353,16 @@ def execute_read(tool_input, settings, cache_dir, **kwargs):
                 return ToolResult(f'<tool_use_error>Failed to parse notebook: {str(_nbe)}</tool_use_error>', 'Read: notebook解析失败', is_error=True)
         # PDF 文件：使用 PyMuPDF 提取文本
         if _ext == '.pdf':
+            # 装包逻辑连同「裸 pip 会装进别的解释器」那段教训一并移到 _ensure_fitz，因为
+            # WebFetch 的 PDF 路径需要同一件事，而它当时的做法是缺依赖就返回原始字节。
+            # 同一个需求两份实现，其中一份是错的。
             try:
-                import fitz
-            except ImportError:
-                # Auto-install PyMuPDF
-                # sys.executable -m pip 而不是裸 pip：PATH 上的 pip 未必属于跑应用的那个
-                # 解释器（实测的一台机器上 PATH 指向 miniconda 的某个环境，而应用跑在另一
-                # 个 Python）。裸 pip 会把包装进错误的环境，随后 import fitz 照旧失败，而
-                # 报出的是「安装失败」或第二次 ImportError——两者都不指向「装到别处去了」。
-                from .platform_shell import CREATE_NO_WINDOW, is_windows
-                print(f'[READ] PyMuPDF not found, auto-installing into {sys.executable}...', flush=True)
-                _pdf_kw = {'creationflags': CREATE_NO_WINDOW} if is_windows() else {}
-                _install_result = subprocess.run(
-                    [sys.executable, '-m', 'pip', 'install', 'pymupdf'],
-                    capture_output=True, text=True, timeout=120, **_pdf_kw
+                fitz = _ensure_fitz()
+            except ImportError as _fe:
+                return ToolResult(
+                    f'<tool_use_error>{_fe}</tool_use_error>',
+                    'Read: PyMuPDF安装失败', is_error=True
                 )
-                if _install_result.returncode != 0:
-                    return ToolResult(
-                        f'<tool_use_error>Failed to auto-install PyMuPDF into {sys.executable}: '
-                        f'{_install_result.stderr[:200]}</tool_use_error>',
-                        'Read: PyMuPDF安装失败', is_error=True
-                    )
-                import fitz
             try:
                 doc = fitz.open(file_path)
                 pages_param = tool_input.get('pages', '')

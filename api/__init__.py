@@ -65,6 +65,7 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
             'enable_custom_webfetch': True,
             'enable_custom_webfetch_jina': True,
             'enable_webfetch_headless': True,
+            'webfetch_proxy': '',
             'enable_show_all_autoread': False,
             'enable_thinking_retry': False
         }

@@ -26,6 +26,13 @@ class SessionMixin:
             'enable_custom_webfetch': True,
             'enable_custom_webfetch_jina': True,
             'enable_webfetch_headless': True,
+            # WebFetch / WebSearch 的出站代理。留空表示自动探测：先读 HTTPS_PROXY 等
+            # 环境变量，再扫本机常见代理端口。
+            #
+            # 刻意**不**进 _dev_only_defaults：那张表在非开发者模式下每次启动、每次保存
+            # 设置都会被强制回写，把一项机器配置放进去等于用户填一次就被清一次，而症状
+            # 是「设置保存了但下次打开又空了」。
+            'webfetch_proxy': '',
             'enable_bottom_tabs': False,
             # 新思维链气泡的默认可见性。刻意放在这里而不是 create_session 的初值里：
             # 会话自己的 thinking_visible 一旦被显式切换过就以会话值为准，没切换过的
