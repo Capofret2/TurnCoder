@@ -23,7 +23,10 @@ _PRICE_MAP = {}           # composite_id -> price_per_call
 _SEGMENTED_MAP = {}       # composite_id -> bool (whether to use cache segmentation)
 _SUBAGENT_PROVIDERS = []  # [{name, api_key, url, model}]
 _MODEL_PROVIDER_MAP = {}  # composite_id -> provider_name
-_WEB_SEARCH_CONFIG = {}   # {provider, api_key} from providers.json's web_search block
+_WEB_SEARCH_PROVIDERS = []  # [{name, provider, api_key}, ...] ordered fallback chain
+
+# 内置默认搜索供应商：列表为空时自动注入。原先硬编码在 tool_executors.py 里。
+_DEFAULT_SEARCH_PROVIDER = {"name": "Serper (内置)", "provider": "serper", "api_key": "0725a2ea9df6eef80e708702e99218b0e502181c"}
 
 
 def make_composite_id(provider_name, model_name):
@@ -55,14 +58,14 @@ def strip_composite(name):
 
 def _load_providers():
     """Load providers.json and user_models.json, build routing tables."""
-    global _MODEL_MAP, _ALL_MODELS, _PRICE_MAP, _SEGMENTED_MAP, _SUBAGENT_PROVIDERS, _MODEL_PROVIDER_MAP, _WEB_SEARCH_CONFIG
+    global _MODEL_MAP, _ALL_MODELS, _PRICE_MAP, _SEGMENTED_MAP, _SUBAGENT_PROVIDERS, _MODEL_PROVIDER_MAP, _WEB_SEARCH_PROVIDERS
     _MODEL_MAP = {}
     _ALL_MODELS = []
     _PRICE_MAP = {}
     _SEGMENTED_MAP = {}
     _SUBAGENT_PROVIDERS = []
     _MODEL_PROVIDER_MAP = {}
-    _WEB_SEARCH_CONFIG = {}
+    _WEB_SEARCH_PROVIDERS = []
 
     paths = [p for p in [_PROVIDERS_PATH, _USER_MODELS_PATH] if os.path.exists(p)]
     if not paths:
@@ -79,8 +82,11 @@ def _load_providers():
         if isinstance(raw, dict):
             providers = raw.get("model_providers", raw.get("providers", []))
             search_cfg = raw.get("web_search", {})
-            if search_cfg:
-                _WEB_SEARCH_CONFIG = search_cfg
+            if isinstance(search_cfg, list):
+                _WEB_SEARCH_PROVIDERS = search_cfg
+            elif isinstance(search_cfg, dict) and search_cfg:
+                # 向后兼容：旧的单对象格式自动包装为列表
+                _WEB_SEARCH_PROVIDERS = [search_cfg]
         else:
             providers = raw
 
@@ -181,9 +187,21 @@ def get_subagent_providers():
     return list(_SUBAGENT_PROVIDERS)
 
 
+def get_web_search_providers():
+    """Return the ordered list of web search providers for fallback chain.
+
+    Each entry is a dict with keys: name, provider ('serper'|'exa'), api_key.
+    When the user hasn't configured any, returns the built-in Serper default.
+    """
+    if _WEB_SEARCH_PROVIDERS:
+        return list(_WEB_SEARCH_PROVIDERS)
+    return [dict(_DEFAULT_SEARCH_PROVIDER)]
+
+
 def get_web_search_config():
-    """Return the web_search provider configuration from providers.json."""
-    return dict(_WEB_SEARCH_CONFIG)
+    """Backward compat: return first provider as a dict. Prefer get_web_search_providers()."""
+    providers = get_web_search_providers()
+    return dict(providers[0]) if providers else {}
 
 
 def get_model_providers():

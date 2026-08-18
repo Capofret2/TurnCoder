@@ -28,8 +28,16 @@
       ]
     }
   ],
-  "web_search": {
-    "provider": "serper",
-    "api_key": "sk-REPLACE_WITH_YOUR_SEARCH_KEY"
-  }
+  "web_search": [
+    {
+      "name": "Serper",
+      "provider": "serper",
+      "api_key": "sk-REPLACE_WITH_YOUR_SEARCH_KEY"
+    },
+    {
+      "name": "Exa",
+      "provider": "exa",
+      "api_key": "sk-REPLACE_WITH_YOUR_EXA_KEY"
+    }
+  ]
 }

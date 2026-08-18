@@ -2,7 +2,8 @@
 
 var _providerData = [];
 var _providerTestResults = {};
-var _webSearchConfig = {};
+var _webSearchProviders = [];
+var _wsDragIdx = -1;
 
 function openProviderModal() {
     fetch('/api/action', {
@@ -14,7 +15,14 @@ function openProviderModal() {
     .then(function(d) {
         if (d.status === 'ok') {
             _providerData = d.providers || [];
-            _webSearchConfig = d.web_search || {};
+            var ws = d.web_search || {};
+            if (Array.isArray(ws)) {
+                _webSearchProviders = ws;
+            } else if (ws && typeof ws === 'object' && ws.provider) {
+                _webSearchProviders = [ws];
+            } else {
+                _webSearchProviders = [];
+            }
             _providerTestResults = {};
             renderProviderList();
             document.getElementById('provider-modal').style.display = 'flex';
@@ -34,28 +42,77 @@ function closeProviderModal() {
 function _renderWebSearchCard(container) {
     var card = document.createElement('div');
     card.className = 'provider-card';
-    var title = document.createElement('div');
-    title.style.cssText = 'font-weight:500; margin-bottom: var(--md-sys-spacing-2);';
-    title.textContent = '搜索供应商';
-    card.appendChild(title);
 
-    var provRow = document.createElement('div');
-    provRow.className = 'prov-row';
-    provRow.innerHTML = '<span class="prov-label">服务</span>' +
-        '<select id="websearch-provider" class="prov-input" style="flex:1; min-height:40px;">' +
-        '<option value="serper">Serper</option><option value="exa">Exa</option></select>';
-    card.appendChild(provRow);
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--md-sys-spacing-2);';
+    hdr.innerHTML = '<span style="font-weight:500;">搜索供应商 (按优先级排序)</span>' +
+        '<button onclick="_addWebSearchProvider()" class="prov-btn-add-model" title="添加搜索供应商" style="padding:2px 8px;">+</button>';
+    card.appendChild(hdr);
 
-    var keyRow = document.createElement('div');
-    keyRow.className = 'prov-row';
-    keyRow.innerHTML = '<span class="prov-label">Key</span>' +
-        '<input type="password" id="websearch-key" class="prov-input" value="' + _escAttr((_webSearchConfig && _webSearchConfig.api_key) || '') + '" placeholder="搜索 API 密钥">' +
-        '<button onclick="_toggleKeyVis(\'websearch-key\')" class="prov-btn-eye" title="显示/隐藏">' + mdIcon('visibility', 16) + '</button>';
-    card.appendChild(keyRow);
+    if (_webSearchProviders.length === 0) {
+        var hint = document.createElement('div');
+        hint.style.cssText = 'color:#888; font-size:12px; padding:8px 0;';
+        hint.textContent = '未配置搜索供应商，将使用内置 Serper 默认密钥';
+        card.appendChild(hint);
+    }
 
-    var sel = document.getElementById('websearch-provider');
-    if (sel && _webSearchConfig && _webSearchConfig.provider) sel.value = _webSearchConfig.provider;
+    _webSearchProviders.forEach(function(sp, idx) {
+        var row = document.createElement('div');
+        row.className = 'prov-row';
+        row.draggable = true;
+        row.dataset.wsIdx = idx;
+        row.style.cssText = 'flex-wrap:wrap; gap:4px; padding:6px; border:1px solid var(--md-sys-color-outline-variant,#ddd); border-radius:8px; margin-bottom:6px; cursor:grab; transition:background .15s;';
+        row.ondragstart = function(e) { _wsDragIdx = idx; e.dataTransfer.effectAllowed = 'move'; row.style.opacity = '0.5'; };
+        row.ondragend = function() { row.style.opacity = '1'; };
+        row.ondragover = function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; row.style.background = 'var(--md-sys-color-surface-container-high,#e8e8e8)'; };
+        row.ondragleave = function() { row.style.background = ''; };
+        row.ondrop = function(e) {
+            e.preventDefault(); row.style.background = '';
+            if (_wsDragIdx < 0 || _wsDragIdx === idx) return;
+            var item = _webSearchProviders.splice(_wsDragIdx, 1)[0];
+            _webSearchProviders.splice(idx, 0, item);
+            _wsDragIdx = -1;
+            renderProviderList();
+        };
+
+        // 行1：拖拽柄 + 序号 + 名称 + 删除
+        var line1 = document.createElement('div');
+        line1.style.cssText = 'display:flex; align-items:center; gap:4px; width:100%;';
+        line1.innerHTML =
+            '<span style="cursor:grab; color:#aaa; font-size:14px;" title="拖拽排序">' + mdIcon('drag_indicator', 16) + '</span>' +
+            '<span style="color:#888; font-size:11px; min-width:16px; text-align:center;">#' + (idx + 1) + '</span>' +
+            '<input type="text" id="ws-name-' + idx + '" value="' + _escAttr(sp.name || '') + '" placeholder="名称" class="prov-input" style="flex:1; min-width:80px;">' +
+            '<select id="ws-type-' + idx + '" class="prov-input" style="width:90px; min-height:36px;">' +
+            '<option value="serper"' + (sp.provider === 'serper' || !sp.provider ? ' selected' : '') + '>Serper</option>' +
+            '<option value="exa"' + (sp.provider === 'exa' ? ' selected' : '') + '>Exa</option></select>' +
+            '<button onclick="_removeWebSearchProvider(' + idx + ')" class="prov-btn-danger" title="删除">' + mdIcon('delete', 16) + '</button>';
+        row.appendChild(line1);
+
+        // 行2：API Key
+        var line2 = document.createElement('div');
+        line2.style.cssText = 'display:flex; align-items:center; gap:4px; width:100%; margin-top:4px;';
+        line2.innerHTML =
+            '<span class="prov-label" style="min-width:30px;">Key</span>' +
+            '<input type="password" id="ws-key-' + idx + '" value="' + _escAttr(sp.api_key || '') + '" placeholder="API 密钥" class="prov-input" style="flex:1;">' +
+            '<button onclick="_toggleKeyVis(\'ws-key-' + idx + '\')" class="prov-btn-eye" title="显示/隐藏">' + mdIcon('visibility', 16) + '</button>';
+        row.appendChild(line2);
+
+        card.appendChild(row);
+    });
+
     container.appendChild(card);
+}
+
+function _addWebSearchProvider() {
+    _syncSearchInputs();
+    _webSearchProviders.push({name: '', provider: 'serper', api_key: ''});
+    renderProviderList();
+}
+
+function _removeWebSearchProvider(idx) {
+    _syncSearchInputs();
+    _webSearchProviders.splice(idx, 1);
+    renderProviderList();
 }
 
 function renderProviderList() {
@@ -243,7 +300,7 @@ function saveProviders() {
     fetch('/api/action', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'save_providers', providers: _providerData, web_search: _webSearchConfig})
+        body: JSON.stringify({action: 'save_providers', providers: _providerData, web_search: _webSearchProviders})
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -279,14 +336,18 @@ function _syncProviderInputs() {
 }
 
 function _syncSearchInputs() {
-    if (!_webSearchConfig) _webSearchConfig = {};
-    var provEl = document.getElementById('websearch-provider');
-    var keyEl = document.getElementById('websearch-key');
-    if (provEl) _webSearchConfig.provider = provEl.value || 'serper';
-    if (keyEl) _webSearchConfig.api_key = keyEl.value.trim();
-    if (!_webSearchConfig.api_key && !_webSearchConfig.provider) {
-        _webSearchConfig = {};
+    for (var i = 0; i < _webSearchProviders.length; i++) {
+        var nameEl = document.getElementById('ws-name-' + i);
+        var typeEl = document.getElementById('ws-type-' + i);
+        var keyEl = document.getElementById('ws-key-' + i);
+        if (nameEl) _webSearchProviders[i].name = nameEl.value.trim();
+        if (typeEl) _webSearchProviders[i].provider = typeEl.value || 'serper';
+        if (keyEl) _webSearchProviders[i].api_key = keyEl.value.trim();
     }
+    // 移除完全空白的条目
+    _webSearchProviders = _webSearchProviders.filter(function(sp) {
+        return (sp.name || '').trim() || (sp.api_key || '').trim();
+    });
 }
 
 function _escAttr(s) {
