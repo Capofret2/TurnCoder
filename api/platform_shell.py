@@ -212,6 +212,27 @@ def kill_process_tree(pid: int) -> bool:
         return False
 
 
+def abort_process_group(pid: int) -> bool:
+    """向进程组发送中断信号（手动中止按钮的底层实现）。返回是否成功发出信号。
+
+    与 kill_process_tree 的区别：这里发 SIGINT（Ctrl-C 语义），进程有机会执行注册的
+    信号处理函数做清理（如临时文件删除、连接关闭）；kill_process_tree 发 SIGTERM，
+    更不客气但仍可捕获；两者都比 SIGKILL 温和。
+
+    Windows 上退化为 kill_process_tree（taskkill /T /F）。CTRL_BREAK_EVENT 已被实测
+    证明是静默空操作（见 interrupt_process 的 docstring），所以这里不再尝试它。
+    """
+    if is_windows():
+        return kill_process_tree(pid)
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGINT)
+        return True
+    except ProcessLookupError:
+        return False
+    except Exception:
+        return False
+
+
 def interactive_shell_argv():
     """持久化终端用的解释器 argv。返回 (argv, label)。
 

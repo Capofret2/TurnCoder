@@ -1697,7 +1697,15 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
     except Exception as e:
         return ToolResult(f'Failed to launch command: {str(e)}', 'Bash: 启动失败', is_error=True)
     _pid = proc.pid
+    # 注册到进程表，使 abort_tool 能真正杀死正在运行的进程
+    _api = kwargs.get('api')
+    _tuid = kwargs.get('tool_use_id', '')
+    if _api and _tuid and hasattr(_api, '_running_processes'):
+        _api._running_processes[_tuid] = proc
     if run_bg:
+        # 后台进程不参与 abort 机制，从注册表移除
+        if _api and _tuid and hasattr(_api, '_running_processes'):
+            _api._running_processes.pop(_tuid, None)
         return ToolResult(
             f'Command started in background (pid={_pid}, shell={_shell}):\n{command[:200]}\nOutput file: {_out_file}',
             f'{_shell} (bg): {command[:30]}'
@@ -1711,6 +1719,9 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
                 proc.kill()
             except Exception:
                 pass
+        # 超时已杀进程，从注册表注销
+        if _api and _tuid and hasattr(_api, '_running_processes'):
+            _api._running_processes.pop(_tuid, None)
         _out_fd.close()
         _partial = ''
         try:
@@ -1727,6 +1738,19 @@ def execute_bash(tool_input, settings, cache_dir, **kwargs):
             'Bash: 超时', is_error=True
         )
     _out_fd.close()
+    # 从进程注册表注销（正常完成路径）
+    if _api and _tuid and hasattr(_api, '_running_processes'):
+        _api._running_processes.pop(_tuid, None)
+    # 检查执行期间是否被用户中止（abort_tool 已创建合成结果，这里丢弃真实结果）
+    if _api and _tuid:
+        _abort_sid = kwargs.get('target_sid', '')
+        _abort_sess = _api.sessions.get(_abort_sid, {}) if hasattr(_api, 'sessions') and _abort_sid else {}
+        if _tuid in (_abort_sess.get('_aborted_tool_ids') or []):
+            try:
+                os.remove(_out_file)
+            except Exception:
+                pass
+            return None  # 返回 None，调用方会跳过结果创建
     # 读取输出
     output = ''
     try:

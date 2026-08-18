@@ -50,6 +50,7 @@ class Api(AnthropicMixin, Arc3Mixin, AutopilotMixin, ToolAcceptMixin, CodeHelper
         self.subagent_queues = {}    # subagent_id → queue.Queue()
         self.subagent_responses = {} # response_msg_id → raw_sse_string
         self.file_read_registry = {}  # file_path → {'sessions': set(sids), 'last_access': timestamp} — 跨会话文件读取引用追踪
+        self._running_processes = {}  # tool_use_id → subprocess.Popen — 正在执行的 Bash 子进程注册表，供 abort_tool 真正杀进程
         self.session_groups = {}  # group_id → {'name': str, 'session_ids': [], 'order': float, 'collapsed': bool}
         self._child_session_events = {}  # child_sid → {'event': Event, 'parent_sid': str, 'result': dict}
         self.global_settings = {

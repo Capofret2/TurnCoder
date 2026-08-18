@@ -687,6 +687,11 @@ class ToolAcceptMixin:
                     _local_result = _executor(tool_block.get('input', {}), getattr(self, 'global_settings', {}), _cache_dir,
                                               api=self, target_sid=_active_sid, tool_use_id=_tool_use_id)
                     if _local_result is not None:
+                        # 检查执行期间是否被用户中止（abort 已创建合成结果，丢弃迟到的真实结果）
+                        if _tool_use_id in (session.get('_aborted_tool_ids') or []):
+                            print(f'[CC ABORT] 丢弃迟到的结果 (标准模式): {_exec_name} ({_tool_use_id[:25]})', flush=True)
+                            self._continue_autopilot_tool_queue(session, _active_sid)
+                            return
                         _local_result.execution_time_s = time.time() - _exec_start
                         self._create_tool_result_bubble(session, _tool_use_id, _local_result, msg_index, part_id)
                         # Edit 成功后：为当前会话创建 autoread 并注册引用
@@ -902,6 +907,16 @@ class ToolAcceptMixin:
         # only a result arriving shortly after the abort is ever tested against it.
         if len(_ab) > 200:
             del _ab[:-200]
+
+        # 真正杀死正在运行的子进程（如果有的话）
+        _proc = getattr(self, '_running_processes', {}).pop(tool_use_id, None)
+        if _proc is not None:
+            from .platform_shell import abort_process_group
+            try:
+                _killed = abort_process_group(_proc.pid)
+                print(f'[CC ABORT] 已发送 SIGINT 给进程组 pid={_proc.pid}, 成功={_killed}', flush=True)
+            except Exception as _ke:
+                print(f'[CC ABORT] 发送中止信号失败: {_ke}', flush=True)
 
         from .tool_executors import ToolResult
 
